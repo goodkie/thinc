@@ -1,10 +1,72 @@
 const { app, BrowserWindow, shell, Menu, Tray, nativeImage, ipcMain } = require('electron');
 const path = require('path');
+const http = require('http');
+const fs   = require('fs');
 
 let splashWindow = null;
 let mainWindow   = null;
 let tray         = null;
-let mainShown    = false; // 중복 표시 방지 플래그
+let mainShown    = false;
+let localServer  = null;
+const LOCAL_PORT = 3939; // 내장 로컬 서버 포트
+
+// ── 내장 HTTP 서버 ────────────────────────────────────────────────────────────
+// file:// 대신 http://localhost 로 앱을 서빙 → YouTube 플레이어 오류 153 해결
+function startLocalServer(dir, port) {
+  const MIME = {
+    '.html': 'text/html; charset=utf-8',
+    '.js':   'application/javascript; charset=utf-8',
+    '.css':  'text/css; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.png':  'image/png',
+    '.jpg':  'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.svg':  'image/svg+xml',
+    '.ico':  'image/x-icon',
+    '.woff2':'font/woff2',
+    '.csv':  'text/csv; charset=utf-8',
+    '.txt':  'text/plain; charset=utf-8',
+  };
+
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      let urlPath = req.url.split('?')[0];
+      if (urlPath === '/' || urlPath === '') urlPath = '/index.html';
+
+      const filePath = path.join(dir, urlPath);
+
+      // server.js 노출 방지
+      if (filePath.endsWith('server.js') || filePath.endsWith('main.js') || filePath.endsWith('preload.js')) {
+        res.writeHead(403); res.end('Forbidden'); return;
+      }
+
+      fs.readFile(filePath, (err, data) => {
+        if (err) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('Not found: ' + urlPath);
+          return;
+        }
+        const ext = path.extname(filePath).toLowerCase();
+        res.writeHead(200, {
+          'Content-Type': MIME[ext] || 'application/octet-stream',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store'
+        });
+        res.end(data);
+      });
+    });
+
+    server.listen(port, '127.0.0.1', () => {
+      console.log(`[LocalServer] Serving on http://127.0.0.1:${port}`);
+      resolve(server);
+    });
+
+    server.on('error', (e) => {
+      console.warn(`[LocalServer] Port ${port} in use, trying ${port + 1}`);
+      resolve(startLocalServer(dir, port + 1));
+    });
+  });
+}
 
 // ── 메인 창 표시 (한 번만 실행) ──────────────────────────────────────────────
 function showMain() {
@@ -40,7 +102,7 @@ function createSplash() {
 }
 
 // ── 메인 앱 창 ───────────────────────────────────────────────────────────────
-function createMain() {
+function createMain(serverPort) {
   const iconPath = path.join(__dirname, 'icon.ico');
 
   mainWindow = new BrowserWindow({
@@ -61,11 +123,14 @@ function createMain() {
 
   // 외부 링크는 기본 브라우저로 열기
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http')) shell.openExternal(url);
+    if (url.startsWith('http') && !url.startsWith(`http://127.0.0.1:${serverPort}`)) {
+      shell.openExternal(url);
+    }
     return { action: 'deny' };
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  // ✅ http://localhost 로 로드 → YouTube 플레이어 오류 153 해결
+  mainWindow.loadURL(`http://127.0.0.1:${serverPort}/index.html`);
 
   // ready-to-show 이벤트: 스플래시 후 1.8초 대기 후 표시
   mainWindow.once('ready-to-show', () => {
@@ -73,8 +138,8 @@ function createMain() {
     setTimeout(showMain, delay);
   });
 
-  // 안전망 타임아웃: 8초 후 무조건 표시 (ready-to-show 미발화 대비)
-  setTimeout(showMain, 8000);
+  // 안전망 타임아웃: 10초 후 무조건 표시
+  setTimeout(showMain, 10000);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -87,10 +152,7 @@ function createTray() {
   try {
     const icoPath = path.join(__dirname, 'icon.ico');
     const icon = nativeImage.createFromPath(icoPath).resize({ width: 16, height: 16 });
-    if (icon.isEmpty()) {
-      console.warn('[Tray] Icon is empty, skipping tray creation');
-      return;
-    }
+    if (icon.isEmpty()) { console.warn('[Tray] Icon empty, skipping'); return; }
     tray = new Tray(icon);
     tray.setToolTip('The Truth Untold — Th!nc');
     const menu = Menu.buildFromTemplate([
@@ -100,7 +162,7 @@ function createTray() {
     ]);
     tray.setContextMenu(menu);
     tray.on('double-click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
-    console.log('[Tray] System tray icon created');
+    console.log('[Tray] Created successfully');
   } catch (e) {
     console.warn('[Tray] Skipped:', e.message);
   }
@@ -132,22 +194,31 @@ function buildMenu() {
 }
 
 // ── 앱 초기화 ────────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // 1. 내장 로컬 서버 먼저 시작
+  localServer = await startLocalServer(__dirname, LOCAL_PORT);
+  const serverPort = localServer.address().port;
+  console.log(`[App] Local server running on port ${serverPort}`);
+
+  // 2. UI 생성
   createSplash();
   buildMenu();
   createTray();
-  setTimeout(() => createMain(), 500);
+  setTimeout(() => createMain(serverPort), 500);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainShown = false;
-      createMain();
+      createMain(serverPort);
     }
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') {
+    if (localServer) localServer.close();
+    app.quit();
+  }
 });
 
 ipcMain.handle('get-app-info', () => ({
