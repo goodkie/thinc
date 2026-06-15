@@ -1822,6 +1822,25 @@
   ];
 
   async function fetchViaCORSProxy(targetUrl) {
+    // Electron 환경(webSecurity: false)에서는 프록시 없이 직접 Fetch를 먼저 시도
+    if (window.electronAPI && window.electronAPI.isElectron) {
+      try {
+        console.log(`[Electron Direct] Fetching directly: ${targetUrl}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch(targetUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (response.ok) {
+          const text = await response.text();
+          if (text && !text.includes("pricing") && !text.includes("limited to localhost") && !text.includes("Access Denied")) {
+            return text;
+          }
+        }
+      } catch (err) {
+        console.warn(`[Electron Direct] Direct fetch failed for ${targetUrl}, falling back to proxies:`, err.message || err);
+      }
+    }
+
     // 1. Try primary configured proxies first
     for (const getProxyUrl of CORS_PROXIES) {
       try {
