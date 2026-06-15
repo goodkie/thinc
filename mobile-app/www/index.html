@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <script>
+    // Capacitor 환경 감지
+    window.__IS_CAPACITOR__ = typeof Capacitor !== 'undefined';
+    window.__IS_MOBILE_APP__ = true;
+    console.log('[Th!nc Mobile] Capacitor app mode active');
+  </script>
+  <script src="capacitor.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#050510">
+  <meta name="description" content="THE TRUTH UNTOLD - AI 기반 유튜브 실시간 거짓말탐지기. 음성 스트레스 분석으로 발화자의 기만 패턴을 탐지합니다.">
+  <title>The Truth Untold</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-title" content="Th!nc">
+  <link rel="apple-touch-icon" href="thinc-logo-new.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css?v=3.6.0">
+</head>
+<body>
+
+  <!-- ===== LEGAL DISCLAIMER MODAL ===== -->
+  <div id="disclaimer-modal" class="disclaimer-modal hidden">
+    <div class="disclaimer-modal-content">
+      <div class="disclaimer-icon">⚖️</div>
+      <h2 id="disclaimer-title">이용 규칙 및 면책 고지</h2>
+      <div class="disclaimer-body" id="disclaimer-text"></div>
+      <div class="disclaimer-agree-wrap">
+        <label class="disclaimer-checkbox-label">
+          <input type="checkbox" id="chk-disclaimer-agree">
+          <span id="disclaimer-agree-label">위 면책 고지 사항을 완전히 이해하고 동의합니다.</span>
+        </label>
+      </div>
+      <button class="disclaimer-close-btn" id="btn-disclaimer-close" disabled>동의하고 닫기</button>
+    </div>
+  </div>
+
+  <!-- ===== SPLASH SCREEN ===== -->
+  <div id="splash-screen" class="splash">
+    <div class="splash-bg-grid"></div>
+    <div class="splash-content">
+      <div class="splash-logo-wrap">
+        <div class="splash-pulse-ring"></div>
+        <div class="splash-pulse-ring delay1"></div>
+        <div class="splash-icon">
+          <img src="thinc-logo-new.png" alt="Th!nc Logo" class="thinc-svg-logo">
+        </div>
+      </div>
+      <div class="splash-title">Th<span class="exclamation">!</span>nc</div>
+      <div class="splash-ai-tag">AI ALPHA · v3.7 MOBILE</div>
+      <div class="splash-desc">유튜브 실시간 음성 거짓말탐지기</div>
+      <div class="splash-loader">
+        <div class="splash-loader-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MAIN APP WRAPPER ===== -->
+  <div id="app" class="app hidden">
+    <!-- Online Warning Banner for HTTPS/Mixed Content restrictions -->
+    <div id="online-warning-banner" class="online-warning-banner hidden">
+      <span class="warning-text">⚠️ <b>브라우저 보안:</b> HTTPS 환경에서는 보안 정책으로 로컬 백엔드 호출이 차단됩니다. 로컬 백엔드 실행 후 아래 링크로 접속하세요.</span>
+      <div class="warning-actions" style="margin-top: 4px; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+        <a href="http://localhost:8080" class="warning-link" style="margin-left: 0;">http://localhost:8080 (로컬 접속)</a>
+        <button class="warning-close-btn" onclick="document.getElementById('online-warning-banner').style.display='none'">✕</button>
+      </div>
+    </div>
+
+    <!-- ===== TOP NAVIGATION BAR ===== -->
+    <nav class="top-nav" id="top-nav">
+      <div class="nav-left" id="nav-brand-btn" style="cursor: pointer;">
+        <img src="thinc-logo-new.png" alt="Th!nc" class="nav-thinc-logo">
+        <div class="nav-logo-text">Th!nc</div>
+        <div class="nav-ai-dot"></div>
+      </div>
+      <div class="nav-center" id="nav-title">소셜 거짓말탐지기</div>
+      <div class="nav-right">
+        <button class="nav-icon-btn" id="btn-settings-nav" aria-label="설정">⚙️</button>
+      </div>
+    </nav>
+
+    <!-- ===== BOTTOM TAB BAR ===== -->
+    <nav class="bottom-nav" id="bottom-nav">
+      <button class="tab-btn active" data-tab="youtube" id="tab-youtube">
+        <span class="tab-icon tab-icon-img">
+          <img class="tab-live-icon" src="icon-live-active.svg" data-active="icon-live-active.svg" data-inactive="icon-live-inactive.svg" alt="LIVE">
+        </span>
+        <span class="tab-label">유튜브</span>
+      </button>
+      <button class="tab-btn" data-tab="detector" id="tab-detector">
+        <span class="tab-icon tab-icon-img">
+          <img class="tab-detector-icon" src="icon-detector-inactive.svg" data-active="icon-detector-active.svg" data-inactive="icon-detector-inactive.svg" alt="Detector">
+        </span>
+        <span class="tab-label">탐지기</span>
+      </button>
+      <button class="tab-btn" data-tab="report" id="tab-report">
+        <span class="tab-icon tab-icon-img">
+          <img class="tab-report-icon" src="icon-report-inactive.svg" data-active="icon-report-active.svg" data-inactive="icon-report-inactive.svg" alt="Report">
+        </span>
+        <span class="tab-label">리포트</span>
+      </button>
+      <button class="tab-btn" data-tab="history" id="tab-history">
+        <span class="tab-icon tab-icon-img">
+          <img class="tab-history-icon" src="icon-history-inactive.svg" data-active="icon-history-active.svg" data-inactive="icon-history-inactive.svg" alt="History">
+        </span>
+        <span class="tab-label">기록</span>
+      </button>
+    </nav>
+
+    <!-- ============================================================================ -->
+    <!-- TAB 1: YOUTUBE NATIVE VIEW               -->
+    <!-- ============================================================================ -->
+    <div class="tab-content active" id="tab-content-youtube">
+      
+      <!-- YouTube Search / URL Bar -->
+      <div class="yt-search-bar-wrap" style="position: relative;">
+        <div class="yt-search-bar">
+          <span class="yt-search-icon">🔍</span>
+          <input type="text" id="yt-url-input" class="yt-search-input" 
+                 placeholder="YouTube URL 또는 검색어 입력..." 
+                 autocomplete="off" autocorrect="off" spellcheck="false">
+          <button class="yt-go-btn" id="btn-yt-go">GO</button>
+        </div>
+        <div class="yt-quick-btns">
+          <button class="yt-quick-btn" data-url="https://www.youtube.com">🏠 홈</button>
+          <button class="yt-quick-btn" data-url="https://www.youtube.com/feed/trending">🔥 인기</button>
+          <button class="yt-quick-btn" data-url="https://www.youtube.com/shorts">▶ Shorts</button>
+        </div>
+        <!-- Search History Dropdown overlay -->
+        <div class="yt-search-history-wrap hidden" id="yt-search-history-wrap">
+          <div class="history-header">
+            <span id="txt-history-label">최근 검색어</span>
+            <button id="btn-clear-search-history">전체 삭제</button>
+          </div>
+          <div class="search-history-list" id="search-history-list">
+            <!-- Search history items populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- YouTube iframe Container -->
+      <div class="yt-frame-container" id="yt-frame-container">
+        <!-- Back Button (hidden by default) -->
+        <button class="yt-back-btn hidden" id="btn-yt-back">⬅ 목록으로 돌아가기</button>
+        <button class="yt-quickstart-btn hidden" id="btn-yt-quickstart">⚡ 분석 시작</button>
+        <button class="yt-alt-toggle-btn hidden" id="btn-alt-toggle" style="display: none !important;">🔄 우회 플레이어</button>
+
+        <!-- In-app Premium YouTube Video Browser -->
+        <div class="yt-browser-feed" id="yt-browser-feed">
+          <!-- Favorites Section (hidden when empty) -->
+          <div class="yt-favorites-feed hidden" id="yt-favorites-feed">
+            <div class="feed-section-title" id="txt-favorites-title">⭐ 즐겨찾기 영상</div>
+            <div class="yt-video-grid" id="yt-favorites-grid">
+              <!-- Bookmarked videos populated dynamically -->
+            </div>
+          </div>
+
+          <div class="feed-section-title" id="txt-trending-title">🔥 실시간 인기 분석 영상</div>
+          <div class="yt-video-grid" id="yt-video-grid">
+            <!-- Dynamically populated video cards -->
+          </div>
+        </div>
+
+        <div class="yt-placeholder hidden" id="yt-placeholder">
+          <div class="yt-placeholder-icon">📺</div>
+          <div class="yt-placeholder-title">YouTube로 이동하세요</div>
+          <div class="yt-placeholder-sub">위 검색창에 YouTube URL을 입력하거나<br>아래 인기 목록을 눌러 분석을 시작하세요</div>
+          <button class="yt-start-btn" id="btn-open-youtube">YouTube 열기</button>
+        </div>
+        <!-- YouTube Player Wrapper (for precise overlay coordinates) -->
+        <div id="yt-player-wrapper" class="yt-player-wrapper hidden">
+          <!-- YouTube Player iframe -->
+          <div id="yt-player" class="yt-frame"></div>
+
+          <!-- Alternative HTML5 Video Player -->
+          <video id="alt-player" class="yt-frame hidden" controls playsinline crossorigin="anonymous"></video>
+
+          <!-- YouTube Blocked Warning Overlay -->
+          <div id="yt-blocked-overlay" class="yt-blocked-overlay hidden">
+            <div class="yt-blocked-content">
+              <div class="yt-blocked-icon">⚖️</div>
+              <div class="yt-blocked-title">유튜브 보안 차단 감지</div>
+              <div class="yt-blocked-text">유튜브 공식 플레이어가 봇 감지로 차단되었습니다.<br>우회 플레이어를 사용하시겠습니까?</div>
+              <div class="yt-blocked-btns">
+                <button id="btn-use-alt" class="btn-alt-use" style="display: none !important;">🔄 우회 플레이어 사용</button>
+                <button id="btn-retry-yt" class="btn-alt-retry">↺ 다시 시도</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Truth vs Lie Floating ProgressBar Overlay -->
+          <div id="yt-live-truth-bar-container" class="yt-live-truth-bar-container hidden">
+            <div class="truth-bar-labels">
+              <span class="truth-label-t">T: <span id="yt-live-truth-pct">100%</span></span>
+              <span class="truth-label-l">L: <span id="yt-live-lie-pct">0%</span></span>
+            </div>
+            <div class="truth-bar-track">
+              <div id="yt-live-truth-fill" class="truth-fill-t" style="width: 100%"></div>
+              <div id="yt-live-lie-fill" class="truth-fill-l" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Live Timeline Cumulative Bar -->
+          <canvas id="yt-live-reliability-bar" class="yt-live-reliability-bar hidden" width="360" height="10"></canvas>
+
+          <!-- Analysis End Verdict Overlay -->
+          <div id="yt-analysis-end-overlay" class="yt-analysis-end-overlay hidden"></div>
+        </div>
+      </div>
+
+      <!-- Floating Detector Trigger (minimized) -->
+      <div class="float-detector-btn hidden" id="float-detector-btn">
+        <div class="float-detector-pulse"></div>
+        <span class="float-detector-score" id="float-score-display">--</span>
+        <span class="float-detector-label">대기</span>
+        <div class="float-detector-sub" id="float-sub-display">대기 중...</div>
+      </div>
+
+    </div>
+
+    <!-- ============================================================================ -->
+    <!-- TAB 2: DETECTOR HUD                      -->
+    <!-- ???????????????????????????????????????? -->
+    <div class="tab-content" id="tab-content-detector">
+      <div class="detector-scroll-area">
+
+        <!-- Status Banner -->
+        <div class="detector-status-banner" id="detector-banner">
+          <div class="banner-left">
+            <div class="banner-dot" id="banner-dot"></div>
+            <span id="banner-text">대기 중</span>
+          </div>
+          <div class="banner-badges">
+            <div class="det-badge" id="det-cat-badge">GENERAL</div>
+            <div class="det-badge det-badge-rel" id="det-rel-badge">-- RELIABILITY</div>
+            <div class="det-badge det-badge-ai" id="det-ai-badge">AI SCAN: IDLE</div>
+            <div class="det-badge det-badge-vip hidden" id="det-vip-badge">⭐ VIP SENS X2</div>
+          </div>
+        </div>
+
+        <!-- Speaker Row -->
+        <div class="speaker-row" id="speaker-row">
+          <div class="speaker-badge" id="speaker-badge">음성 스캔 중..</div>
+          <div class="music-badge hidden" id="music-badge">MUSIC/FX</div>
+        </div>
+
+        <!-- Main Score - Circular Gauge -->
+        <div class="main-gauge-wrap" id="gauge-wrap">
+          <div class="scan-line-h"></div>
+          <svg viewBox="0 0 120 120" class="gauge-svg" id="gauge-svg">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#00f2fe"/>
+                <stop offset="100%" style="stop-color:#4facfe"/>
+              </linearGradient>
+            </defs>
+            <!-- Background track -->
+            <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="8"/>
+            <!-- Score arc -->
+            <circle cx="60" cy="60" r="50" fill="none" 
+                    stroke="url(#gaugeGrad)" stroke-width="8"
+                    stroke-linecap="round"
+                    stroke-dasharray="0 314"
+                    stroke-dashoffset="78.5"
+                    transform="rotate(-90 60 60)"
+                    id="gauge-arc" class="gauge-arc-circle"/>
+            <!-- Score text -->
+            <text x="60" y="55" text-anchor="middle" class="gauge-pct-text" id="gauge-pct">0%</text>
+            <text x="60" y="72" text-anchor="middle" class="gauge-label-text" id="gauge-sub-label">거짓 확률</text>
+          </svg>
+          <div class="gauge-ring-outer"></div>
+        </div>
+
+        <!-- Volume Optimizer -->
+        <div class="vol-optimizer hidden" id="vol-optimizer">
+          <div class="vol-icon">🔊</div>
+          <div class="vol-info">
+            <div class="vol-title">내부 볼륨 최적화</div>
+            <div class="vol-status" id="vol-status">최적화 완료</div>
+          </div>
+          <div class="vol-gain">
+            <span class="vol-gain-sym">횞</span>
+            <span class="vol-gain-val" id="vol-gain-val">1.0</span>
+          </div>
+          <div class="vol-note">시스템 볼륨 변경 없음</div>
+        </div>
+
+        <!-- Start/Stop Button -->
+        <div class="start-btn-wrap">
+          <button class="start-stop-btn" id="btn-toggle" data-running="false">
+            <span class="btn-icon" id="btn-icon">▶</span>
+            <span class="btn-text" id="btn-text">분석 시작</span>
+          </button>
+          <div class="sens-row">
+            <span class="sens-label">민감도</span>
+            <input type="range" id="sens-slider" class="sens-slider" min="1" max="10" value="5">
+            <span class="sens-val" id="sens-val">5</span>
+          </div>
+        </div>
+
+        <!-- Expert Mode Toggle -->
+        <div class="view-mode-row">
+          <div class="mode-tabs" id="mode-tabs">
+            <button class="mode-tab" data-mode="visual">비주얼</button>
+            <button class="mode-tab active" data-mode="expert">전문가</button>
+            <button class="mode-tab" data-mode="mini">미니</button>
+          </div>
+        </div>
+
+        <!-- Expert Metrics Grid -->
+        <div class="expert-grid" id="expert-grid">
+          <div class="exp-card">
+            <div class="exp-label">JITTER</div>
+            <div class="exp-val cyan" id="exp-jitter">0.0000</div>
+          </div>
+          <div class="exp-card">
+            <div class="exp-label">SHIMMER</div>
+            <div class="exp-val orange" id="exp-shimmer">0.0000</div>
+          </div>
+          <div class="exp-card">
+            <div class="exp-label">HNR</div>
+            <div class="exp-val purple" id="exp-hnr">0.00</div>
+          </div>
+          <div class="exp-card">
+            <div class="exp-label">AI PROB</div>
+            <div class="exp-val red" id="exp-ai">0%</div>
+          </div>
+          <div class="exp-card">
+            <div class="exp-label">MICRO-TREMOR</div>
+            <div class="exp-val red" id="exp-mti">0.0000</div>
+          </div>
+          <div class="exp-card">
+            <div class="exp-label">FORMANT INSTAB.</div>
+            <div class="exp-val cyan" id="exp-fi">0.0000</div>
+          </div>
+          <div class="exp-card exp-card-full">
+            <div class="exp-label">PITCH DEV RATE</div>
+            <div class="exp-val gold" id="exp-pdr">0.0000</div>
+          </div>
+        </div>
+
+        <!-- 6-Channel Mini Charts -->
+        <div class="multichart-container" id="multichart-container">
+          <div class="chart-header">실시간 6채널 분석</div>
+          <div class="multichart-grid">
+            <div class="minichart-wrap">
+              <div class="minichart-label" style="color:#00f2fe">LIE%</div>
+              <canvas id="chart-lie" class="minichart" width="140" height="32"></canvas>
+            </div>
+            <div class="minichart-wrap">
+              <div class="minichart-label" style="color:#f7971e">JITTER</div>
+              <canvas id="chart-jitter" class="minichart" width="140" height="32"></canvas>
+            </div>
+            <div class="minichart-wrap">
+              <div class="minichart-label" style="color:#a259ff">SHIMMER</div>
+              <canvas id="chart-shimmer" class="minichart" width="140" height="32"></canvas>
+            </div>
+            <div class="minichart-wrap">
+              <div class="minichart-label" style="color:#ff416c">MTI</div>
+              <canvas id="chart-mti" class="minichart" width="140" height="32"></canvas>
+            </div>
+            <div class="minichart-wrap">
+              <div class="minichart-label" style="color:#00c6ff">FI</div>
+              <canvas id="chart-fi" class="minichart" width="140" height="32"></canvas>
+            </div>
+            <div class="minichart-wrap">
+              <div class="minichart-label" style="color:#ffd700">PDR</div>
+              <canvas id="chart-pdr" class="minichart" width="140" height="32"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtitle Live Feed -->
+        <div class="subtitle-feed" id="subtitle-feed">
+          <div class="feed-header">실시간 자막 분석</div>
+          <div class="sentence-list" id="sentence-list">
+            <div class="feed-placeholder">분석이 시작되면 자막이 표시됩니다...</div>
+          </div>
+        </div>
+
+        <!-- Share Section -->
+        <div class="share-section">
+          <button class="share-big-btn" id="btn-share">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="share-svg">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+            진실을 알려라          </button>
+          <div class="shot-count-ctrl">
+          <button class="shot-ctrl-btn" id="btn-shot-minus">−</button>
+            <span id="shot-count-display">3</span>
+          <button class="shot-ctrl-btn" id="btn-shot-plus">+</button>
+          </div>
+        </div>
+
+      </div><!-- /detector-scroll-area -->
+      
+      <!-- Floating Scroll Down Button -->
+      <button class="float-scroll-down-btn" id="btn-scroll-down-detector">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </button>
+    </div>
+
+    <!-- ============================================================================ -->
+    <!-- TAB 3: REPORT                            -->
+    <!-- ============================================================================ -->
+    <div class="tab-content" id="tab-content-report">
+      <div class="report-scroll-area">
+        <div class="report-header-card">
+          <div class="report-title-label">심층 분석 리포트</div>
+          <div class="report-session-id" id="report-session-id">세션 없음</div>
+          <div class="report-empty-msg" id="report-empty-msg">분석을 실행한 후 리포트가 생성됩니다</div>
+        </div>
+
+        <div class="report-body hidden" id="report-body">
+          <!-- Session Chart -->
+          <div class="report-card">
+            <div class="report-card-title">음성 & 인지 분석</div>
+            <div class="report-chart-wrap">
+              <canvas id="report-timeline-chart" height="80"></canvas>
+            </div>
+            <div class="report-stats-grid">
+              <div class="report-stat">
+                <div class="stat-label">평균 스트레스</div>
+                <div class="stat-val" id="rpt-avg">-</div>
+              </div>
+              <div class="report-stat">
+                <div class="stat-label">최고 스트레스</div>
+                <div class="stat-val red" id="rpt-peak">-</div>
+              </div>
+              <div class="report-stat">
+                <div class="stat-label">안정성</div>
+                <div class="stat-val cyan" id="rpt-stability">-</div>
+              </div>
+            </div>
+            <!-- Truth/Lie ratio bar -->
+            <div class="ratio-section">
+              <div class="ratio-labels">
+                <span class="ratio-truth-label">진실 <span id="rpt-truth-ratio">-</span></span>
+                <span class="ratio-lie-label">거짓 <span id="rpt-lie-ratio">-</span></span>
+              </div>
+              <div class="ratio-bar">
+                <div class="ratio-truth-bar" id="rpt-bar-truth"></div>
+                <div class="ratio-lie-bar" id="rpt-bar-lie"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Context Audit -->
+          <div class="report-card">
+            <div class="report-card-title">문맥 & 메타데이터 감사</div>
+            <div class="audit-row"><span>장르</span>
+            <div class="audit-row"><span>신뢰도</span>
+            <div class="audit-row"><span>무결성</span><span id="rpt-integrity">-</span></div>
+            <div class="verdict-box">
+              <div class="verdict-label">종합 판정</div>
+              <div class="verdict-text" id="rpt-verdict">-</div>
+            </div>
+          </div>
+
+          <!-- Neural Psych Grid -->
+          <div class="report-card">
+            <div class="report-card-title">신경 & 심리 지표</div>
+            <div class="psy-grid">
+              <div class="psy-item">
+                <div class="psy-label">동요도 (TEO)</div>
+                <div class="psy-val red" id="rpt-agitation">-</div>
+              </div>
+              <div class="psy-item">
+                <div class="psy-label">인지 부하</div>
+                <div class="psy-val orange" id="rpt-cog-load">-</div>
+              </div>
+              <div class="psy-item">
+                <div class="psy-label">기만 밀도</div>
+                <div class="psy-val cyan" id="rpt-density">-</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Deceptive Events Log -->
+          <div class="report-card">
+            <div class="report-card-title red-title">기만 이벤트 로그 (거짓 > 60%)</div>
+            <div class="lies-list" id="rpt-lies-list">탐지된 기만 없음</div>
+          </div>
+
+          <!-- Full Data Sheet -->
+          <div class="report-card">
+            <div class="report-card-title">자막 데이터 시트</div>
+            <div class="data-sheet-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>시간</th>
+                    <th>자막 내용</th>
+                    <th>거짓%</th>
+                    <th>AI%</th>
+                  </tr>
+                </thead>
+                <tbody id="rpt-data-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="report-actions">
+            <button class="rpt-btn rpt-btn-green" id="btn-export-csv">📊 CSV 내보내기</button>
+            <button class="rpt-btn rpt-btn-red" id="btn-share-report">📤 리포트 공유</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Floating Scroll Down Button -->
+      <button class="float-scroll-down-btn" id="btn-scroll-down-report">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </button>
+    </div>
+
+    <!-- ============================================================================ -->
+    <!-- TAB 4: HISTORY                           -->
+    <!-- ============================================================================ -->
+    <div class="tab-content" id="tab-content-history">
+      <div class="history-scroll-area">
+        <div class="history-header">
+          <div class="history-title">세션 기록</div>
+          <button class="history-clear-btn" id="btn-clear-history">전체 삭제</button>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="history-empty">저장된 세션이 없습니다</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /app -->
+
+  <!-- ===== SETTINGS DRAWER ===== -->
+  <div class="settings-overlay hidden" id="settings-overlay">
+    <div class="settings-drawer" id="settings-drawer">
+      <div class="drawer-handle"></div>
+      <div class="drawer-title">설정</div>
+
+      <div class="setting-group">
+        <div class="setting-label">표시 언어</div>
+        <div class="lang-chip-grid" id="lang-grid">
+          <button class="lang-chip active" data-lang="ko">KO</button>
+          <button class="lang-chip" data-lang="en">EN</button>
+          <button class="lang-chip" data-lang="jp">JP</button>
+          <button class="lang-chip" data-lang="zh">ZH</button>
+          <button class="lang-chip" data-lang="fr">FR</button>
+          <button class="lang-chip" data-lang="de">DE</button>
+          <button class="lang-chip" data-lang="es">ES</button>
+          <button class="lang-chip" data-lang="ru">RU</button>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-label">스크린샷 수 (거짓 감지 시)</div>
+        <div class="shots-row">
+          <button class="shot-ctrl-btn" id="set-shot-minus">−</button>
+          <span id="set-shot-display">3</span>
+          <button class="shot-ctrl-btn" id="set-shot-plus">+</button>
+        </div>
+      </div>
+
+      <div class="setting-group setting-inline">
+        <div class="setting-label">거짓 감지 시 자동 표시</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-autoshow" checked>
+          <span class="toggle-knob"></span>
+        </label>
+      </div>
+
+      <div class="settings-actions">
+        <button class="settings-btn settings-btn-save" id="btn-save-settings">저장 (Save)</button>
+        <button class="settings-btn settings-btn-reset" id="btn-reset-settings">초기화 (Reset)</button>
+      </div>
+
+      <button class="drawer-close-btn" id="btn-close-settings">닫기</button>
+    </div>
+  </div>
+
+  <!-- ===== SHARE / TRUTH ALERT MODAL ===== -->
+  <div class="truth-modal hidden" id="truth-modal">
+    <div class="truth-modal-content">
+      <button class="truth-close-btn" id="btn-close-modal">✕</button>
+      <div class="truth-modal-title" id="modal-title">분석 완료</div>
+      <div class="truth-modal-sub" id="modal-sub">결과를 기기에 저장하거나 공유하세요</div>
+      
+      <div class="truth-modal-actions">
+        <button class="truth-btn-primary" id="btn-modal-go-report">📊 최종 리포트 확인</button>
+        <button class="truth-btn-secondary" id="btn-modal-bottom-close">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PWA INSTALL PROMPT ===== -->
+  <div id="pwa-popup" class="pwa-popup hidden">
+    <div class="pwa-popup-content">
+      <div class="pwa-icon">
+        <img src="thinc-logo-new.png" alt="Th!nc Logo">
+      </div>
+      <div class="pwa-text">
+        <h3>Th!nc 앱 설치하기</h3>
+        <p>홈 화면에 추가하여 빠르게 실행하세요!</p>
+      </div>
+      <div class="pwa-actions">
+        <button id="pwa-btn-dismiss" class="pwa-btn-cancel">나중에</button>
+        <button id="pwa-btn-install" class="pwa-btn-install">설치</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- ===== iOS PWA PROMPT ===== -->
+  <div id="ios-pwa-popup" class="ios-pwa-popup hidden">
+    <div class="ios-pwa-content">
+      <button class="ios-pwa-close" id="ios-pwa-close">✕</button>
+      <p>홈 화면에 설치하려면 하단의 <strong>공유</strong> 아이콘을 누르고<br><strong>'홈 화면에 추가'</strong>를 선택하세요</p>
+      <div class="ios-pwa-arrow"></div>
+    </div>
+  </div>
+
+  <!-- ===== AI WARNING OVERLAY ===== -->
+  <div class="ai-warning hidden" id="ai-warning">
+    <div class="ai-warn-icon">⚠️</div>
+    <div class="ai-warn-title">AI 합성 음성 감지됨</div>
+    <div class="ai-warn-sub">분석 불가: 합성된 목소리가 감지되었습니다.</div>
+  </div>
+
+  <!-- ===== TOAST ===== -->
+  <div class="toast" id="toast"></div>
+
+  <!-- ===== SOCIAL SHARE MODAL ===== -->
+  <div class="social-modal hidden" id="social-share-modal">
+    <div class="social-modal-content">
+      <button class="social-close-btn" id="btn-close-social-modal">✕</button>
+      <div class="social-modal-title">AI 분석 결과 소셜 공유</div>
+      <div class="social-modal-sub">자동 저장된 스크린샷을 확인하고, 원하는 소셜 미디어에 공유하세요</div>
+      
+      <div class="social-split-layout">
+        <!-- Left: Image Preview -->
+        <div class="social-preview-panel">
+          <div class="social-preview-title">
+            스크린샷 미리보기
+            <span class="save-status-badge">저장 완료</span>
+          </div>
+          <div class="social-image-wrap">
+            <img id="social-preview-img" alt="Captured Area Preview">
+          </div>
+        </div>
+        
+        <!-- Right: Social Channels Multi-Select -->
+        <div class="social-control-panel">
+          <div class="channel-select-label">원하는 SNS 채널 선택 (복수 선택 가능)</div>
+          
+          <div class="social-channel-chips" id="social-channel-chips">
+            <label class="channel-chip active" data-channel="x">
+              <input type="checkbox" checked id="chk-social-x" class="chk-channel" value="x">
+              <span class="chip-label">X (Twitter)</span>
+            </label>
+            <label class="channel-chip active" data-channel="instagram">
+              <input type="checkbox" checked id="chk-social-instagram" class="chk-channel" value="instagram">
+              <span class="chip-label">Instagram</span>
+            </label>
+            <label class="channel-chip" data-channel="facebook">
+              <input type="checkbox" id="chk-social-facebook" class="chk-channel" value="facebook">
+              <span class="chip-label">Facebook</span>
+            </label>
+            <label class="channel-chip" data-channel="tiktok">
+              <input type="checkbox" id="chk-social-tiktok" class="chk-channel" value="tiktok">
+              <span class="chip-label">TikTok</span>
+            </label>
+          </div>
+          
+          <div class="social-action-note">
+            * "세션 시작" 버튼을 클릭하면 새창/팝업에서 로드된 화면의 스트림이 스피커를 통해 녹음됩니다.
+          </div>
+
+          <button class="social-post-btn" id="btn-social-post-start">
+            선택 채널로 게시물 생성 시작
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SOCIAL POSTING WIDGET MODAL ===== -->
+  <div class="social-modal hidden" id="social-widget-modal">
+    <div class="widget-modal-content">
+      <div class="widget-header">
+        <div class="widget-channel-icon" id="widget-channel-icon">X</div>
+        <div class="widget-title" id="widget-title">X (Twitter) Posting Widget</div>
+      </div>
+      
+      <div class="widget-body">
+        <!-- User Profile Row -->
+        <div class="widget-user-row">
+          <div class="widget-user-avatar" id="widget-user-avatar">👤</div>
+          <div class="widget-user-info">
+            <div class="widget-user-name" id="widget-user-name">Truth Seeker</div>
+            <div class="widget-user-handle" id="widget-user-handle">@truth_seeker_99</div>
+          </div>
+        </div>
+
+        <div class="widget-image-preview">
+          <img id="widget-preview-img" alt="Posting Preview">
+        </div>
+        <div class="widget-input-area">
+          <label for="widget-share-text" id="lbl-widget-share-text">자동 생성 게시글 (직접 수정 가능)</label>
+          <textarea id="widget-share-text" rows="4"></textarea>
+        </div>
+      </div>
+      
+      <div class="widget-footer">
+        <div id="social-widget-container" class="social-widget-container" style="margin-bottom: 12px; display: flex; justify-content: center; gap: 10px; min-height: 40px; align-items: center;"></div>
+        <button class="widget-publish-btn" id="btn-widget-publish">📤 게시글 발행 (Publish)</button>
+
+        <div class="upload-progress-wrap hidden" id="widget-progress-wrap">
+          <div class="progress-labels">
+            <span class="progress-status" id="widget-status-text">로딩 대기 중..</span>
+            <span class="progress-pct" id="widget-pct-text">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="widget-progress-fill"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SCRIPTS ===== -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+  <div id="fb-root"></div>
+  <script async defer crossorigin="anonymous" src="https://connect.facebook.net/ko_KR/sdk.js#xfbml=1&version=v18.0"></script>
+  <script src="dictionary.js?v=3.6.0"></script>
+  <script src="analyzer.js?v=3.6.0"></script>
+  <script src="app.js?v=3.6.0"></script>
+</body>
+</html>
+

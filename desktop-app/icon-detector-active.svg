@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Left thermometer (blue check) -->
+  <!-- Tube body -->
+  <rect x="82" y="30" width="88" height="290" rx="44" ry="44" fill="#64B5F6"/>
+  <!-- Tube fill -->
+  <rect x="82" y="180" width="88" height="140" rx="0" ry="0" fill="#1E88E5"/>
+  <!-- Round top cap -->
+  <rect x="82" y="30" width="88" height="88" rx="44" ry="44" fill="#BBDEFB"/>
+  <!-- Bottom circle -->
+  <circle cx="126" cy="390" r="90" fill="#1E88E5"/>
+  <circle cx="126" cy="390" r="80" fill="#1E88E5" stroke="#BBDEFB" stroke-width="8"/>
+  <!-- Checkmark -->
+  <polyline points="86,390 112,420 170,355" stroke="#BBDEFB" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Right thermometer (red X) -->
+  <!-- Tube body -->
+  <rect x="342" y="30" width="88" height="290" rx="44" ry="44" fill="#FFCDD2"/>
+  <!-- Tube fill -->
+  <rect x="342" y="250" width="88" height="70" rx="0" ry="0" fill="#EF5350"/>
+  <!-- Round top cap -->
+  <rect x="342" y="30" width="88" height="88" rx="44" ry="44" fill="#FFCDD2"/>
+  <!-- Bottom circle -->
+  <circle cx="386" cy="390" r="90" fill="#FFCDD2"/>
+  <circle cx="386" cy="390" r="80" fill="#FFCDD2"/>
+  <!-- X mark -->
+  <line x1="350" y1="354" x2="422" y2="426" stroke="#EF5350" stroke-width="22" stroke-linecap="round"/>
+  <line x1="422" y1="354" x2="350" y2="426" stroke="#EF5350" stroke-width="22" stroke-linecap="round"/>
+</svg>

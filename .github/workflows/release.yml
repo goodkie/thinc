@@ -1,0 +1,183 @@
+name: 🚀 Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '릴리즈 태그 (예: v1.5.0)'
+        required: true
+        default: 'v1.5.0'
+
+permissions:
+  contents: write
+
+jobs:
+  # ──────────────────────────────────────────────
+  # 1. Windows 데스크톱 앱 (.exe)
+  # ──────────────────────────────────────────────
+  build-windows:
+    name: 🖥️ Windows Desktop App
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: desktop-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: desktop-app
+        run: npm install
+
+      - name: Build Windows exe (electron-packager)
+        working-directory: desktop-app
+        run: npm run pack:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Create ZIP archive
+        working-directory: desktop-app
+        shell: pwsh
+        run: |
+          $src = "dist\The Truth Untold-win32-x64"
+          $dst = "dist\TheTruthUntold-Windows-x64-${{ github.ref_name }}.zip"
+          if (!(Test-Path $src)) {
+            $src = (Get-ChildItem dist -Directory | Select-Object -First 1).FullName
+          }
+          Compress-Archive -Path "$src\*" -DestinationPath $dst -Force
+          Write-Host "Created: $dst"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-app
+          path: desktop-app/dist/*.zip
+          retention-days: 7
+
+  # ──────────────────────────────────────────────
+  # 2. Android APK
+  # ──────────────────────────────────────────────
+  build-android:
+    name: 📱 Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mobile-app/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install mobile-app dependencies
+        working-directory: mobile-app
+        run: npm install
+
+      - name: Sync Capacitor assets
+        working-directory: mobile-app
+        run: npx cap sync android
+
+      - name: Make gradlew executable
+        working-directory: mobile-app/android
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        working-directory: mobile-app/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APK
+        run: |
+          mkdir -p output
+          cp mobile-app/android/app/build/outputs/apk/debug/app-debug.apk \
+             output/TheTruthUntold-Android-${{ github.ref_name }}.apk
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: output/*.apk
+          retention-days: 7
+
+  # ──────────────────────────────────────────────
+  # 3. GitHub Release 생성
+  # ──────────────────────────────────────────────
+  create-release:
+    name: 📦 Create GitHub Release
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-app
+          path: release-assets/
+
+      - name: Download Android build
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: release-assets/
+
+      - name: List release assets
+        run: ls -la release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "The Truth Untold ${{ github.ref_name }}"
+          body: |
+            # 🎯 The Truth Untold — Th!nc Biometric Lie Detector
+
+            AI 기반 유튜브 자막 분석 + 실시간 음성 스트레스(VSA) 분석 앱
+
+            ---
+
+            ## 📥 다운로드
+
+            | 플랫폼 | 파일 | 설명 |
+            |--------|------|------|
+            | 🖥️ Windows | `TheTruthUntold-Windows-x64-*.zip` | 압축 해제 후 `The Truth Untold.exe` 실행 |
+            | 📱 Android | `TheTruthUntold-Android-*.apk` | APK 직접 설치 (설정 > 알 수 없는 출처 허용) |
+
+            ---
+
+            ## ✨ 주요 기능
+            - 유튜브 자막 자동 추출 및 거짓말 키워드 분석
+            - 실시간 음성 스트레스(VSA) 바이오메트릭 분석
+            - 다국어 사전 지원 (12개국어)
+            - 어드민 감도 조절 (서버 실시간 동기화)
+            - CORS 완전 우회 (데스크톱 앱)
+
+            ---
+
+            ## 🖥️ Windows 설치 방법
+            1. `TheTruthUntold-Windows-x64-*.zip` 다운로드
+            2. 압축 해제
+            3. `The Truth Untold.exe` 더블클릭
+
+            ## 📱 Android 설치 방법
+            1. `TheTruthUntold-Android-*.apk` 다운로드
+            2. 설정 > 보안 > 알 수 없는 출처 허용
+            3. APK 파일 실행하여 설치
+          files: release-assets/*
+          draft: false
+          prerelease: false

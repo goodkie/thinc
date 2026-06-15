@@ -1,0 +1,68 @@
+{
+  "name": "the-truth-untold-desktop",
+  "version": "1.5.0",
+  "description": "Th!nc Biometric Voice Stress & Caption Analyzer — Desktop Edition",
+  "main": "main.js",
+  "author": "Th!nc",
+  "scripts": {
+    "start": "electron .",
+    "pack:win": "electron-packager . \"The Truth Untold\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.ico --ignore=\"(dist|\\.git|node_modules\\/\\.cache)\"",
+    "pack:mac": "electron-packager . \"The Truth Untold\" --platform=darwin --arch=x64 --out=dist --overwrite --icon=icon.png --ignore=\"(dist|\\.git|node_modules\\/\\.cache)\"",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:portable": "electron-builder --win portable --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
+  },
+  "build": {
+    "appId": "com.thinc.lie.desktop",
+    "productName": "The Truth Untold",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!node_modules/.cache/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.png",
+      "sign": false,
+      "signingHashAlgorithms": null
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "icon.png",
+      "category": "public.app-category.utilities",
+      "identity": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "TheTruthUntold-Portable-${version}.exe"
+    }
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.0.1",
+    "archiver": "^8.0.0",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^3.0.1"
+  }
+}

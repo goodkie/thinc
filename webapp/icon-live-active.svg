@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Pink rounded rectangle background for LIVE text -->
+  <rect x="30" y="260" width="452" height="210" rx="52" ry="52" fill="#FFCDD2"/>
+  <!-- Red circle -->
+  <circle cx="256" cy="172" r="148" fill="#EF5350"/>
+  <!-- White/light pink play button triangle -->
+  <path d="M216 120 L216 224 L316 172 Z" fill="#FFCDD2" rx="10"/>
+  <!-- Red LIVE text -->
+  <text x="56" y="420" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-weight="900" font-size="148" fill="#EF5350" letter-spacing="-4">LIVE</text>
+</svg>

@@ -1,0 +1,1613 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <script>
+    // 데스크톱 접속 시 admin.html로 리다이렉트 (모바일이 아닐 경우)
+    if (!/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+      window.location.replace('admin.html');
+    }
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Th!nc — Mobile Sensitivity Engine Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&family=Outfit:wght@300;400;600;700;800&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #050511;
+      --bg-darker: #020206;
+      --primary: #00f2fe;
+      --primary-glow: rgba(0, 242, 254, 0.45);
+      --accent-red: #ff416c;
+      --accent-red-glow: rgba(255, 65, 108, 0.4);
+      --accent-green: #00ff87;
+      --accent-green-glow: rgba(0, 255, 135, 0.3);
+      --border-glass: rgba(255, 255, 255, 0.08);
+      --card-bg: rgba(255, 255, 255, 0.02);
+      --text-main: #f0f0f5;
+      --text-muted: #8e8ea8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Outfit', 'Montserrat', sans-serif;
+      overflow-x: hidden;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Background FX */
+    .bg-effects {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: -1;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 15%, rgba(0, 242, 254, 0.08) 0%, transparent 50%),
+                  radial-gradient(circle at 50% 85%, rgba(255, 65, 108, 0.06) 0%, transparent 50%),
+                  var(--bg-darker);
+    }
+    .bg-grid {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background-image: linear-gradient(rgba(255, 255, 255, 0.005) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255, 255, 255, 0.005) 1px, transparent 1px);
+      background-size: 30px 30px;
+    }
+
+    /* Passcode Screen Overlay */
+    .security-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(3, 3, 10, 0.96);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      transition: all 0.5s ease;
+      padding: 20px;
+    }
+
+    .security-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(1.08);
+    }
+
+    .passcode-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-glass);
+      border-radius: 24px;
+      padding: 30px 20px;
+      width: 100%;
+      max-width: 350px;
+      text-align: center;
+      box-shadow: 0 15px 50px rgba(0,0,0,0.6);
+    }
+
+    .passcode-card h2 {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #ffffff 40%, #a2a2d0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .passcode-input-wrapper {
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .passcode-input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border-glass);
+      padding: 14px;
+      border-radius: 12px;
+      color: #ffffff;
+      font-family: 'Roboto Mono', monospace;
+      font-size: 22px;
+      text-align: center;
+      letter-spacing: 6px;
+      outline: none;
+      transition: all 0.3s;
+    }
+
+    .passcode-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 15px var(--primary-glow);
+    }
+
+    .passcode-btn {
+      width: 100%;
+      background: linear-gradient(135deg, var(--primary) 0%, #0072ff 100%);
+      color: #020206;
+      border: none;
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 5px 20px var(--primary-glow);
+      transition: all 0.3s;
+    }
+
+    .error-msg {
+      color: var(--accent-red);
+      font-size: 12px;
+      margin-top: 15px;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.3s;
+      text-shadow: 0 0 8px var(--accent-red-glow);
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-8px); }
+      40%, 80% { transform: translateX(8px); }
+    }
+    .shake {
+      animation: shake 0.4s ease;
+    }
+
+    /* Mobile Admin Container */
+    .admin-container {
+      width: 100%;
+      max-width: 500px;
+      padding: 20px 16px 40px 16px;
+      z-index: 10;
+      opacity: 0;
+      transform: translateY(15px);
+      transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .admin-container.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border-glass);
+      padding-bottom: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 6px var(--primary-glow));
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .brand-title span {
+      color: var(--primary);
+    }
+
+    .badge-admin {
+      background: rgba(255, 65, 108, 0.1);
+      border: 1px solid rgba(255, 65, 108, 0.25);
+      color: var(--accent-red);
+      font-family: 'Roboto Mono', monospace;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .console-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--border-glass);
+      border-radius: 20px;
+      padding: 20px 16px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .panel h3 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 18px;
+      border-left: 3px solid var(--primary);
+      padding-left: 8px;
+      letter-spacing: -0.3px;
+    }
+
+    /* Sliders Styles */
+    .slider-group {
+      margin-bottom: 18px;
+    }
+    .slider-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .slider-info {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .metric-name {
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .metric-val {
+      font-family: 'Roboto Mono', monospace;
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-control {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 8px; /* Touch target-friendly height */
+      border-radius: 4px;
+      background: rgba(255,255,255,0.1);
+      outline: none;
+      padding: 10px 0; /* Makes slider easier to grab on mobile */
+      background-clip: content-box;
+    }
+
+    .slider-control::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 22px; /* Touch friendly size */
+      height: 22px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+      cursor: pointer;
+    }
+
+    .slider-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+
+    /* Action buttons */
+    .action-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .btn-action {
+      width: 100%;
+      padding: 15px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-save {
+      background: linear-gradient(135deg, var(--accent-green) 0%, #00b0ff 100%);
+      color: #020206;
+      box-shadow: 0 5px 15px var(--accent-green-glow);
+    }
+
+    .btn-reset {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-glass);
+      color: #ffffff;
+    }
+
+    .btn-exit {
+      background: rgba(255, 65, 108, 0.1);
+      border: 1px solid rgba(255, 65, 108, 0.2);
+      color: var(--accent-red);
+    }
+
+    /* Toast Notifications */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 16px;
+      right: 16px;
+      background: rgba(10, 25, 20, 0.95);
+      border: 1px solid var(--accent-green);
+      box-shadow: 0 8px 25px var(--accent-green-glow);
+      color: #ffffff;
+      padding: 14px 18px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 2000;
+    }
+
+    .toast.visible {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* Keyword sensitivity Panel */
+    .keyword-db-panel {
+      margin-bottom: 20px;
+    }
+
+    .keyword-db-header {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .keyword-actions {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .btn-csv {
+      flex: 1;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .btn-csv-import {
+      background: rgba(0, 242, 254, 0.08);
+      border: 1px solid rgba(0, 242, 254, 0.2);
+      color: var(--primary);
+    }
+
+    .btn-csv-export {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border-glass);
+      color: #ccc;
+    }
+
+    .keyword-db-desc {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+
+    /* Lang selectors tabs */
+    .lang-selector-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 10px;
+    }
+
+    .lang-tab {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--text-muted);
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .lang-tab.active {
+      background: rgba(0, 242, 254, 0.12);
+      border-color: var(--primary);
+      color: #fff;
+      box-shadow: 0 0 8px rgba(0, 242, 254, 0.15);
+    }
+
+    .keyword-tiers-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .keyword-tier {
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+      padding: 14px;
+      border: 1px solid;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .tier-high   { border-color: rgba(255, 65, 108, 0.25); }
+    .tier-medium { border-color: rgba(255, 210, 50, 0.25); }
+    .tier-low    { border-color: rgba(0, 255, 135, 0.25); }
+
+    .tier-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .tier-badge {
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .tier-high   .tier-badge { color: var(--accent-red); }
+    .tier-medium .tier-badge { color: #ffd232; }
+    .tier-low    .tier-badge { color: var(--accent-green); }
+
+    .tier-mult {
+      font-family: 'Roboto Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .tier-high   .tier-mult { background: rgba(255,65,108,0.12);  color: var(--accent-red); }
+    .tier-medium .tier-mult { background: rgba(255,210,50,0.12);  color: #ffd232; }
+    .tier-low    .tier-mult { background: rgba(0,255,135,0.12);   color: var(--accent-green); }
+
+    .tier-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+
+    .keyword-input {
+      width: 100%;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border-glass);
+      border-radius: 8px;
+      color: #f0f0f5;
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      padding: 10px;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .keyword-input:focus { border-color: var(--primary); }
+
+    .tier-count {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: 'Roboto Mono', monospace;
+      text-align: right;
+    }
+
+    .keyword-footer {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .btn-save-keywords {
+      background: linear-gradient(135deg, var(--accent-green) 0%, #00b0ff 100%);
+      color: #020206;
+      box-shadow: 0 5px 15px var(--accent-green-glow);
+      padding: 14px;
+      font-size: 13px;
+      font-weight: 800;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .keyword-match-status {
+      font-size: 11.5px;
+      padding: 10px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border-glass);
+      line-height: 1.4;
+      text-align: center;
+    }
+
+    .status-idle   { color: var(--text-muted); }
+    .status-high   { color: var(--accent-red);   font-weight: 700; }
+    .status-medium { color: #ffd232;             font-weight: 700; }
+    .status-low    { color: var(--accent-green); font-weight: 700; }
+    .status-none   { color: var(--text-muted); }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Desktop View Link */
+    .desktop-routing-link {
+      display: block;
+      text-align: center;
+      margin-top: 24px;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: underline;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .desktop-routing-link:hover {
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-effects">
+    <div class="bg-grid"></div>
+  </div>
+
+  <!-- Security Passcode Modal -->
+  <div class="security-overlay" id="passcode-overlay">
+    <div class="passcode-card" id="passcode-card">
+      <h2>SECURITY VERIFICATION</h2>
+      <div class="passcode-input-wrapper">
+        <input type="password" class="passcode-input" id="passcode-field" placeholder="••••" maxlength="8" pattern="[0-9]*" inputmode="text">
+      </div>
+      <button class="passcode-btn" id="btn-unlock">ENGAGE ENGINE CONSOLE</button>
+      <div class="error-msg" id="error-message">ACCESS DENIED: INVALID SECURITY KEY</div>
+    </div>
+  </div>
+
+  <!-- Main Administrative Panel -->
+  <div class="admin-container" id="admin-container">
+    <header>
+      <div class="brand">
+        <img src="thinc-logo-new.png" alt="Th!nc Logo">
+        <div class="brand-title">Th<span>!</span>nc Mobile</div>
+      </div>
+      <div class="badge-admin">ALGORITHMIC ACCESS</div>
+    </header>
+
+    <div class="console-stack">
+      <!-- 1. Voice stress weights panel -->
+      <div class="panel">
+        <h3>1. Voice stress Biometric Weights</h3>
+        
+        <!-- MTI -->
+        <div class="slider-group">
+          <div class="slider-info">
+            <span class="metric-name">🌀 Laryngeal Micro-Tremor (MTI)</span>
+            <span class="metric-val" id="val-w_mti">0.30</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="w_mti" min="0.0" max="2.0" step="0.05" value="0.30">
+          </div>
+          <div class="slider-desc">8~12Hz 미세 후두 떨림 반영 비율</div>
+        </div>
+
+        <!-- FI -->
+        <div class="slider-group">
+          <div class="slider-info">
+            <span class="metric-name">📊 Formant Instability (FI)</span>
+            <span class="metric-val" id="val-w_fi">0.25</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="w_fi" min="0.0" max="2.0" step="0.05" value="0.25">
+          </div>
+          <div class="slider-desc">공명 주파수(F1/F2) 불안정 변동 감지 비율</div>
+        </div>
+
+        <!-- PDR -->
+        <div class="slider-group">
+          <div class="slider-info">
+            <span class="metric-name">📈 Pitch Deviation Rate (PDR)</span>
+            <span class="metric-val" id="val-w_pdr">0.20</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="w_pdr" min="0.0" max="2.0" step="0.05" value="0.20">
+          </div>
+          <div class="slider-desc">기본 주파수(F0) 피치 급작스러운 점프 변동 비율</div>
+        </div>
+
+        <!-- Jitter -->
+        <div class="slider-group">
+          <div class="slider-info">
+            <span class="metric-name">📉 Jitter (Pitch Variation)</span>
+            <span class="metric-val" id="val-w_jitter">0.15</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="w_jitter" min="0.0" max="2.0" step="0.05" value="0.15">
+          </div>
+          <div class="slider-desc">주기적 주파수의 불규칙적 떨림 지표</div>
+        </div>
+
+        <!-- Shimmer -->
+        <div class="slider-group">
+          <div class="slider-info">
+            <span class="metric-name">🔊 Shimmer (Amplitude Variation)</span>
+            <span class="metric-val" id="val-w_shimmer">0.15</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="w_shimmer" min="0.0" max="2.0" step="0.05" value="0.15">
+          </div>
+          <div class="slider-desc">음성 진폭의 미세한 흔들림 반영 비율</div>
+        </div>
+
+        <!-- HNR -->
+        <div class="slider-group">
+          <div class="slider-info">
+            <span class="metric-name">⚡ Harmonics-to-Noise (HNR)</span>
+            <span class="metric-val" id="val-w_hnr">0.10</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="w_hnr" min="0.0" max="2.0" step="0.05" value="0.10">
+          </div>
+          <div class="slider-desc">조화도 대비 노이즈 비율 감쇠 분석 비율</div>
+        </div>
+
+        <!-- Teo -->
+        <div class="slider-group">
+          <div class="slider-info">
+            <span class="metric-name">🔥 Teager Energy Operator (TEO)</span>
+            <span class="metric-val" id="val-w_teo">0.12</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="w_teo" min="0.0" max="2.0" step="0.05" value="0.12">
+          </div>
+          <div class="slider-desc">비선형 기류 진동 에너지를 통한 긴장 패턴</div>
+        </div>
+
+        <!-- Entropy -->
+        <div class="slider-group">
+          <div class="slider-info">
+            <span class="metric-name">🌌 Spectral Entropy Weight</span>
+            <span class="metric-val" id="val-w_entropy">0.08</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="w_entropy" min="0.0" max="2.0" step="0.05" value="0.08">
+          </div>
+          <div class="slider-desc">음성 신호 스펙트럼의 무질서도 반영 비율</div>
+        </div>
+      </div>
+
+      <!-- 2. Global settings panel -->
+      <div class="panel">
+        <h3>2. Global Scaling Settings</h3>
+
+        <!-- Global Boost Multiplier -->
+        <div class="slider-group">
+          <div class="slider-info">
+            <span class="metric-name">🚀 Global Multiplier</span>
+            <span class="metric-val" id="val-c_global_boost">3.0x</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="c_global_boost" min="0.5" max="5.0" step="0.1" value="3.0">
+          </div>
+          <div class="slider-desc">최종 연산된 스트레스 지수 글로벌 증폭 배수</div>
+        </div>
+
+        <!-- Lie Sensitivity Offset (lie_scale) -->
+        <div class="slider-group" style="margin-top: 18px;">
+          <div class="slider-info">
+            <span class="metric-name">⚖️ Lie Sensitivity Offset</span>
+            <span class="metric-val" id="val-lie_scale">0.4x</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="lie_scale" min="0.1" max="2.0" step="0.05" value="0.4">
+          </div>
+          <div class="slider-desc">거짓말 센서 원점 감도 배율. (기본: 0.4)</div>
+        </div>
+
+        <!-- Baseline Adaptation rate a -->
+        <div class="slider-group" style="margin-top: 18px;">
+          <div class="slider-info">
+            <span class="metric-name">⏱️ Adaptation Rate (a)</span>
+            <span class="metric-val" id="val-c_adapt_rate">0.015</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="c_adapt_rate" min="0.001" max="0.100" step="0.001" value="0.015">
+          </div>
+          <div class="slider-desc">정상 발화 베이스라인 환경 적응 속도</div>
+        </div>
+
+        <!-- Silence Gate -->
+        <div class="slider-group" style="margin-top: 18px;">
+          <div class="slider-info">
+            <span class="metric-name">🔇 Noise Gate Threshold</span>
+            <span class="metric-val" id="val-c_silence_thr">0.005</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" class="slider-control" id="c_silence_thr" min="0.001" max="0.050" step="0.001" value="0.005">
+          </div>
+          <div class="slider-desc">무음 판정을 위한 데시벨 레벨 임계치</div>
+        </div>
+
+        <!-- Custom Backend URL -->
+        <div class="slider-group" style="margin-top: 24px; border-top: 1px solid var(--border-glass); padding-top: 20px;">
+          <div class="slider-info">
+            <span class="metric-name">🌐 Custom Backend URL (Online)</span>
+          </div>
+          <div style="margin-top: 8px;">
+            <input type="text" id="thinc_backend_url" placeholder="예: https://thinc-lie-server.onrender.com" 
+                   style="width: 100%; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--border-glass); padding: 12px 14px; border-radius: 10px; color: #ffffff; font-family: 'Outfit', sans-serif; font-size: 13px; outline: none; transition: all 0.3s;"
+                   onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-glass)'">
+          </div>
+          <div class="slider-desc">외부 온라인 서버 연동 주소 (공란 시 localhost:8080 동작)</div>
+        </div>
+      </div>
+
+      <!-- 3. Keyward Database Panel -->
+      <div class="panel keyword-db-panel">
+        <div class="keyword-db-header">
+          <h3>3. 키워드 민감도 DB (모바일)</h3>
+          <div class="keyword-actions">
+            <label class="btn-csv btn-csv-import" title="CSV 파일 불러오기">
+              📂 불러오기
+              <input type="file" id="csv-import-input" accept=".csv,.txt" style="display:none">
+            </label>
+            <button class="btn-csv btn-csv-export" id="btn-csv-export">💾 CSV 저장</button>
+          </div>
+        </div>
+        <p class="keyword-db-desc">
+          영상 메타데이터 감지 시 거짓말 센서 민감도가 자동 조절됩니다.
+        </p>
+
+        <!-- 언어 선택 탭 -->
+        <div class="lang-selector-tabs">
+          <button class="lang-tab active" data-lang="ko" id="tab-lang-ko">🇰🇷 한국어</button>
+          <button class="lang-tab" data-lang="en" id="tab-lang-en">🇺🇸 English</button>
+        </div>
+
+        <div class="keyword-tiers-stack">
+          <!-- 상 HIGH -->
+          <div class="keyword-tier tier-high">
+            <div class="tier-title-row">
+              <span class="tier-badge">🔴 상 (HIGH)</span>
+              <span class="tier-mult">× 2.5</span>
+            </div>
+            <div class="tier-desc">고위험 주제: 사기·폭로·범죄·허위 등</div>
+            <textarea class="keyword-input" id="kw-high" placeholder="사기, 거짓말, 폭로..."></textarea>
+            <div class="tier-count" id="count-high">0개 키워드</div>
+          </div>
+
+          <!-- 중 MEDIUM -->
+          <div class="keyword-tier tier-medium">
+            <div class="tier-title-row">
+              <span class="tier-badge">🟡 중 (MEDIUM)</span>
+              <span class="tier-mult">× 1.2</span>
+            </div>
+            <div class="tier-desc">중간위험 주제: 논란·의혹·주장·논쟁 등</div>
+            <textarea class="keyword-input" id="kw-medium" placeholder="논란, 의혹, 주장..."></textarea>
+            <div class="tier-count" id="count-medium">0개 키워드</div>
+          </div>
+
+          <!-- 하 LOW -->
+          <div class="keyword-tier tier-low">
+            <div class="tier-title-row">
+              <span class="tier-badge">🟢 하 (LOW)</span>
+              <span class="tier-mult">× 0.4</span>
+            </div>
+            <div class="tier-desc">저위험 주제: 교육·과학·공식 발표 등</div>
+            <textarea class="keyword-input" id="kw-low" placeholder="교육, 과학, 연구..."></textarea>
+            <div class="tier-count" id="count-low">0개 키워드</div>
+          </div>
+        </div>
+
+        <div class="keyword-footer">
+          <button class="btn-save-keywords" id="btn-save-keywords">✅ 키워드 DB 저장 &amp; 적용</button>
+          <div class="keyword-match-status" id="keyword-match-status">
+            <span class="status-idle">● 대기 중 — 실시간 키워드 감지 상태</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Social Media Posting Template Config -->
+      <div class="panel">
+        <h3>4. 소셜미디어 포스팅 템플릿 설정</h3>
+        <p class="keyword-db-desc">
+          영상 분석 공유 시 사용될 제목과 본문 템플릿을 설정합니다.<br>
+          <code>{video_title}</code>, <code>{stress_level}</code>, <code>{lie_status}</code> 변수가 자동 치환됩니다.
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #ffffff;">포스팅 제목</label>
+            <input type="text" id="post-title-input" placeholder="예: [Th!nc] AI 거짓말 분석 리포트" 
+                   style="width: 100%; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--border-glass); padding: 12px 14px; border-radius: 10px; color: #ffffff; font-family: 'Outfit', sans-serif; font-size: 13px; outline: none; transition: all 0.3s;"
+                   onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-glass)'">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #ffffff;">포스팅 본문 템플릿</label>
+            <textarea id="post-body-input" placeholder="본문 템플릿을 입력하세요..." 
+                      style="width: 100%; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--border-glass); padding: 12px 14px; border-radius: 10px; color: #ffffff; font-family: 'Outfit', sans-serif; font-size: 13px; outline: none; transition: all 0.3s; min-height: 100px; resize: vertical;"
+                      onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-glass)'"></textarea>
+          </div>
+          <div>
+            <button class="btn-save-keywords" id="btn-save-post-template" style="padding: 12px; font-size: 12px; width: 100%;">💾 포스팅 설정 저장</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Video Keyword Extractor -->
+      <div class="panel">
+        <h3>5. 유튜브 영상 키워드 추출기</h3>
+        <p class="keyword-db-desc">
+          유튜브 영상 URL을 입력하면 영상의 자막 및 메타데이터를 직접 분석하여 주요 키워드를 정밀 추출합니다. (클릭 시 키워드 복사)
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <input type="text" id="extractor-url-input" placeholder="유튜브 영상 URL 입력" 
+                   style="width: 100%; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--border-glass); padding: 12px 14px; border-radius: 10px; color: #ffffff; font-family: 'Outfit', sans-serif; font-size: 13px; outline: none; transition: all 0.3s;"
+                   onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-glass)'">
+            <button class="btn-save-keywords" id="btn-extract-keywords" style="padding: 12px; font-size: 12px; width: 100%; display: flex; align-items: center; justify-content: center;">⚡ 키워드 추출</button>
+          </div>
+          
+          <!-- 추출 결과 출력 영역 -->
+          <div id="extractor-result-container" style="display: none; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-glass); border-radius: 12px; padding: 14px;">
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;">
+              <span style="font-size: 13px; font-weight: 700; color: var(--primary);" id="extractor-video-title">분석 완료 비디오 제목</span>
+              <button class="btn-csv btn-csv-export" id="btn-copy-extracted" style="padding: 8px; font-size: 11px; width: 100%;">📋 키워드 전체 복사</button>
+            </div>
+            <div id="extracted-keywords-cloud" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 150px; overflow-y: auto; padding: 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03);">
+              <!-- 키워드 배지들이 동적으로 들어감 -->
+            </div>
+          </div>
+          
+          <!-- 로딩 인디케이터 -->
+          <div id="extractor-loading" style="display: none; text-align: center; padding: 15px; color: var(--text-muted); font-size: 12px;">
+            <span style="display: inline-block; animation: spin 1s linear infinite; margin-right: 6px;">🌀</span> 분석을 진행하는 중입니다. 잠시만 기다려주세요...
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Control buttons panel -->
+      <div class="panel action-panel">
+        <h3>6. Control Actions</h3>
+        <button class="btn-action btn-save" id="btn-save">💾 Save & Apply Settings</button>
+        <button class="btn-action btn-reset" id="btn-reset">🔄 Reset to Default</button>
+        <button class="btn-action btn-exit" id="btn-exit">🚪 Exit Console</button>
+      </div>
+
+    </div>
+
+    <!-- Link to force PC version -->
+    <div class="desktop-routing-link" id="desktop-view-link">
+      🖥️ PC 버전으로 보기
+    </div>
+  </div>
+
+  <!-- Success Toast -->
+  <div class="toast" id="toast-success">
+    <span>✅</span> Settings Saved & Applied Successfully!
+  </div>
+
+  <script>
+    (function() {
+      // 1. Passcode Validation
+      const CORRECT_PASSCODE = 'koko';
+      const overlayEl = document.getElementById('passcode-overlay');
+      const containerEl = document.getElementById('admin-container');
+      const passField = document.getElementById('passcode-field');
+      const unlockBtn = document.getElementById('btn-unlock');
+      const errorEl = document.getElementById('error-message');
+      const passCard = document.getElementById('passcode-card');
+
+      if (sessionStorage.getItem('thinc_admin_authenticated') === 'true') {
+        bypassSecurity();
+      }
+
+      function bypassSecurity() {
+        overlayEl.classList.add('hidden');
+        containerEl.classList.add('visible');
+        setTimeout(() => {
+          overlayEl.style.display = 'none';
+        }, 500);
+      }
+
+      function verifyPasscode() {
+        if (passField.value === CORRECT_PASSCODE) {
+          sessionStorage.setItem('thinc_admin_authenticated', 'true');
+          errorEl.style.opacity = '0';
+          bypassSecurity();
+        } else {
+          errorEl.style.opacity = '1';
+          passCard.classList.add('shake');
+          passField.value = '';
+          passField.focus();
+          setTimeout(() => {
+            passCard.classList.remove('shake');
+          }, 400);
+        }
+      }
+
+      unlockBtn.addEventListener('click', verifyPasscode);
+      passField.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') verifyPasscode();
+      });
+
+      // 2. PC version force routing
+      document.getElementById('desktop-view-link').addEventListener('click', () => {
+        sessionStorage.setItem('thinc_force_desktop_admin', 'true');
+        window.location.replace('admin.html');
+      });
+
+      // 3. Live Sliders bindings
+      const sliders = [
+        { id: 'w_mti', suffix: '' },
+        { id: 'w_fi', suffix: '' },
+        { id: 'w_pdr', suffix: '' },
+        { id: 'w_jitter', suffix: '' },
+        { id: 'w_shimmer', suffix: '' },
+        { id: 'w_hnr', suffix: '' },
+        { id: 'w_teo', suffix: '' },
+        { id: 'w_entropy', suffix: '' },
+        { id: 'c_global_boost', suffix: 'x' },
+        { id: 'lie_scale', suffix: 'x' },
+        { id: 'c_adapt_rate', suffix: '' },
+        { id: 'c_silence_thr', suffix: '' }
+      ];
+
+      sliders.forEach((sl) => {
+        const input = document.getElementById(sl.id);
+        const label = document.getElementById(`val-${sl.id}`);
+        if (input && label) {
+          input.addEventListener('input', () => {
+            label.innerText = `${input.value}${sl.suffix}`;
+          });
+        }
+      });
+
+      const DEFAULT_SETTINGS = {
+        w_mti: 0.30,
+        w_fi: 0.25,
+        w_pdr: 0.20,
+        w_jitter: 0.15,
+        w_shimmer: 0.15,
+        w_hnr: 0.10,
+        w_teo: 0.12,
+        w_entropy: 0.08,
+        c_global_boost: 1.0,
+        lie_scale: 0.4,
+        c_adapt_rate: 0.015,
+        c_silence_thr: 0.005
+      };
+
+      function loadConfig() {
+        let saved = null;
+        try {
+          saved = JSON.parse(localStorage.getItem('thinc_admin_settings'));
+        } catch(e) {}
+        
+        const active = saved || DEFAULT_SETTINGS;
+        
+        Object.keys(DEFAULT_SETTINGS).forEach((key) => {
+          const input = document.getElementById(key);
+          const label = document.getElementById(`val-${key}`);
+          if (input && label) {
+            const val = active[key] !== undefined ? active[key] : DEFAULT_SETTINGS[key];
+            input.value = val;
+            const suffix = (key === 'c_global_boost' || key === 'lie_scale') ? 'x' : '';
+            label.innerText = `${val}${suffix}`;
+          }
+        });
+
+        const backendUrlInput = document.getElementById('thinc_backend_url');
+        if (backendUrlInput) {
+          backendUrlInput.value = localStorage.getItem('thinc_backend_url') || '';
+        }
+      }
+
+      loadConfig();
+
+      // Save Actions
+      const saveBtn = document.getElementById('btn-save');
+      const toast = document.getElementById('toast-success');
+      
+      saveBtn.addEventListener('click', () => {
+        const settings = {};
+        Object.keys(DEFAULT_SETTINGS).forEach((key) => {
+          const input = document.getElementById(key);
+          if (input) {
+            settings[key] = parseFloat(input.value);
+          }
+        });
+
+        localStorage.setItem('thinc_admin_settings', JSON.stringify(settings));
+
+        const backendUrlInput = document.getElementById('thinc_backend_url');
+        if (backendUrlInput) {
+          localStorage.setItem('thinc_backend_url', backendUrlInput.value.trim());
+        }
+        
+        toast.classList.add('visible');
+        setTimeout(() => {
+          toast.classList.remove('visible');
+        }, 3000);
+      });
+
+      // Reset Action
+      const resetBtn = document.getElementById('btn-reset');
+      resetBtn.addEventListener('click', () => {
+        if (confirm('모든 어드민 설정값을 기본값으로 초기화하시겠습니까?')) {
+          localStorage.removeItem('thinc_admin_settings');
+          localStorage.removeItem('thinc_backend_url');
+          loadConfig();
+          
+          toast.innerText = '⚙️ Settings Reset to Defaults!';
+          toast.classList.add('visible');
+          setTimeout(() => {
+            toast.classList.remove('visible');
+            toast.innerHTML = '<span>✅</span> Settings Saved & Applied Successfully!';
+          }, 3000);
+        }
+      });
+
+      // Exit Action
+      const exitBtn = document.getElementById('btn-exit');
+      exitBtn.addEventListener('click', () => {
+        const lastPage = document.referrer || 'index.html';
+        window.location.href = lastPage;
+      });
+
+      // ─── Keyword Database ───
+      const DEFAULT_KEYWORD_DB_KO = {
+        high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장'],
+        medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
+        low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
+      };
+
+      const DEFAULT_KEYWORD_DB_EN = {
+        high:   ['scam', 'fraud', 'lie', 'fake', 'manipulation', 'expose', 'conspiracy', 'crime', 'blackmail', 'corruption', 'hoax', 'propaganda'],
+        medium: ['controversy', 'rumor', 'suspicion', 'dispute', 'conflict', 'criticism', 'rebuttal', 'explanation', 'debate', 'claim'],
+        low:    ['education', 'science', 'research', 'official', 'announcement', 'lecture', 'documentary', 'learning', 'analysis', 'report', 'thesis', 'study']
+      };
+
+      let currentEditLang = 'ko';
+
+      function parseKeywords(text) {
+        return text.split(/[\n,]+/).map(k => k.trim()).filter(k => k.length > 0);
+      }
+
+      function updateKeywordCounts() {
+        ['high', 'medium', 'low'].forEach(tier => {
+          const el = document.getElementById(`kw-${tier}`);
+          const cnt = document.getElementById(`count-${tier}`);
+          if (el && cnt) cnt.textContent = `${parseKeywords(el.value).length}개 키워드`;
+        });
+      }
+
+      function loadKeywordDB(lang = 'ko') {
+        let db = null;
+        try { db = JSON.parse(localStorage.getItem(`thinc_keyword_db_${lang}`)); } catch(e) {}
+        
+        if (!db && lang === 'ko') {
+          try { 
+            db = JSON.parse(localStorage.getItem('thinc_keyword_db')); 
+            if (db) localStorage.setItem('thinc_keyword_db_ko', JSON.stringify(db));
+          } catch(e) {}
+        }
+
+        const d = db || (lang === 'ko' ? DEFAULT_KEYWORD_DB_KO : DEFAULT_KEYWORD_DB_EN);
+        document.getElementById('kw-high').value   = (d.high   || []).join('\n');
+        document.getElementById('kw-medium').value = (d.medium || []).join('\n');
+        document.getElementById('kw-low').value    = (d.low    || []).join('\n');
+        updateKeywordCounts();
+      }
+
+      ['kw-high', 'kw-medium', 'kw-low'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateKeywordCounts);
+      });
+
+      function saveKeywordDB(lang = 'ko', quiet = false) {
+        const db = {
+          high:   parseKeywords(document.getElementById('kw-high').value),
+          medium: parseKeywords(document.getElementById('kw-medium').value),
+          low:    parseKeywords(document.getElementById('kw-low').value)
+        };
+        localStorage.setItem(`thinc_keyword_db_${lang}`, JSON.stringify(db));
+
+        if (lang === 'ko') {
+          localStorage.setItem('thinc_keyword_db', JSON.stringify(db));
+        }
+
+        if (!quiet) {
+          const t = document.getElementById('toast-success');
+          t.innerHTML = `🗝️ [${lang.toUpperCase()}] 키워드 DB 저장 완료!`;
+          t.classList.add('visible');
+          setTimeout(() => {
+            t.classList.remove('visible');
+            setTimeout(() => { t.innerHTML = '<span>✅</span> Settings Saved & Applied Successfully!'; }, 400);
+          }, 3000);
+        }
+      }
+
+      ['ko', 'en'].forEach(lang => {
+        const tab = document.getElementById(`tab-lang-${lang}`);
+        if (tab) {
+          tab.addEventListener('click', () => {
+            saveKeywordDB(currentEditLang, true);
+            document.querySelectorAll('.lang-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentEditLang = lang;
+            loadKeywordDB(currentEditLang);
+          });
+        }
+      });
+
+      document.getElementById('btn-save-keywords').addEventListener('click', () => {
+        saveKeywordDB(currentEditLang);
+      });
+
+      // CSV Export
+      document.getElementById('btn-csv-export').addEventListener('click', () => {
+        const high   = parseKeywords(document.getElementById('kw-high').value);
+        const medium = parseKeywords(document.getElementById('kw-medium').value);
+        const low    = parseKeywords(document.getElementById('kw-low').value);
+        const rows = [
+          'Tier,Keywords',
+          `HIGH,${high.join(';')}`,
+          `MEDIUM,${medium.join(';')}`,
+          `LOW,${low.join(';')}`
+        ];
+        const csv = '\uFEFF' + rows.join('\r\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `thinc_keyword_db_${currentEditLang}_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+
+      // CSV Import
+      document.getElementById('csv-import-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const text = evt.target.result.replace(/^\uFEFF/, '');
+            const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.startsWith('Tier'));
+            const db = { high: [], medium: [], low: [] };
+            lines.forEach(line => {
+              const commaIdx = line.indexOf(',');
+              if (commaIdx === -1) return;
+              const tierRaw = line.substring(0, commaIdx).trim().toUpperCase();
+              const kws = line.substring(commaIdx + 1).split(';').map(k => k.trim()).filter(k => k);
+              if (tierRaw === 'HIGH'   || tierRaw === '상') db.high   = kws;
+              else if (tierRaw === 'MEDIUM' || tierRaw === '중') db.medium = kws;
+              else if (tierRaw === 'LOW'    || tierRaw === '하') db.low    = kws;
+            });
+            document.getElementById('kw-high').value   = db.high.join('\n');
+            document.getElementById('kw-medium').value = db.medium.join('\n');
+            document.getElementById('kw-low').value    = db.low.join('\n');
+            updateKeywordCounts();
+            
+            localStorage.setItem(`thinc_keyword_db_${currentEditLang}`, JSON.stringify(db));
+            if (currentEditLang === 'ko') {
+              localStorage.setItem('thinc_keyword_db', JSON.stringify(db));
+            }
+
+            const t = document.getElementById('toast-success');
+            t.innerHTML = `📂 [${currentEditLang.toUpperCase()}] CSV 완료! 상:${db.high.length} 중:${db.medium.length} 하:${db.low.length}개`;
+            t.classList.add('visible');
+            setTimeout(() => {
+              t.classList.remove('visible');
+              setTimeout(() => { t.innerHTML = '<span>✅</span> Settings Saved & Applied Successfully!'; }, 400);
+            }, 3500);
+          } catch(err) {
+            alert('CSV 파싱 오류: ' + err.message);
+          }
+        };
+        reader.readAsText(file, 'UTF-8');
+        e.target.value = '';
+      });
+
+      // Live match status
+      function refreshMatchStatus() {
+        try {
+          const sens = JSON.parse(localStorage.getItem('thinc_keyword_sensitivity') || '{}');
+          const el = document.getElementById('keyword-match-status');
+          if (!el) return;
+          if (sens && sens.tier && sens.tier !== 'none') {
+            const labels = { high: '🔴 상 (HIGH)', medium: '🟡 중 (MEDIUM)', low: '🟢 하 (LOW)' };
+            const classes = { high: 'status-high', medium: 'status-medium', low: 'status-low' };
+            const kws = (sens.matchedKeywords || []).slice(0, 3).join(', ');
+            el.innerHTML = `<span class="${classes[sens.tier] || 'status-none'}">⚡ 매칭: ${labels[sens.tier] || sens.tier} (${sens.multiplier}배)<br>키워드: "${kws}"</span>`;
+          } else {
+            el.innerHTML = '<span class="status-idle">● 대기 중 — 실시간 키워드 감지 상태</span>';
+          }
+        } catch(e) {}
+      }
+
+      setInterval(refreshMatchStatus, 2000);
+      refreshMatchStatus();
+      loadKeywordDB(currentEditLang);
+
+      // 5. Social Media Posting Template Config
+      const DEFAULT_POST_TITLE = '[Th!nc] AI 거짓말 분석 리포트';
+      const DEFAULT_POST_BODY = `🎯 Th!nc 알고리즘 감지 엔진 분석 결과:
+- 분석 영상: {video_title}
+- 스트레스 지수: {stress_level}%
+- 거짓말 판정: {lie_status}
+
+#Thinc #거짓말탐지 #AI음성분석`;
+
+      const postTitleInput = document.getElementById('post-title-input');
+      const postBodyInput = document.getElementById('post-body-input');
+      const savePostBtn = document.getElementById('btn-save-post-template');
+
+      function loadPostTemplate() {
+        if (postTitleInput && postBodyInput) {
+          postTitleInput.value = localStorage.getItem('thinc_post_title') || DEFAULT_POST_TITLE;
+          postBodyInput.value = localStorage.getItem('thinc_post_body') || DEFAULT_POST_BODY;
+        }
+      }
+
+      if (savePostBtn) {
+        savePostBtn.addEventListener('click', () => {
+          localStorage.setItem('thinc_post_title', postTitleInput.value.trim());
+          localStorage.setItem('thinc_post_body', postBodyInput.value.trim());
+          
+          const t = document.getElementById('toast-success');
+          t.innerHTML = '📝 소셜미디어 포스팅 템플릿 저장 완료!';
+          t.classList.add('visible');
+          setTimeout(() => {
+            t.classList.remove('visible');
+            setTimeout(() => { t.innerHTML = '<span>✅</span> Settings Saved & Applied Successfully!'; }, 400);
+          }, 3000);
+        });
+      }
+
+      loadPostTemplate();
+
+      // 6. Video Keyword Extractor
+      const extractBtn = document.getElementById('btn-extract-keywords');
+      const urlInput = document.getElementById('extractor-url-input');
+      const resultContainer = document.getElementById('extractor-result-container');
+      const videoTitleEl = document.getElementById('extractor-video-title');
+      const keywordCloudEl = document.getElementById('extracted-keywords-cloud');
+      const copyExtractedBtn = document.getElementById('btn-copy-extracted');
+      const loadingEl = document.getElementById('extractor-loading');
+
+      let lastExtractedKeywords = [];
+
+      function extractVideoId(url) {
+        if (!url) return null;
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+        const match = url.match(regExp);
+        return (match && match[2].length === 11) ? match[2] : null;
+      }
+
+      const EXTRACTOR_CORS_PROXIES = [
+        'https://cors.eu.org/',
+        'https://api.allorigins.win/get?url='
+      ];
+
+      async function fetchWithCORSProxy(url) {
+        for (const proxy of EXTRACTOR_CORS_PROXIES) {
+          try {
+            const targetUrl = proxy.includes('allorigins') 
+              ? `${proxy}${encodeURIComponent(url)}` 
+              : `${proxy}${url}`;
+            const res = await fetch(targetUrl);
+            if (!res.ok) continue;
+            if (proxy.includes('allorigins')) {
+              const json = await res.json();
+              return json.contents;
+            } else {
+              return await res.text();
+            }
+          } catch (e) {}
+        }
+        throw new Error('All CORS proxies failed');
+      }
+
+      async function getExtractorCaptions(videoId) {
+        try {
+          const backendUrl = localStorage.getItem('thinc_backend_url') || '';
+          const host = backendUrl ? backendUrl.replace(/\/$/, '') : 'http://localhost:8080';
+          const res = await fetch(`${host}/api/captions?id=${videoId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              return data.map(c => c.text).join(' ');
+            }
+          }
+        } catch (e) {}
+
+        try {
+          const listUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&type=list`;
+          const xmlList = await fetchWithCORSProxy(listUrl);
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(xmlList, "text/xml");
+          const tracks = xmlDoc.getElementsByTagName('track');
+          let targetLang = 'ko';
+          let trackFound = null;
+
+          for (let i = 0; i < tracks.length; i++) {
+            const langCode = tracks[i].getAttribute('lang_code') || '';
+            if (langCode.toLowerCase().startsWith('ko')) {
+              trackFound = tracks[i];
+              targetLang = langCode;
+              break;
+            }
+          }
+          if (!trackFound) {
+            for (let i = 0; i < tracks.length; i++) {
+              const langCode = tracks[i].getAttribute('lang_code') || '';
+              if (langCode.toLowerCase().startsWith('en')) {
+                trackFound = tracks[i];
+                targetLang = langCode;
+                break;
+              }
+            }
+          }
+
+          if (trackFound || tracks.length > 0) {
+            const selectedLang = trackFound ? targetLang : (tracks[0].getAttribute('lang_code') || 'en');
+            const trackUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${selectedLang}&fmt=srv1`;
+            const trackXml = await fetchWithCORSProxy(trackUrl);
+            const trackDoc = parser.parseFromString(trackXml, "text/xml");
+            const textNodes = trackDoc.getElementsByTagName('text');
+            const lines = [];
+            for (let i = 0; i < textNodes.length; i++) {
+              lines.push(textNodes[i].textContent);
+            }
+            if (lines.length > 0) return lines.join(' ');
+          }
+        } catch (e) {}
+
+        const pipedInstances = [
+          'https://api.piped.private.coffee',
+          'https://pipedapi.kavin.rocks',
+          'https://piped-api.lunar.icu',
+          'https://pipedapi.us.to'
+        ];
+        for (const instance of pipedInstances) {
+          try {
+            const res = await fetch(`${instance}/streams/${videoId}`);
+            if (res.ok) {
+              const data = await res.json();
+              const subtitles = data.subtitles || [];
+              const koSub = subtitles.find(s => s.code.toLowerCase().startsWith('ko')) || subtitles.find(s => s.code.toLowerCase().startsWith('en'));
+              if (koSub && koSub.url) {
+                const vttRes = await fetch(koSub.url);
+                if (vttRes.ok) {
+                  const vttText = await vttRes.text();
+                  const lines = vttText.split('\n')
+                    .filter(l => l.trim() && !l.includes('-->') && !l.startsWith('WEBVTT') && !l.startsWith('NOTE') && !l.startsWith('Style'))
+                    .map(l => l.replace(/<[^>]*>/g, '').trim())
+                    .filter(l => l.length > 0);
+                  if (lines.length > 0) return lines.join(' ');
+                }
+              }
+            }
+          } catch(e) {}
+        }
+        return '';
+      }
+
+      async function getExtractorVideoMeta(videoId) {
+        const invInstances = [
+          'https://inv.thepixora.com',
+          'https://yt.chocolatemoo53.com',
+          'https://invidious.asir.dev',
+          'https://invidious.nerdvpn.de'
+        ];
+        for (const inst of invInstances) {
+          try {
+            const res = await fetch(`${inst}/api/v1/videos/${videoId}`);
+            if (res.ok) {
+              const data = await res.json();
+              return {
+                title: data.title || '',
+                description: data.description || ''
+              };
+            }
+          } catch (e) {}
+        }
+        return { title: 'YouTube Video', description: '' };
+      }
+
+      const STOPWORDS = new Set([
+        '그리고', '하지만', '진짜', '오늘', '지금', '그냥', '내가', '우리가', '정말', '매우', '너무',
+        '이것', '저것', '그것', '때문에', '대해서', '하는', '했다', '이다', '있다', '없다', '하는것',
+        '합니다', '있습니다', '그들의', '그녀의', '그들은', '그녀는', '아니라', '아니고', '어떻게',
+        'the', 'and', 'you', 'that', 'for', 'this', 'with', 'have', 'not', 'but', 'your', 'what',
+        'from', 'they', 'here', 'there', 'about', 'would', 'their', 'will', 'with', 'about'
+      ]);
+
+      function analyzeKeywords(text) {
+        if (!text) return [];
+        const words = text.match(/[가-힣a-zA-Z0-9_]{2,12}/g) || [];
+        const freq = {};
+        words.forEach(w => {
+          const lower = w.toLowerCase();
+          if (STOPWORDS.has(lower) || /^[0-9]+$/.test(w)) return;
+          freq[w] = (freq[w] || 0) + 1;
+        });
+
+        return Object.entries(freq)
+          .map(([word, count]) => ({ word, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 40);
+      }
+
+      if (extractBtn) {
+        extractBtn.addEventListener('click', async () => {
+          const url = urlInput.value.trim();
+          const videoId = extractVideoId(url);
+          if (!videoId) {
+            alert('올바른 유튜브 영상 URL을 입력해주세요.');
+            return;
+          }
+
+          loadingEl.style.display = 'block';
+          resultContainer.style.display = 'none';
+          extractBtn.disabled = true;
+
+          try {
+            const [meta, captionText] = await Promise.all([
+              getExtractorVideoMeta(videoId),
+              getExtractorCaptions(videoId)
+            ]);
+
+            const combinedText = `${meta.title} ${meta.description} ${captionText}`;
+            const keywords = analyzeKeywords(combinedText);
+
+            lastExtractedKeywords = keywords.map(k => k.word);
+            
+            videoTitleEl.textContent = meta.title;
+            keywordCloudEl.innerHTML = '';
+
+            if (keywords.length === 0) {
+              keywordCloudEl.innerHTML = '<span style="color: var(--text-muted); font-size: 13px;">추출된 키워드가 없습니다. 자막이 없거나 텍스트가 부족합니다.</span>';
+            } else {
+              let dbKo = { high: [], medium: [], low: [] };
+              let dbEn = { high: [], medium: [], low: [] };
+              try { dbKo = JSON.parse(localStorage.getItem('thinc_keyword_db_ko')) || dbKo; } catch(e) {}
+              try { dbEn = JSON.parse(localStorage.getItem('thinc_keyword_db_en')) || dbEn; } catch(e) {}
+              
+              const isMatch = (word) => {
+                const w = word.toLowerCase();
+                const matchedKo = Object.entries(dbKo).find(([tier, list]) => list.some(k => k.toLowerCase() === w));
+                if (matchedKo) return matchedKo[0];
+                const matchedEn = Object.entries(dbEn).find(([tier, list]) => list.some(k => k.toLowerCase() === w));
+                if (matchedEn) return matchedEn[0];
+                return null;
+              };
+
+              keywords.forEach(({ word, count }) => {
+                const badge = document.createElement('span');
+                badge.style.padding = '6px 12px';
+                badge.style.borderRadius = '20px';
+                badge.style.fontSize = '12px';
+                badge.style.fontWeight = '600';
+                badge.style.display = 'inline-flex';
+                badge.style.alignItems = 'center';
+                badge.style.gap = '5px';
+                badge.style.cursor = 'pointer';
+                badge.textContent = `${word} (${count})`;
+                
+                badge.addEventListener('click', () => {
+                  navigator.clipboard.writeText(word);
+                  const t = document.getElementById('toast-success');
+                  t.innerHTML = `📋 "${word}" 클립보드 복사 완료!`;
+                  t.classList.add('visible');
+                  setTimeout(() => t.classList.remove('visible'), 1500);
+                });
+
+                const matchTier = isMatch(word);
+                if (matchTier === 'high') {
+                  badge.style.background = 'rgba(255, 65, 108, 0.15)';
+                  badge.style.border = '1px solid var(--accent-red)';
+                  badge.style.color = 'var(--accent-red)';
+                } else if (matchTier === 'medium') {
+                  badge.style.background = 'rgba(255, 210, 50, 0.15)';
+                  badge.style.border = '1px solid #ffd232';
+                  badge.style.color = '#ffd232';
+                } else if (matchTier === 'low') {
+                  badge.style.background = 'rgba(0, 255, 135, 0.15)';
+                  badge.style.border = '1px solid var(--accent-green)';
+                  badge.style.color = 'var(--accent-green)';
+                } else {
+                  badge.style.background = 'rgba(255, 255, 255, 0.05)';
+                  badge.style.border = '1px solid var(--border-glass)';
+                  badge.style.color = '#ffffff';
+                }
+
+                keywordCloudEl.appendChild(badge);
+              });
+            }
+
+            loadingEl.style.display = 'none';
+            resultContainer.style.display = 'block';
+
+          } catch (err) {
+            alert('키워드 추출 실패: ' + err.message);
+            loadingEl.style.display = 'none';
+          } finally {
+            extractBtn.disabled = false;
+          }
+        });
+      }
+
+      if (copyExtractedBtn) {
+        copyExtractedBtn.addEventListener('click', () => {
+          if (lastExtractedKeywords.length === 0) return;
+          const textToCopy = lastExtractedKeywords.join(', ');
+          navigator.clipboard.writeText(textToCopy);
+          
+          const t = document.getElementById('toast-success');
+          t.innerHTML = '📋 추출된 전체 키워드 클립보드 복사 완료!';
+          t.classList.add('visible');
+          setTimeout(() => {
+            t.classList.remove('visible');
+            setTimeout(() => { t.innerHTML = '<span>✅</span> Settings Saved & Applied Successfully!'; }, 400);
+          }, 3000);
+        });
+      }
+
+    })();
+  </script>
+</body>
+</html>

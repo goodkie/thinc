@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="currentColor">
+  <g transform="translate(10, -10)">
+    <!-- Base block -->
+    <rect x="85" y="145" width="20" height="30" />
+    
+    <!-- Central Circle -->
+    <circle cx="95" cy="115" r="40" />
+    
+    <!-- Horizontal right arm -->
+    <rect x="135" y="108" width="45" height="14" />
+    
+    <!-- Diagonal assembly (rotated -30 degrees) -->
+    <g transform="rotate(-30 95 115)">
+      <!-- Main Tube -->
+      <rect x="68" y="10" width="54" height="110" />
+      <!-- Flange on tube -->
+      <rect x="55" y="75" width="80" height="16" />
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,13 @@
+{
+  "name": "thinc-biometric-server",
+  "version": "1.0.0",
+  "description": "Th!nc Voice Stress Biometric & Caption Scraping Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@danielxceron/youtube-transcript": "^1.2.6",
+    "youtube-transcript": "^1.3.1"
+  }
+}

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Gray bookmark (flat, no border) -->
+  <path d="M96 30 Q96 30 416 30 Q446 30 446 60 L446 460 L256 340 L66 460 L66 60 Q66 30 96 30 Z" 
+        fill="#9EA3A8"/>
+</svg>

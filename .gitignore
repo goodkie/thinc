@@ -1,0 +1,57 @@
+# 의존성
+node_modules/
+webapp/node_modules/
+desktop-app/node_modules/
+mobile-app/node_modules/
+
+# 빌드 결과물
+desktop-app/dist/
+mobile-app/android/build/
+mobile-app/ios/build/
+*.zip
+
+# 대용량 바이너리/백업 파일
+*.rar
+*.tar
+*.7z
+*.bak
+backups/
+scratch/
+
+# 관련 없는 폴더
+social-media-influencer-icon-2026-02-24-01-28-08-utc/
+youtube_reliability_classifier/
+youtube_reliability_dictionary_12lang_99999_each/
+
+# 테스트 스크립트 (루트)
+test_*.js
+style.css
+start_online_tunnel.ps1
+trigger_icon.png
+
+# 이미지 백업
+*.JPG
+*.jpg
+캡처.JPG
+캡처2.JPG
+
+# 텍스트 메모
+*.txt
+최종*.txt
+
+# 로그
+*.log
+npm-debug.log*
+
+# 환경변수
+.env
+.env.local
+
+# 임시파일
+*.tmp
+.DS_Store
+Thumbs.db
+
+# 관리 파일
+admin_settings.json
+webapp/admin_settings.json

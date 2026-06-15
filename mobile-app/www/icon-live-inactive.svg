@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Gray rounded rectangle background for LIVE text -->
+  <rect x="30" y="260" width="452" height="210" rx="52" ry="52" fill="#D5D5D9"/>
+  <!-- Dark gray circle -->
+  <circle cx="256" cy="172" r="148" fill="#636369"/>
+  <!-- Light gray play button triangle -->
+  <path d="M216 120 L216 224 L316 172 Z" fill="#9E9EA4" rx="10"/>
+  <!-- Gray LIVE text -->
+  <text x="56" y="420" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-weight="900" font-size="148" fill="#B0B0B8" letter-spacing="-4">LIVE</text>
+</svg>
