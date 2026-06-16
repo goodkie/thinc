@@ -3428,6 +3428,7 @@
     
     if (videoId) {
       activeVideoId = videoId;
+      activePlatform = 'youtube';
       placeholder.classList.add('hidden');
       feed.classList.add('hidden');
       const ytWrapperEl = document.getElementById('yt-player-wrapper');
@@ -4860,8 +4861,9 @@
       }
 
       // Check if YouTube video is paused/stopped (if activeVideoId is set)
-      // YT states: 2 = paused, 0 = ended, 5 = cued, -1 = unstarted
-      const isPausedOrEnded = isYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
+      // YT states: 2 = paused, 0 = ended, 5 = cued
+      // NOTE: playerState -1(unstarted) 는 ytPlayer 초기화 중에도 발생하므로 제외
+      const isPausedOrEnded = isYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5);
 
       if (isPausedOrEnded) {
         // 동영상이 멈췄을 때는 점수나 플로팅 누적 바그래프를 초기화하지 않고, 분석 루프만 대기 상태로 유지합니다.
@@ -4895,7 +4897,9 @@
         
         if (analysisElapsedMs > 3000) {
           if (isPlayerResponding) {
-            if (!isVideoPlaying || timeSinceLastUpdate > 2500) {
+            // playerState가 명확히 2(paused)인 경우 또는
+            // 5초 이상 시간 업데이트 없고 재생 중이 아닌 경우에만 멈춤으로 판단
+            if (playerState === 2 || (!isVideoPlaying && timeSinceLastUpdate > 5000)) {
               isPausedOrStopped = true;
             }
           } else {
