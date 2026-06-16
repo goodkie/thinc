@@ -22,6 +22,7 @@
   let sourceNode = null;
   let animationId = null;
   let activeVideoId = null;
+  let activePlatform = 'youtube';
   let videoMetadata = {
     title: "일반 유튜브 비디오",
     channel: "YouTube Creator",
@@ -1873,6 +1874,14 @@
           if (wv.id === `wv-${platform}`) {
             wv.classList.add('active');
             activeWebview = wv;
+
+            // 탭 포커스 시 비로소 로딩 (백그라운드 소리/재생 방지)
+            const currentSrc = wv.getAttribute('src');
+            const dataSrc = wv.getAttribute('data-src');
+            if ((!currentSrc || currentSrc === 'about:blank') && dataSrc) {
+              console.log(`[Th!nc-Extension] Lazy loading webview ${wv.id} with ${dataSrc}`);
+              wv.setAttribute('src', dataSrc);
+            }
           }
         });
 
@@ -2059,6 +2068,7 @@
     isAnalysisLocked = true; // ✅ 잠금 활성화
     console.log(`[Th!nc-Extension] Requesting analysis for video: ${videoId} on ${platform}`);
     activeVideoId = videoId;
+    activePlatform = platform;
     
     if (window.PerformanceLogger) {
       window.PerformanceLogger.log('Analysis', 'Social Video Analysis Requested', 0, 'Info', `Video ID: ${videoId}, Platform: ${platform}`);
@@ -4840,7 +4850,8 @@
 
       // ── Direct ytPlayer state poll each frame (more reliable than event callbacks) ──
       let playerState = -1;
-      if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+      const isYoutube = activePlatform && activePlatform.includes('youtube');
+      if (isYoutube && ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
         try {
           playerState = ytPlayer.getPlayerState();
           // YT states: -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
@@ -4850,7 +4861,7 @@
 
       // Check if YouTube video is paused/stopped (if activeVideoId is set)
       // YT states: 2 = paused, 0 = ended, 5 = cued, -1 = unstarted
-      const isPausedOrEnded = activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
+      const isPausedOrEnded = isYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
 
       if (isPausedOrEnded) {
         // 동영상이 멈췄을 때는 점수나 플로팅 누적 바그래프를 초기화하지 않고, 분석 루프만 대기 상태로 유지합니다.
@@ -4859,7 +4870,7 @@
       }
 
       // ── Sync captionPlaybackSec from ytPlayer directly each frame ──
-      if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
+      if (isYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
         try {
           const t = ytPlayer.getCurrentTime();
           if (typeof t === 'number' && !isNaN(t) && t !== lastTimeValue) {
@@ -4873,7 +4884,7 @@
       // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
       let isPausedOrStopped = false;
       let isMutedOrSilent = false;
-      if (activeVideoId) {
+      if (isYoutube && activeVideoId) {
         // Grace period: first 3 seconds of analysis exempt from pause detection
         // (gives YouTube Player API time to initialize and fire state events)
         const analysisElapsedMs = Date.now() - analysisStartTime;
@@ -4902,7 +4913,7 @@
 
       // Caption Gap Detection: If real captions are loaded, force silence during caption gaps
       let isCaptionGap = false;
-      if (captionLoadStatus === 'loaded' && liveCaptions.length > 0) {
+      if (isYoutube && captionLoadStatus === 'loaded' && liveCaptions.length > 0) {
         // ── DIRECT ytPlayer position query for accurate gap detection ──
         let nowSec = 0;
         if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
