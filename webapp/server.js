@@ -1323,6 +1323,98 @@ function handleCaptions(req, res) {
     });
 }
 
+// ─── /api/analyze-video-fast ──────────────────────────────────────────────────
+// 초고속 비디오 자막 신뢰도(거짓) 스캔 및 3색 등급 판별 API
+async function handleAnalyzeVideoFast(req, res) {
+  const parsedUrl = url.parse(req.url, true);
+  const videoId = (parsedUrl.query.id || '').trim();
+  const CORS = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' };
+
+  if (!videoId) {
+    res.writeHead(400, CORS);
+    res.end(JSON.stringify({ error: 'Missing video id' }));
+    return;
+  }
+
+  console.log(`[handleAnalyzeVideoFast] Scanning video: ${videoId}`);
+
+  let textBuffer = '';
+  try {
+    const segments = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'ko' })
+      .catch(() => YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' }))
+      .catch(() => getYouTubeTranscriptDirect(videoId, 'ko'))
+      .catch(() => getYouTubeTranscriptDirect(videoId, 'en'));
+
+    if (segments && segments.length > 0) {
+      textBuffer = segments.map(s => s.text).join(' ');
+    }
+  } catch (err) {
+    console.warn(`[handleAnalyzeVideoFast] Fast caption fetch failed for ${videoId}:`, err.message);
+  }
+
+  let score = 80;
+  const detected = [];
+
+  if (textBuffer) {
+    const dangerKeywords = [
+      '거짓말', '사실무근', '조작', '루머', '음모론', '날조', '사기', '사칭', '선동', '속임수', '구라', '허위',
+      'lie', 'fake', 'rumor', 'fabricat', 'hoax', 'fraud', 'deceit', 'manipulat'
+    ];
+    const suspiciousKeywords = [
+      '솔직히', '사실은', '진짜로', '오해', '해명', '억울', '맹세', '비밀', '아마도', '해프닝', '짜깁기',
+      'honestly', 'actually', 'truth', 'clarify', 'secret', 'promise', 'maybe'
+    ];
+
+    let dangerCount = 0;
+    let suspiciousCount = 0;
+    const lowerText = textBuffer.toLowerCase();
+
+    dangerKeywords.forEach(word => {
+      let idx = lowerText.indexOf(word);
+      while (idx !== -1) {
+        dangerCount++;
+        if (!detected.includes(word)) detected.push(word);
+        idx = lowerText.indexOf(word, idx + word.length);
+      }
+    });
+
+    suspiciousKeywords.forEach(word => {
+      let idx = lowerText.indexOf(word);
+      while (idx !== -1) {
+        suspiciousCount++;
+        if (!detected.includes(word)) detected.push(word);
+        idx = lowerText.indexOf(word, idx + word.length);
+      }
+    });
+
+    score = 100 - (dangerCount * 12 + suspiciousCount * 4);
+    score = Math.max(10, Math.min(100, score));
+  } else {
+    score = 85;
+  }
+
+  let rating = 'safe';
+  let badgeText = `Safe ${score}%`;
+
+  if (score < 50) {
+    rating = 'danger';
+    badgeText = `Danger ${100 - score}%`;
+  } else if (score < 80) {
+    rating = 'caution';
+    badgeText = `Caution ${100 - score}%`;
+  }
+
+  res.writeHead(200, CORS);
+  res.end(JSON.stringify({
+    ok: true,
+    videoId,
+    score,
+    rating,
+    badgeText,
+    detectedKeywords: detected.slice(0, 10)
+  }));
+}
+
 // ─── /api/video-meta ──────────────────────────────────────────────────────────
 // Returns title, tags, description for a YouTube video ID via Piped API.
 async function handleVideoMeta(req, res) {
@@ -1389,6 +1481,8 @@ const server = http.createServer((req, res) => {
     handleVideoMeta(req, res);
   } else if (parsedUrl.pathname === '/api/captions') {
     handleCaptions(req, res);
+  } else if (parsedUrl.pathname === '/api/analyze-video-fast') {
+    handleAnalyzeVideoFast(req, res);
   } else if (parsedUrl.pathname === '/api/admin-settings') {
     handleAdminSettings(req, res);
   } else {

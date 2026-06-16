@@ -117,6 +117,7 @@ function createMain(serverPort) {
       contextIsolation: true,
       webSecurity: false,              // CORS 완전 우회 — YouTube 자막 직접 접근
       allowRunningInsecureContent: true,
+      webviewTag: true,                // 렌더러 내 웹뷰 태그 활성화
       preload: path.join(__dirname, 'preload.js')
     }
   });
@@ -226,3 +227,88 @@ ipcMain.handle('get-app-info', () => ({
   platform: process.platform,
   isElectron: true
 }));
+
+let activeBackgroundWindows = new Map(); // videoId -> window
+
+ipcMain.handle('fetch-background-captions', (event, videoId) => {
+  return new Promise((resolve) => {
+    console.log(`[Main] IPC fetch-background-captions requested for: ${videoId}`);
+    
+    if (activeBackgroundWindows.has(videoId)) {
+      try { activeBackgroundWindows.get(videoId).close(); } catch(e) {}
+    }
+
+    const bgWin = new BrowserWindow({
+      width: 800, height: 600,
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        webSecurity: false,
+        preload: path.join(__dirname, 'preload-background.js')
+      }
+    });
+
+    activeBackgroundWindows.set(videoId, bgWin);
+
+    const timeout = setTimeout(() => {
+      console.warn(`[Main] fetch-background-captions timed out for ${videoId}`);
+      if (activeBackgroundWindows.has(videoId)) {
+        try { bgWin.close(); } catch(e) {}
+        activeBackgroundWindows.delete(videoId);
+      }
+      resolve({ ok: false, error: 'Request timed out' });
+    }, 15000);
+
+    const handleResult = (evt, result) => {
+      if (result.videoId === videoId) {
+        clearTimeout(timeout);
+        ipcMain.off('background-captions-result', handleResult);
+        
+        console.log(`[Main] Scraper returned status: ${result.ok} for video ${videoId}`);
+        
+        if (activeBackgroundWindows.has(videoId)) {
+          try { bgWin.close(); } catch(e) {}
+          activeBackgroundWindows.delete(videoId);
+        }
+        resolve(result);
+      }
+    };
+
+    ipcMain.on('background-captions-result', handleResult);
+
+    bgWin.loadURL(`https://m.youtube.com/watch?v=${videoId}`, {
+      userAgent: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+    });
+  });
+});
+
+ipcMain.on('open-youtube-login', () => {
+  console.log('[Main] Opening official YouTube login window');
+  
+  const loginWin = new BrowserWindow({
+    width: 600, height: 750,
+    title: 'YouTube Sign In — Th!nc Secure Connect',
+    icon: path.join(__dirname, 'icon.ico'),
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  loginWin.loadURL('https://m.youtube.com/signin', {
+    userAgent: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+  });
+
+  loginWin.once('ready-to-show', () => {
+    loginWin.show();
+  });
+});
+
+ipcMain.on('video-playback-started', (event, data) => {
+  console.log(`[Main] Video playback detected on platform: ${data.platform}, videoId: ${data.videoId}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('video-playback-started', data);
+  }
+});

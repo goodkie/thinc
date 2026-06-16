@@ -4025,6 +4025,20 @@
     if (window.PerformanceLogger) {
       window.PerformanceLogger.log('Captions', 'Load Captions Failed', performance.now() - overallStartTime, 'Failed', 'All caption pipelines failed. VSA fallback enabled.');
     }
+    
+    // 백엔드 초고속 스캔 레이팅 시도
+    try {
+      const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
+      const data = await resp.json();
+      if (data && data.ok) {
+        console.log(`[Mobile Fallback] Fast rating score: ${data.score}%`);
+        targetScore = data.score;
+        const relBadge = document.getElementById('det-rel-badge');
+        if (relBadge) relBadge.innerText = `${data.score}% RELIABILITY`;
+      }
+    } catch(e) {
+      console.warn('[Mobile Fallback] Fast rating failed:', e.message);
+    }
   }
 
   // Parse WebVTT text into caption segments

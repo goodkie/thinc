@@ -1817,6 +1817,190 @@
     // Drag Capture & Social Share Init
     initDragCapture();
     initSocialShareBinds();
+    initSocialExtension();
+  }
+
+  // ===== TH!NC INTEGRATED SOCIAL EXTENSION =====
+  function initSocialExtension() {
+    console.log('[Th!nc-Extension] Initializing Social Integration...');
+
+    const tabs = document.querySelectorAll('.platform-tab');
+    const webviews = document.querySelectorAll('.social-webview');
+    const urlInput = document.getElementById('yt-url-input');
+    const btnGo = document.getElementById('btn-yt-go');
+    const btnPrev = document.getElementById('btn-nav-prev');
+    const btnNext = document.getElementById('btn-nav-next');
+    const btnReload = document.getElementById('btn-nav-reload');
+    const btnLogin = document.getElementById('btn-platform-login');
+
+    let activeWebview = document.getElementById('wv-youtube');
+
+    // 1. 탭 전환 제어
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const platform = tab.dataset.platform;
+        
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        webviews.forEach(wv => {
+          wv.classList.remove('active');
+          if (wv.id === `wv-${platform}`) {
+            wv.classList.add('active');
+            activeWebview = wv;
+          }
+        });
+
+        // 로그인 버튼은 유튜브 플랫폼일 때만 노출
+        if (btnLogin) {
+          if (platform === 'youtube') btnLogin.classList.remove('hidden');
+          else btnLogin.classList.add('hidden');
+        }
+
+        // 주소창 업데이트
+        try {
+          urlInput.value = activeWebview.getURL();
+        } catch(e) {
+          if (platform === 'youtube') urlInput.value = 'https://m.youtube.com';
+          else if (platform === 'facebook') urlInput.value = 'https://m.facebook.com';
+          else if (platform === 'instagram') urlInput.value = 'https://www.instagram.com';
+          else if (platform === 'tiktok') urlInput.value = 'https://www.tiktok.com';
+        }
+      });
+    });
+
+    // 2. 뒤로 / 앞으로 / 새로고침 제어
+    if (btnPrev) btnPrev.addEventListener('click', () => { if (activeWebview && activeWebview.canGoBack()) activeWebview.goBack(); });
+    if (btnNext) btnNext.addEventListener('click', () => { if (activeWebview && activeWebview.canGoForward()) activeWebview.goForward(); });
+    if (btnReload) btnReload.addEventListener('click', () => { if (activeWebview) activeWebview.reload(); });
+
+    // 3. 주소 이동 및 검색 처리
+    function navigateToUrl() {
+      let val = urlInput.value.trim();
+      if (!val) return;
+
+      if (!val.startsWith('http://') && !val.startsWith('https://')) {
+        const platform = document.querySelector('.platform-tab.active').dataset.platform;
+        if (platform === 'youtube') val = `https://m.youtube.com/results?q=${encodeURIComponent(val)}`;
+        else if (platform === 'facebook') val = `https://m.facebook.com/search/top/?q=${encodeURIComponent(val)}`;
+        else if (platform === 'instagram') val = `https://www.instagram.com/explore/tags/${encodeURIComponent(val)}`;
+        else if (platform === 'tiktok') val = `https://www.tiktok.com/search?q=${encodeURIComponent(val)}`;
+      }
+      if (activeWebview) activeWebview.loadURL(val);
+    }
+
+    if (btnGo) btnGo.addEventListener('click', navigateToUrl);
+    if (urlInput) urlInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        navigateToUrl();
+        urlInput.blur();
+      }
+    });
+
+    // 4. 구글 로그인 버튼 연동
+    if (btnLogin) btnLogin.addEventListener('click', () => {
+      if (window.electronAPI && window.electronAPI.openYoutubeLogin) {
+        window.electronAPI.openYoutubeLogin();
+      }
+    });
+
+    // 5. 웹뷰 로딩 이벤트 감지 및 주소창 동기화 + 인젝션
+    const injectScriptText = (window.electronAPI && window.electronAPI.readSocialInjectScript) ? window.electronAPI.readSocialInjectScript() : '';
+
+    webviews.forEach(wv => {
+      wv.addEventListener('did-navigate', (e) => {
+        if (wv === activeWebview) {
+          urlInput.value = e.url;
+        }
+      });
+      wv.addEventListener('did-navigate-in-page', (e) => {
+        if (wv === activeWebview) {
+          urlInput.value = e.url;
+        }
+      });
+
+      wv.addEventListener('dom-ready', () => {
+        if (injectScriptText) {
+          console.log(`[Th!nc-Extension] Injecting script to webview: ${wv.id}`);
+          wv.executeJavaScript(injectScriptText);
+        }
+      });
+    });
+
+    // 6. 소셜 미디어 내 동영상 재생 시작 감지 수신
+    if (window.electronAPI && window.electronAPI.onVideoPlaybackStarted) {
+      window.electronAPI.onVideoPlaybackStarted((data) => {
+        console.log('[Th!nc-Extension] Received playing signal from background:', data);
+        if (data.videoId) {
+          loadSocialVideoAnalysis(data.videoId, data.platform);
+        }
+      });
+    }
+  }
+
+  // 유튜브 및 타 소셜 영상 실시간 분석 트리거 함수
+  async function loadSocialVideoAnalysis(videoId, platform) {
+    console.log(`[Th!nc-Extension] Requesting analysis for video: ${videoId} on ${platform}`);
+    activeVideoId = videoId;
+    
+    const bannerText = document.getElementById('banner-text');
+    if (bannerText) bannerText.innerText = '분석 시작 중...';
+    
+    captionLoadStatus = 'loading';
+    liveCaptions = [];
+    subtitleRecords = [];
+
+    // 유튜브 백그라운드 자막 가져오기
+    if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions && platform.includes('youtube')) {
+      try {
+        const result = await window.electronAPI.fetchBackgroundCaptions(videoId);
+        if (result && result.ok && result.captions) {
+          console.log(`[Th!nc-Extension] Successfully fetched background captions (${result.captions.length} segments).`);
+          liveCaptions = result.captions;
+          captionLoadStatus = 'loaded';
+          
+          if (bannerText) bannerText.innerText = '음성 분석 중...';
+          
+          captionPlaybackSec = 0;
+          lastShownCaptionIdx = -1;
+          
+          // 실시간 VSA 차트 분석 기동
+          if (!isRunning) {
+            const btnToggle = document.getElementById('btn-toggle');
+            if (btnToggle && btnToggle.dataset.running === 'false') {
+              btnToggle.click();
+            }
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('[Th!nc-Extension] Background caption fetch exception:', err.message);
+      }
+    }
+
+    // 유튜브 백그라운드 수집 실패 또는 타 플랫폼(페이스북, 인스타, 틱톡)
+    try {
+      const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${videoId}`);
+      const data = await resp.json();
+      if (data && data.ok) {
+        console.log(`[Th!nc-Extension] Fast rating score obtained: ${data.score}%`);
+        
+        targetScore = data.score;
+        const relBadge = document.getElementById('det-rel-badge');
+        if (relBadge) relBadge.innerText = `${data.score}% RELIABILITY`;
+
+        if (bannerText) bannerText.innerText = '음성 분석 중...';
+
+        if (!isRunning) {
+          const btnToggle = document.getElementById('btn-toggle');
+          if (btnToggle && btnToggle.dataset.running === 'false') {
+            btnToggle.click();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Th!nc-Extension] Fallback fast rating failed:', e.message);
+    }
   }
 
   const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';

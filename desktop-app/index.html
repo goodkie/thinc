@@ -112,107 +112,38 @@
     <main class="main-layout">
       <!-- Online Warning Banner for HTTPS/Mixed Content restrictions -->
       <div id="online-warning-banner" class="online-warning-banner hidden">
-        <span class="warning-text">⚠️ <b>브라우저 보안 공지 (Mixed Content):</b> 온라인 배포 사이트(HTTPS)에서는 보안 규정상 로컬 백엔드 서버(http://localhost:8080) 호출이 차단됩니다. 자막 연동 및 음성 분석율을 100% 가동하려면 로컬 서버 실행 후 아래 로컬 링크로 접속하세요.</span>
-        <div class="warning-actions">
-          <a href="http://localhost:8080" class="warning-link">http://localhost:8080 (로컬 접속)</a>
-          <button class="warning-close-btn" onclick="document.getElementById('online-warning-banner').style.display='none'">×</button>
-        </div>
-      </div>
-
-      <!-- LEFT PANEL: YOUTUBE SECTION -->
+        <span class="warning-text">⚠️ <b>브라우저 보안 공지 (Mixed Content):</b> 온라인 배포 사이트(HTTPS)에서는 보안 규정상 로컬 백엔드 서버(http://localhost:8080) 호출이 차단됩니다. 자막 연동 및 음�      <!-- LEFT PANEL: INTEGRATED MULTI-SOCIAL WEBVIEW -->
       <section class="left-panel">
-        <div class="panel-header">
-          <div class="yt-search-bar-wrap">
-            <div class="yt-search-bar">
-              <span class="yt-search-icon">🔍</span>
-              <input type="text" id="yt-url-input" class="yt-search-input" 
-                     placeholder="YouTube URL 또는 검색어 입력..." 
-                     autocomplete="off" autocorrect="off" spellcheck="false">
-              <button class="yt-go-btn" id="btn-yt-go">GO</button>
-            </div>
-            
-            <div class="yt-quick-btns">
-              <button class="yt-quick-btn" data-url="https://www.youtube.com">🏠 홈</button>
-              <button class="yt-quick-btn" data-url="https://www.youtube.com/feed/trending">🔥 인기</button>
-              <button class="yt-quick-btn" data-url="https://www.youtube.com/shorts">▶ Shorts</button>
-            </div>
+        <div class="platform-tabs-header">
+          <div class="platform-tabs">
+            <button class="platform-tab active" data-platform="youtube">📺 YouTube</button>
+            <button class="platform-tab" data-platform="facebook">👥 Facebook</button>
+            <button class="platform-tab" data-platform="instagram">📸 Instagram</button>
+            <button class="platform-tab" data-platform="tiktok">🎵 TikTok</button>
+          </div>
+          <button class="platform-login-btn" id="btn-platform-login">🔑 YouTube 로그인</button>
+        </div>
 
-            <!-- Search History Dropdown overlay -->
-            <div class="yt-search-history-wrap hidden" id="yt-search-history-wrap">
-              <div class="history-header">
-                <span id="txt-history-label">최근 검색어</span>
-                <button id="btn-clear-search-history">전체 삭제</button>
-              </div>
-              <div class="search-history-list" id="search-history-list"></div>
-            </div>
+        <div class="url-navigator-bar">
+          <button class="nav-btn" id="btn-nav-prev">◀</button>
+          <button class="nav-btn" id="btn-nav-next">▶</button>
+          <button class="nav-btn" id="btn-nav-reload">↺</button>
+          <div class="url-search-bar">
+            <span class="url-search-icon">🔍</span>
+            <input type="text" id="yt-url-input" class="url-search-input" 
+                   placeholder="주소 또는 검색어 입력 후 Enter..." 
+                   autocomplete="off" autocorrect="off" spellcheck="false">
+            <button class="url-go-btn" id="btn-yt-go">GO</button>
           </div>
         </div>
 
-        <div class="yt-content-area" id="yt-frame-container">
-          <!-- Back & Control buttons -->
-          <div class="yt-player-controls hidden" id="yt-player-controls">
-            <button class="yt-back-btn" id="btn-yt-back">⬅ 목록으로 돌아가기</button>
-            <button class="yt-quickstart-btn" id="btn-yt-quickstart">⚡ 분석 시작</button>
-            <button class="yt-alt-toggle-btn" id="btn-alt-toggle" style="display: none !important;">🔄 우회 플레이어</button>
-          </div>
-
-          <!-- YouTube Player Wrapper (for precise overlay coordinates) -->
-          <div id="yt-player-wrapper" class="yt-player-wrapper hidden">
-            <!-- YouTube Player iframe -->
-            <div id="yt-player" class="yt-frame"></div>
-
-            <!-- Alternative HTML5 Video Player -->
-            <video id="alt-player" class="yt-frame hidden" controls playsinline crossorigin="anonymous"></video>
-
-            <!-- YouTube Blocked Warning Overlay -->
-            <div id="yt-blocked-overlay" class="yt-blocked-overlay hidden">
-              <div class="yt-blocked-content">
-                <div class="yt-blocked-icon">⚠️</div>
-                <div class="yt-blocked-title">유튜브 보안 차단 발생</div>
-                <div class="yt-blocked-text">유튜브의 로봇 감지 정책에 의해 플레이어 재생이 일시 제한되었습니다.<br>우회 서버 플레이어를 통해 시청하시겠습니까?</div>
-                <div class="yt-blocked-btns">
-                  <button id="btn-use-alt" class="btn-alt-use" style="display: none !important;">우회 플레이어로 재생</button>
-                  <button id="btn-retry-yt" class="btn-alt-retry">↺ 다시 시도</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Live Truth vs Lie Floating ProgressBar Overlay -->
-            <div id="yt-live-truth-bar-container" class="yt-live-truth-bar-container hidden">
-              <div class="truth-bar-labels">
-                <span class="truth-label-t">T: <span id="yt-live-truth-pct">100%</span></span>
-                <span class="truth-label-l">L: <span id="yt-live-lie-pct">0%</span></span>
-              </div>
-              <div class="truth-bar-track">
-                <div id="yt-live-truth-fill" class="truth-fill-t" style="width: 100%"></div>
-                <div id="yt-live-lie-fill" class="truth-fill-l" style="width: 0%"></div>
-              </div>
-            </div>
-
-            <!-- Live Timeline Cumulative Bar -->
-            <canvas id="yt-live-reliability-bar" class="yt-live-reliability-bar hidden" width="640" height="12"></canvas>
-
-            <!-- Analysis End Verdict Overlay -->
-            <div id="yt-analysis-end-overlay" class="yt-analysis-end-overlay hidden"></div>
-
-            <!-- Floating Detector Trigger (minimized, moved inside wrapper for precise coordinates) -->
-            <div class="float-detector-btn hidden" id="float-detector-btn">
-              <div class="float-detector-pulse"></div>
-              <span class="float-detector-score" id="float-score-display">--</span>
-              <span class="float-detector-label">대기</span>
-              <div class="float-detector-sub" id="float-sub-display">대기 중..</div>
-            </div>
-          </div>
-
-          <!-- Video Grid Feed -->
-          <div class="yt-browser-feed" id="yt-browser-feed">
-            <!-- Favorites Section -->
-            <div class="yt-favorites-feed hidden" id="yt-favorites-feed">
-              <div class="feed-section-title" id="txt-favorites-title">⭐ 즐겨찾기 비디오</div>
-              <div class="yt-video-grid" id="yt-favorites-grid"></div>
-            </div>
-
-            <!-- Trending Section -->
+        <div class="social-webview-container" id="social-webview-container">
+          <webview id="wv-youtube" class="social-webview active" src="https://m.youtube.com" useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"></webview>
+          <webview id="wv-facebook" class="social-webview" src="https://m.facebook.com" useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"></webview>
+          <webview id="wv-instagram" class="social-webview" src="https://www.instagram.com" useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"></webview>
+          <webview id="wv-tiktok" class="social-webview" src="https://www.tiktok.com" useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"></webview>
+        </div>
+      </section>- Trending Section -->
             <div class="yt-trending-feed">
               <div class="feed-section-title" id="txt-trending-title">🔥 실시간 인기 분석 비디오</div>
               <div class="yt-video-grid" id="yt-video-grid"></div>
