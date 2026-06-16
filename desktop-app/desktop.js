@@ -146,6 +146,11 @@
           }
           return res;
         }
+        if (res.status === 404) {
+          const err = new Error('HTTP 404');
+          err.status = 404;
+          throw err;
+        }
         throw new Error(`HTTP ${res.status}`);
       } catch (err) {
         const duration = performance.now() - startTime;
@@ -154,6 +159,9 @@
         }
         console.warn(`[Backend Fallback] Call failed for ${baseUrl || 'relative'}${endpoint}:`, err.message);
         lastError = err;
+        if (err.status === 404 || err.message.includes('404')) {
+          break; // 백엔드가 404(자막 없음)를 응답한 경우 로컬 서버 폴백 시도 생략
+        }
       }
     }
     throw lastError || new Error(`All backend fallbacks failed for ${endpoint}`);
@@ -1824,20 +1832,13 @@
 
   // ===== INVIDIOUS REAL-TIME YOUTUBE DATA AGENT =====
   const INVIDIOUS_INSTANCES = [
-    // 2025년 테스트 확인된 작동 인스턴스 (우선순위 순)
     "https://inv.nadeko.net",
-    "https://inv.thepixora.com",
-    "https://invidious.projectsegfau.lt",
-    "https://inv.bp.projectsegfau.lt",
-    "https://invidious.perennialte.ch",
-    "https://invidious.lunar.icu",
-    "https://yewtu.be",
-    "https://yt.chocolatemoo53.com",
     "https://invidious.nerdvpn.de",
     "https://invidious.tiekoetter.com",
-    "https://invidious.flokinet.to",
-    "https://invidious.privacydev.net",
-    "https://vid.puffyan.us"
+    "https://yewtu.be",
+    "https://yt.chocolatemoo53.com",
+    "https://invidious.lunar.icu",
+    "https://invidious.drgns.space"
   ];
 
   // Strong, reliable multi-CORS proxy pool with automatic fallbacks
@@ -1861,6 +1862,9 @@
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(targetUrl, { signal: controller.signal });
         clearTimeout(timeoutId);
+        if (response.status === 404) {
+          throw new Error("HTTP 404 - Not Found");
+        }
         if (response.ok) {
           const text = await response.text();
           if (text && !text.includes("pricing") && !text.includes("limited to localhost") && !text.includes("Access Denied")) {
@@ -1869,6 +1873,9 @@
         }
       } catch (err) {
         console.warn(`[Direct] Direct fetch failed for ${targetUrl}, falling back to proxies:`, err.message || err);
+        if (err.message.includes("404")) {
+          throw err;
+        }
       }
     }
 
@@ -1955,7 +1962,7 @@
     'https://piped-api.lunar.icu',
     'https://pipedapi.really.click',
     'https://piped.yt',
-    'https://pipedapi.kavin.rocks'
+    'https://piped.video'
   ];
 
   let dynamicPipedInstances = [...PIPED_API_INSTANCES];
@@ -3426,10 +3433,39 @@
   async function fetchYoutubeTimedTextOfficialFrontend(videoId) {
     let listXml = null;
     const listUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&type=list`;
-    try {
-      listXml = await fetchViaCORSProxy(listUrl);
-    } catch (e) {
-      console.warn("TimedText list fetch failed via proxy:", e.message);
+    
+    // Electron/Capacitor 환경인 경우 직접 모바일/크롬 헤더를 싣고 직접 요청
+    const isElectron = window.electronAPI && window.electronAPI.isElectron;
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    
+    if (isElectron || isCapacitor) {
+      try {
+        console.log(`[Direct TimedText] Fetching list directly: ${listUrl}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch(listUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Referer': 'https://www.youtube.com/'
+          }
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          listXml = await res.text();
+        }
+      } catch (err) {
+        console.warn("[Direct TimedText] Direct list fetch failed:", err.message);
+      }
+    }
+    
+    if (!listXml) {
+      try {
+        listXml = await fetchViaCORSProxy(listUrl);
+      } catch (e) {
+        console.warn("TimedText list fetch failed via proxy:", e.message);
+      }
     }
 
     let targetLang = currentLang; // ko or en
@@ -3477,7 +3513,33 @@
 
     for (const url of subUrls) {
       try {
-        const xmlText = await fetchViaCORSProxy(url);
+        let xmlText = null;
+        if (isElectron || isCapacitor) {
+          try {
+            console.log(`[Direct TimedText] Fetching track directly: ${url}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+            const res = await fetch(url, {
+              signal: controller.signal,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Referer': 'https://www.youtube.com/'
+              }
+            });
+            clearTimeout(timeoutId);
+            if (res.status === 404) {
+              throw new Error("HTTP 404 - Not Found");
+            }
+            if (res.ok) xmlText = await res.text();
+          } catch (e) {
+            console.warn("[Direct TimedText] Direct track fetch failed:", e.message);
+            if (e.message.includes("404")) throw e;
+          }
+        }
+        if (!xmlText) {
+          xmlText = await fetchViaCORSProxy(url);
+        }
         if (xmlText && xmlText.includes('<text')) {
           const parser = new DOMParser();
           const xmlDoc = parser.parseFromString(xmlText, "text/xml");
@@ -3597,6 +3659,20 @@
         }
       } else {
         console.log(`[Diagnostic] Attempt 3 marker not found`);
+      }
+    }
+    
+    // Attempt 4: Regex-based captionTracks extraction (Safest backup when HTML is slightly broken)
+    if (!captionTracks) {
+      try {
+        console.log(`[Diagnostic] Attempt 4: Regex-based extraction started`);
+        const match = html.match(/"captionTracks"\s*:\s*(\[[^\]]+\])/);
+        if (match && match[1]) {
+          captionTracks = JSON.parse(match[1]);
+          console.log(`[Diagnostic] Attempt 4 parsed captionTracks via Regex:`, captionTracks);
+        }
+      } catch (e) {
+        console.warn("[Diagnostic] Failed Regex captionTracks parsing:", e.message);
       }
     }
     

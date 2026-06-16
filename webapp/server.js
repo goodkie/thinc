@@ -584,7 +584,7 @@ async function getPipedInstances() {
     "https://piped-api.lunar.icu",
     "https://pipedapi.really.click",
     "https://piped.yt",
-    "https://pipedapi.kavin.rocks"
+    "https://piped.video"
   ];
 
   if (cachedPipedInstances.length > 0 && (now - lastPipedInstancesFetchTime < 6 * 3600 * 1000)) {
@@ -594,7 +594,8 @@ async function getPipedInstances() {
   
   // Try dynamic fetching from multiple mirror sources
   const sources = [
-    'https://piped-instances.kavin.rocks/'
+    'https://piped-instances.kavin.rocks/',
+    'https://raw.githubusercontent.com/team-piped/piped-instances/main/piped-instances.json'
   ];
 
   for (const src of sources) {
@@ -793,7 +794,6 @@ async function getInvidiousInstances() {
   const fallbackList = [
     "https://inv.nadeko.net",
     "https://invidious.nerdvpn.de",
-    "https://invidious.projectsegfau.lt",
     "https://invidious.tiekoetter.com",
     "https://yewtu.be",
     "https://yt.chocolatemoo53.com",
