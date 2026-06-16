@@ -1544,22 +1544,31 @@
   // ===== DOM EVENT BINDINGS =====
   function initBinds() {
     // YouTube Loader Binds
-    document.getElementById('btn-open-youtube').addEventListener('click', () => {
-      loadYouTubeVideo("home");
-    });
+    const btnOpenYoutube = document.getElementById('btn-open-youtube');
+    if (btnOpenYoutube) {
+      btnOpenYoutube.addEventListener('click', () => {
+        loadYouTubeVideo("home");
+      });
+    }
 
-    document.getElementById('btn-yt-go').addEventListener('click', () => {
-      const val = document.getElementById('yt-url-input').value;
-      if (val) loadYouTubeVideo(val);
-    });
-
-    document.getElementById('yt-url-input').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        const val = e.target.value;
+    const btnYtGo = document.getElementById('btn-yt-go');
+    if (btnYtGo) {
+      btnYtGo.addEventListener('click', () => {
+        const val = document.getElementById('yt-url-input')?.value;
         if (val) loadYouTubeVideo(val);
-        e.target.blur(); // Hide software keyboard on mobile
-      }
-    });
+      });
+    }
+
+    const ytUrlInput = document.getElementById('yt-url-input');
+    if (ytUrlInput) {
+      ytUrlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          const val = e.target.value;
+          if (val) loadYouTubeVideo(val);
+          e.target.blur(); // Hide software keyboard on mobile
+        }
+      });
+    }
 
     // Search input focus & history dropdown handling
     const searchInput = document.getElementById('yt-url-input');
@@ -1660,13 +1669,16 @@
     });
 
     // Back to feed list
-    document.getElementById('btn-yt-back').addEventListener('click', () => {
-      disableAlternativePlayer();
-      if (ytBlockedTimer) clearTimeout(ytBlockedTimer);
-      const blockedOverlay = document.getElementById('yt-blocked-overlay');
-      if (blockedOverlay) blockedOverlay.classList.add('hidden');
-      showBrowserFeed();
-    });
+    const btnYtBack = document.getElementById('btn-yt-back');
+    if (btnYtBack) {
+      btnYtBack.addEventListener('click', () => {
+        disableAlternativePlayer();
+        if (ytBlockedTimer) clearTimeout(ytBlockedTimer);
+        const blockedOverlay = document.getElementById('yt-blocked-overlay');
+        if (blockedOverlay) blockedOverlay.classList.add('hidden');
+        showBrowserFeed();
+      });
+    }
 
     // Alternative player event binds
     const btnUseAlt = document.getElementById('btn-use-alt');
@@ -1701,14 +1713,19 @@
     }
 
     // Start/Stop analysis
-    document.getElementById('btn-toggle').addEventListener('click', toggleSession);
+    const btnToggle = document.getElementById('btn-toggle');
+    if (btnToggle) {
+      btnToggle.addEventListener('click', toggleSession);
+    }
 
     // Sensitivity slider
     const sensSlider = document.getElementById('sens-slider');
     const sensVal = document.getElementById('sens-val');
-    sensSlider.addEventListener('input', (e) => {
-      sensVal.innerText = e.target.value;
-    });
+    if (sensSlider && sensVal) {
+      sensSlider.addEventListener('input', (e) => {
+        sensVal.innerText = e.target.value;
+      });
+    }
 
     // View Modes tabs
     const modeTabs = document.querySelectorAll('#mode-tabs .mode-tab');
@@ -1724,17 +1741,17 @@
         const feed = document.getElementById('subtitle-feed');
 
         if (viewMode === 'expert') {
-          expertGrid.classList.remove('hidden');
-          multichart.classList.remove('hidden');
-          feed.classList.remove('hidden');
+          if (expertGrid) expertGrid.classList.remove('hidden');
+          if (multichart) multichart.classList.remove('hidden');
+          if (feed) feed.classList.remove('hidden');
         } else if (viewMode === 'mini') {
-          expertGrid.classList.add('hidden');
-          multichart.classList.add('hidden');
-          feed.classList.add('hidden');
+          if (expertGrid) expertGrid.classList.add('hidden');
+          if (multichart) multichart.classList.add('hidden');
+          if (feed) feed.classList.add('hidden');
         } else { // visual
-          expertGrid.classList.add('hidden');
-          multichart.classList.remove('hidden');
-          feed.classList.remove('hidden');
+          if (expertGrid) expertGrid.classList.add('hidden');
+          if (multichart) multichart.classList.remove('hidden');
+          if (feed) feed.classList.remove('hidden');
         }
       });
     });
@@ -1767,9 +1784,12 @@
     if (btnShotPlus) btnShotPlus.addEventListener('click', () => adjustScreenshotCount(1));
 
     // Share alert modal
-    document.getElementById('btn-share').addEventListener('click', triggerTruthCapture);
-    document.getElementById('btn-close-modal').addEventListener('click', closeTruthModal);
-    document.getElementById('btn-modal-bottom-close').addEventListener('click', closeTruthModal);
+    const btnShare = document.getElementById('btn-share');
+    if (btnShare) btnShare.addEventListener('click', triggerTruthCapture);
+    const btnCloseModal = document.getElementById('btn-close-modal');
+    if (btnCloseModal) btnCloseModal.addEventListener('click', closeTruthModal);
+    const btnModalBottomClose = document.getElementById('btn-modal-bottom-close');
+    if (btnModalBottomClose) btnModalBottomClose.addEventListener('click', closeTruthModal);
     
     // Final Report Access from modal
     const btnGoReport = document.getElementById('btn-modal-go-report');
@@ -1782,11 +1802,14 @@
     }
 
     // Export report CSV
-    document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
-    document.getElementById('btn-share-report').addEventListener('click', shareReportScreenshot);
+    const btnExportCsv = document.getElementById('btn-export-csv');
+    if (btnExportCsv) btnExportCsv.addEventListener('click', exportCSV);
+    const btnShareReport = document.getElementById('btn-share-report');
+    if (btnShareReport) btnShareReport.addEventListener('click', shareReportScreenshot);
 
     // Clear history
-    document.getElementById('btn-clear-history').addEventListener('click', clearHistory);
+    const btnClearHistory = document.getElementById('btn-clear-history');
+    if (btnClearHistory) btnClearHistory.addEventListener('click', clearHistory);
 
     // Minimize float button redirect
     const floatBtn = document.getElementById('float-detector-btn');
