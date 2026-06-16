@@ -2038,6 +2038,22 @@
 
   // 유튜브 및 타 소셜 영상 실시간 분석 트리거 함수
   async function loadSocialVideoAnalysis(videoId, platform) {
+    // ✅ 중복 분석 방지 가드: 동일 비디오가 이미 로드/로딩 중이면 스킵
+    if (activeVideoId === videoId && (captionLoadStatus === 'loaded' || captionLoadStatus === 'loading')) {
+      console.log(`[Th!nc-Extension] Analysis already active/loading for video: ${videoId}. Skipping re-fetch. (Status: ${captionLoadStatus})`);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Analysis', 'Social Video Analysis Skipped (Already Active)', 0, 'Info', `Video ID: ${videoId}, Status: ${captionLoadStatus}`);
+      }
+      // 분석 엔진이 정지된 특이 상황에만 재가동 (토글 오작동 방지)
+      if (typeof isRunning !== 'undefined' && !isRunning) {
+        const btnToggle = document.getElementById('btn-toggle');
+        if (btnToggle && btnToggle.dataset.running === 'false') {
+          btnToggle.click();
+        }
+      }
+      return;
+    }
+
     console.log(`[Th!nc-Extension] Requesting analysis for video: ${videoId} on ${platform}`);
     activeVideoId = videoId;
     
@@ -3891,39 +3907,97 @@
     console.log(`[Diagnostic] Selected track language: ${track.languageCode}, URL: ${track.baseUrl}`);
     
     const xmlUrl = track.baseUrl;
-    const xmlText = await fetchViaCORSProxy(xmlUrl);
-    console.log(`[Diagnostic] Fetched XML text length: ${xmlText?.length}`);
-    
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-    
-    const parserError = xmlDoc.getElementsByTagName("parsererror");
-    if (parserError.length > 0) {
-      console.warn(`[Diagnostic] XML parse error`);
-      throw new Error("XML parse error");
+    let xmlText = null;
+
+    // ✅ Electron 직접 페치 우선 시도 (CORS 우회, 최고 성공률)
+    if (typeof isElectron !== 'undefined' && isElectron) {
+      try {
+        console.log(`[Direct XML] Electron direct fetch for: ${xmlUrl}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(xmlUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/xml,application/xml,application/json,*/*'
+          }
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          xmlText = await res.text();
+          console.log(`[Direct XML] Electron direct fetch succeeded, length: ${xmlText?.length}`);
+        }
+      } catch (err) {
+        console.warn('[Direct XML] Electron direct fetch failed:', err.message);
+      }
     }
-    
-    const textElements = xmlDoc.getElementsByTagName('text');
-    if (!textElements || textElements.length === 0) {
-      console.warn(`[Diagnostic] No captions text nodes in XML`);
-      throw new Error("No captions text nodes in XML");
+
+    // 직접 페치 실패 시 CORS 프록시 폴백
+    if (!xmlText) {
+      console.log(`[Direct XML] Falling back to CORS proxy for: ${xmlUrl}`);
+      xmlText = await fetchViaCORSProxy(xmlUrl);
     }
-    console.log(`[Diagnostic] Parsed ${textElements.length} text elements from XML`);
-    
+    console.log(`[Diagnostic] Fetched XML/JSON text length: ${xmlText?.length}`);
+
     const parsedCaptions = [];
-    for (let i = 0; i < textElements.length; i++) {
-      const el = textElements[i];
-      const start = parseFloat(el.getAttribute('start') || '0');
-      const dur = parseFloat(el.getAttribute('dur') || '0');
-      const text = el.textContent || '';
-      parsedCaptions.push({
-        start: start,
-        dur: dur,
-        end: start + dur,
-        text: decodeHTMLEntities(text)
-      });
+    const trimmedText = (xmlText || '').trim();
+
+    if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
+      // ✅ JSON 포맷 파싱 (유튜브가 JSON 형태로 자막을 반환하는 경우)
+      try {
+        const json = JSON.parse(trimmedText);
+        const events = json.events || [];
+        events.forEach(event => {
+          if (!event.segs) return;
+          const text = event.segs.map(s => s.utf8).join('').trim();
+          if (!text) return;
+          const startMs = event.tStartMs ? Number(event.tStartMs) : 0;
+          const durMs = event.dDurationMs ? Number(event.dDurationMs) : 1000;
+          parsedCaptions.push({
+            start: startMs / 1000,
+            dur: durMs / 1000,
+            end: (startMs + durMs) / 1000,
+            text: decodeHTMLEntities(text.replace(/\n/g, ' ').trim())
+          });
+        });
+        console.log(`[Diagnostic] Parsed ${parsedCaptions.length} JSON caption segments.`);
+      } catch (jsonErr) {
+        console.warn('[Diagnostic] Failed parsing captions as JSON:', jsonErr.message);
+        throw new Error('JSON caption parse error: ' + jsonErr.message);
+      }
+    } else {
+      // ✅ XML 포맷 파싱
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(trimmedText, 'text/xml');
+      const parserError = xmlDoc.getElementsByTagName('parsererror');
+      if (parserError.length > 0) {
+        console.warn(`[Diagnostic] XML parse error`);
+        throw new Error('XML parse error');
+      }
+      const textElements = xmlDoc.getElementsByTagName('text');
+      if (!textElements || textElements.length === 0) {
+        console.warn(`[Diagnostic] No captions text nodes in XML`);
+        throw new Error('No captions text nodes in XML');
+      }
+      console.log(`[Diagnostic] Parsed ${textElements.length} text elements from XML`);
+      for (let i = 0; i < textElements.length; i++) {
+        const el = textElements[i];
+        const start = parseFloat(el.getAttribute('start') || '0');
+        const dur = parseFloat(el.getAttribute('dur') || '0');
+        parsedCaptions.push({
+          start: start,
+          dur: dur,
+          end: start + dur,
+          text: decodeHTMLEntities(el.textContent || '')
+        });
+      }
     }
-    
+
+    if (parsedCaptions.length === 0) {
+      console.warn(`[Diagnostic] No captions parsed from response`);
+      throw new Error('No captions parsed from response');
+    }
+
     return parsedCaptions;
   }
 
