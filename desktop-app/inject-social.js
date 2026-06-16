@@ -1,233 +1,308 @@
 /**
- * Th!nc Social Extension Injection Script (inject-social.js)
- * Designed for YouTube, Facebook, Instagram, and TikTok official webviews.
+ * Th!nc Social Extension Injection Script (inject-social.js) v2.1
+ * 자동 거짓 레이팅 배지 — YouTube(모바일/데스크톱), Facebook, Instagram, TikTok
+ * Electron webview.executeJavaScript() 또는 webview preload로 주입됩니다.
  */
-(function() {
-  console.log('[Th!nc-Extension] Script injected successfully.');
+(function () {
+  // 중복 인젝션 방지
+  if (window.__THINC_INJECTED__) return;
+  window.__THINC_INJECTED__ = true;
 
-  // 백엔드 API 주소 (실제 배포된 주소 또는 로컬 주소, Electron 메인에서 주입 가능하도록 설계)
-  let backendUrl = 'https://thinc-lie-detector-production.up.railway.app';
-  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    backendUrl = 'http://localhost:8080';
+  console.log('[Th!nc-Extension] v2.1 — Script injected on:', location.hostname);
+
+  // ── 백엔드 API 주소 ──────────────────────────────────────────────────────────
+  const BACKEND_URL = 'https://thinc-lie-detector-production.up.railway.app';
+
+  // ── 캐시 & 스캔 상태 ─────────────────────────────────────────────────────────
+  const ratingCache = new Map();   // videoId → ratingData
+  const scanPending = new Set();   // 스캔 중인 videoId
+
+  // ── 배지 스타일 주입 ─────────────────────────────────────────────────────────
+  const STYLE_ID = '__thinc_badge_style__';
+  if (!document.getElementById(STYLE_ID)) {
+    const styleEl = document.createElement('style');
+    styleEl.id = STYLE_ID;
+    styleEl.textContent = `
+      .thinc-badge {
+        position: absolute !important;
+        top: 6px !important;
+        left: 6px !important;
+        z-index: 99999 !important;
+        padding: 3px 7px !important;
+        border-radius: 4px !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        font-family: -apple-system, 'Segoe UI', sans-serif !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.4px !important;
+        color: #fff !important;
+        pointer-events: none !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 3px !important;
+        white-space: nowrap !important;
+        line-height: 1.4 !important;
+        backdrop-filter: blur(4px) !important;
+        -webkit-backdrop-filter: blur(4px) !important;
+        animation: thinc-fadein 0.4s ease !important;
+      }
+      @keyframes thinc-fadein {
+        from { opacity: 0; transform: scale(0.85); }
+        to   { opacity: 1; transform: scale(1); }
+      }
+      .thinc-badge.safe   { background: rgba(0,200,83,0.90) !important; border: 1px solid #00e676 !important; box-shadow: 0 0 8px rgba(0,200,83,0.5) !important; }
+      .thinc-badge.caution{ background: rgba(255,145,0,0.90) !important; border: 1px solid #ffab40 !important; box-shadow: 0 0 8px rgba(255,145,0,0.5) !important; }
+      .thinc-badge.danger { background: rgba(229,28,35,0.92) !important; border: 1px solid #ff5252 !important; box-shadow: 0 0 8px rgba(229,28,35,0.5) !important; }
+      /* 컨테이너 relative 보장 */
+      ytm-compact-video-renderer, ytm-video-with-context-renderer,
+      ytm-media-item, ytm-rich-item-renderer, ytd-rich-grid-media,
+      ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer {
+        position: relative !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(styleEl);
   }
 
-  // 캐시 및 스캔 중인 동영상 상태 관리
-  const ratingCache = new Map(); // videoId -> ratingData
-  const activeScans = new Set(); // videoId
-
-  // --- 스타일 시트 인젝션 (아름다운 네온 3색 배지 스타일) ---
-  const styleEl = document.createElement('style');
-  styleEl.innerHTML = `
-    .thinc-rating-badge {
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      z-index: 9999;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-family: 'Inter', sans-serif;
-      font-size: 11px;
-      font-weight: bold;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #ffffff;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
-      pointer-events: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      transition: all 0.3s ease;
-    }
-    .thinc-rating-badge.rating-safe {
-      background: rgba(0, 200, 83, 0.85);
-      border: 1px solid #00c853;
-      box-shadow: 0 0 8px rgba(0, 200, 83, 0.4);
-      text-shadow: 0 0 2px #00c853;
-    }
-    .thinc-rating-badge.rating-caution {
-      background: rgba(255, 145, 0, 0.85);
-      border: 1px solid #ff9100;
-      box-shadow: 0 0 8px rgba(255, 145, 0, 0.4);
-      text-shadow: 0 0 2px #ff9100;
-    }
-    .thinc-rating-badge.rating-danger {
-      background: rgba(255, 23, 68, 0.85);
-      border: 1px solid #ff1744;
-      box-shadow: 0 0 8px rgba(255, 23, 68, 0.4);
-      text-shadow: 0 0 2px #ff1744;
-    }
-    /* 각 소셜 플랫폼별 썸네일 오버레이 포지셔닝 대응 */
-    ytd-rich-grid-media, ytd-video-renderer, ytd-compact-video-renderer, .style-scope.ytd-grid-video-renderer {
-      position: relative;
-    }
-    .tiktok-video-card-container, .instagram-reel-card, .facebook-video-card {
-      position: relative;
-    }
-  `;
-  document.head.appendChild(styleEl);
-
-  // --- 비디오 ID 파서 및 매핑 규칙 ---
-  function extractVideoId(url) {
-    if (!url) return null;
+  // ── 비디오 ID 추출 ───────────────────────────────────────────────────────────
+  function parseVideoId(href) {
+    if (!href) return null;
     try {
-      const parsed = new URL(url, location.href);
-      if (parsed.hostname.includes('youtube.com')) {
-        return parsed.searchParams.get('v');
-      } else if (parsed.hostname.includes('youtu.be')) {
-        return parsed.pathname.substring(1);
-      } else if (parsed.pathname.includes('/watch')) {
-        const match = parsed.search.match(/v=([^&]+)/);
-        return match ? match[1] : null;
-      } else if (parsed.pathname.includes('/shorts/')) {
-        const parts = parsed.pathname.split('/shorts/');
-        return parts[1] ? parts[1].split('?')[0] : null;
-      } else if (parsed.hostname.includes('tiktok.com') && parsed.pathname.includes('/video/')) {
-        const parts = parsed.pathname.split('/video/');
-        return parts[1] ? parts[1].split('?')[0] : null;
-      } else if (parsed.hostname.includes('instagram.com') && parsed.pathname.includes('/reel/')) {
-        const parts = parsed.pathname.split('/reel/');
-        return parts[1] ? parts[1].split('/')[0] : null;
-      } else if (parsed.hostname.includes('facebook.com') && (parsed.pathname.includes('/videos/') || parsed.pathname.includes('/watch/'))) {
-        const match = parsed.pathname.match(/\/(?:videos|watch)\/([0-9]+)/);
-        return match ? match[1] : null;
+      const u = new URL(href, location.href);
+      // YouTube: /watch?v=, /shorts/ID, youtu.be/ID
+      if (u.hostname.includes('youtube.com') || u.hostname.includes('youtu.be')) {
+        if (u.searchParams.get('v')) return u.searchParams.get('v');
+        const shortsMatch = u.pathname.match(/\/shorts\/([A-Za-z0-9_-]{6,15})/);
+        if (shortsMatch) return shortsMatch[1];
+        if (u.hostname.includes('youtu.be')) return u.pathname.slice(1).split('/')[0] || null;
       }
-    } catch (e) {}
+      // TikTok
+      if (u.hostname.includes('tiktok.com')) {
+        const m = u.pathname.match(/\/video\/(\d+)/);
+        return m ? m[1] : null;
+      }
+      // Instagram
+      if (u.hostname.includes('instagram.com')) {
+        const m = u.pathname.match(/\/reel\/([A-Za-z0-9_-]+)/);
+        return m ? m[1] : null;
+      }
+      // Facebook
+      if (u.hostname.includes('facebook.com') || u.hostname.includes('fb.com')) {
+        const m = u.pathname.match(/\/(?:videos|watch|video)\/(\d+)/);
+        if (m) return m[1];
+        if (u.searchParams.get('v')) return u.searchParams.get('v');
+      }
+    } catch (e) { /* 무시 */ }
     return null;
   }
 
-  // --- 백그라운드 스캔 비동기 쿼리 ---
+  // ── 백엔드 API 호출 ──────────────────────────────────────────────────────────
   async function fetchRating(videoId) {
     if (ratingCache.has(videoId)) return ratingCache.get(videoId);
-    if (activeScans.has(videoId)) return null;
-
-    activeScans.add(videoId);
+    if (scanPending.has(videoId)) return null;
+    scanPending.add(videoId);
     try {
-      const response = await fetch(`${backendUrl}/api/analyze-video-fast?id=${videoId}`);
-      if (!response.ok) throw new Error('API response fail');
-      const data = await response.json();
-      ratingCache.set(videoId, data);
-      return data;
+      // no-cors 방지: CORS 활성화된 Railway 백엔드로 요청
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000); // 8초 타임아웃
+      const res = await fetch(`${BACKEND_URL}/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`, {
+        method: 'GET',
+        signal: ctrl.signal,
+        cache: 'no-store'
+      });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data && data.ok) {
+        ratingCache.set(videoId, data);
+        return data;
+      }
     } catch (e) {
-      console.warn(`[Th!nc-Extension] Scan failed for ${videoId}:`, e.message);
-      return null;
+      if (e.name !== 'AbortError') {
+        console.warn(`[Th!nc-Extension] Fetch failed for ${videoId}:`, e.message);
+      }
     } finally {
-      activeScans.delete(videoId);
+      scanPending.delete(videoId);
+    }
+    return null;
+  }
+
+  // ── 배지 DOM 주입 ────────────────────────────────────────────────────────────
+  function injectBadge(container, videoId, data) {
+    if (!container) return;
+    // 이미 배지가 있으면 스킵
+    if (container.querySelector('.thinc-badge[data-vid]')) return;
+    const existingBadge = container.querySelector(`.thinc-badge[data-vid="${videoId}"]`);
+    if (existingBadge) return;
+
+    const badge = document.createElement('span');
+    badge.className = `thinc-badge ${data.rating}`;
+    badge.setAttribute('data-vid', videoId);
+
+    const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : '🔴';
+    badge.textContent = `${emoji} ${data.badgeText}`;
+
+    // 컨테이너가 static이면 relative로 전환
+    const pos = window.getComputedStyle(container).position;
+    if (pos === 'static' || pos === '') {
+      container.style.position = 'relative';
+    }
+
+    container.appendChild(badge);
+    console.log(`[Th!nc-Extension] Badge injected: ${data.rating} (${data.badgeText}) for ${videoId}`);
+  }
+
+  // ── 썸네일 컨테이너 탐색 헬퍼 ───────────────────────────────────────────────
+  function findThumbContainer(linkEl) {
+    // 썸네일 이미지나 img 부모를 찾아 올라간다
+    const img = linkEl.querySelector('img, ytm-thumbnail-overlay, .ytm-thumbnail, .image-container');
+    if (img) return img.closest('a') || img.parentElement || linkEl;
+    return linkEl;
+  }
+
+  // ── 페이지별 스캐너 ──────────────────────────────────────────────────────────
+  function scanYouTube() {
+    const hostname = location.hostname; // m.youtube.com or www.youtube.com
+
+    // ─ 모바일 YouTube (m.youtube.com) 카드 선택자 ─
+    const mobileSelectors = [
+      'ytm-compact-video-renderer',
+      'ytm-video-with-context-renderer',
+      'ytm-rich-item-renderer',
+      'ytm-media-item',
+    ];
+    // ─ 데스크톱 YouTube 카드 선택자 ─
+    const desktopSelectors = [
+      'ytd-rich-grid-media',
+      'ytd-video-renderer',
+      'ytd-compact-video-renderer',
+      'ytd-grid-video-renderer',
+    ];
+
+    const allSelectors = [...mobileSelectors, ...desktopSelectors].join(', ');
+    const cards = document.querySelectorAll(allSelectors);
+
+    cards.forEach(card => {
+      // 링크 탐색 우선순위
+      const linkEl =
+        card.querySelector('a[href*="/watch?v="]') ||
+        card.querySelector('a[href*="/shorts/"]') ||
+        card.querySelector('a.yt-simple-endpoint') ||
+        card.querySelector('a[href]');
+
+      if (!linkEl) return;
+
+      const videoId = parseVideoId(linkEl.getAttribute('href'));
+      if (!videoId) return;
+
+      const container = findThumbContainer(linkEl);
+
+      fetchRating(videoId).then(data => {
+        if (data) injectBadge(container, videoId, data);
+      });
+    });
+
+    // 폴백: /watch?v= 링크를 직접 스캔 (SPA 라우팅 대응)
+    if (cards.length === 0) {
+      document.querySelectorAll('a[href*="/watch?v="], a[href*="/shorts/"]').forEach(a => {
+        const videoId = parseVideoId(a.getAttribute('href'));
+        if (!videoId) return;
+        const container = a.closest('figure, li, div[class*="item"], div[class*="card"]') || a;
+        fetchRating(videoId).then(data => {
+          if (data) injectBadge(container, videoId, data);
+        });
+      });
     }
   }
 
-  // --- 배지 DOM 주입 ---
-  function injectBadge(containerElement, videoId, data) {
-    if (!containerElement || containerElement.querySelector('.thinc-rating-badge')) return;
-
-    // 배지 생성
-    const badge = document.createElement('div');
-    badge.className = `thinc-rating-badge rating-${data.rating}`;
-    
-    let emoji = '🟢';
-    if (data.rating === 'caution') emoji = '🟡';
-    else if (data.rating === 'danger') emoji = '🔴';
-
-    badge.innerHTML = `${emoji} ${data.badgeText}`;
-    
-    // 절대 위치 지원을 위한 relative 클래스 강제
-    if (window.getComputedStyle(containerElement).position === 'static') {
-      containerElement.style.position = 'relative';
-    }
-
-    containerElement.appendChild(badge);
-    console.log(`[Th!nc-Extension] Injected badge: ${data.rating} for video: ${videoId}`);
+  function scanInstagram() {
+    document.querySelectorAll('a[href*="/reel/"]').forEach(a => {
+      const videoId = parseVideoId(a.getAttribute('href'));
+      if (!videoId) return;
+      const container = a.closest('article, div[role="button"]') || a;
+      fetchRating(videoId).then(data => {
+        if (data) injectBadge(container, videoId, data);
+      });
+    });
   }
 
-  // --- 화면 노출 영상 스캐너 기동 ---
-  function scanPageElements() {
-    const hostname = location.hostname;
+  function scanTikTok() {
+    document.querySelectorAll('a[href*="/video/"]').forEach(a => {
+      const videoId = parseVideoId(a.getAttribute('href'));
+      if (!videoId) return;
+      const container = a.closest('div[class*="item"], li, article') || a;
+      fetchRating(videoId).then(data => {
+        if (data) injectBadge(container, videoId, data);
+      });
+    });
+  }
 
-    if (hostname.includes('youtube.com')) {
-      // YouTube 데스크톱 및 모바일 타깃 카드들
-      const videoElements = document.querySelectorAll('ytd-rich-grid-media, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytm-video-with-context-renderer');
-      videoElements.forEach(el => {
-        const linkEl = el.querySelector('a#thumbnail, a.yt-simple-endpoint, a[href*="/watch"], a[href*="/shorts"]');
-        if (linkEl) {
-          const videoId = extractVideoId(linkEl.getAttribute('href'));
-          const thumbEl = el.querySelector('#thumbnail, .ytm-video-thumbnail-container, ytm-thumbnail-overlay');
-          if (videoId && thumbEl) {
-            fetchRating(videoId).then(data => {
-              if (data) injectBadge(thumbEl, videoId, data);
-            });
-          }
-        }
+  function scanFacebook() {
+    document.querySelectorAll(
+      'a[href*="/videos/"], a[href*="/watch/"], a[href*="/video/"], a[href*="?v="]'
+    ).forEach(a => {
+      const videoId = parseVideoId(a.getAttribute('href'));
+      if (!videoId) return;
+      const container = a.closest('div[role="article"], div[class*="story"]') || a;
+      fetchRating(videoId).then(data => {
+        if (data) injectBadge(container, videoId, data);
       });
-    } else if (hostname.includes('instagram.com')) {
-      // Instagram Reels 카드들
-      const reelCards = document.querySelectorAll('a[href*="/reel/"]');
-      reelCards.forEach(el => {
-        const videoId = extractVideoId(el.getAttribute('href'));
-        if (videoId) {
-          fetchRating(videoId).then(data => {
-            if (data) injectBadge(el, videoId, data);
-          });
-        }
-      });
-    } else if (hostname.includes('tiktok.com')) {
-      // TikTok 포스트들
-      const tiktokCards = document.querySelectorAll('a[href*="/video/"]');
-      tiktokCards.forEach(el => {
-        const videoId = extractVideoId(el.getAttribute('href'));
-        if (videoId) {
-          fetchRating(videoId).then(data => {
-            if (data) injectBadge(el, videoId, data);
-          });
-        }
-      });
-    } else if (hostname.includes('facebook.com')) {
-      // Facebook 동영상 카드들
-      const fbCards = document.querySelectorAll('a[href*="/videos/"], a[href*="/watch/"]');
-      fbCards.forEach(el => {
-        const videoId = extractVideoId(el.getAttribute('href'));
-        if (videoId) {
-          fetchRating(videoId).then(data => {
-            if (data) injectBadge(el, videoId, data);
-          });
-        }
-      });
+    });
+  }
+
+  // ── 통합 스캔 디스패처 ───────────────────────────────────────────────────────
+  function scanPage() {
+    const h = location.hostname;
+    try {
+      if (h.includes('youtube.com'))   scanYouTube();
+      else if (h.includes('instagram.com')) scanInstagram();
+      else if (h.includes('tiktok.com'))    scanTikTok();
+      else if (h.includes('facebook.com') || h.includes('fb.com')) scanFacebook();
+    } catch (e) {
+      console.warn('[Th!nc-Extension] scanPage error:', e.message);
     }
   }
 
-  // --- 실시간 DOM 변화 감시 및 디바운스 기동 ---
-  let scanTimeout = null;
+  // ── DOM 변화 감시 (디바운스 600ms) ───────────────────────────────────────────
+  let debounceTimer = null;
   const observer = new MutationObserver(() => {
-    if (scanTimeout) clearTimeout(scanTimeout);
-    scanTimeout = setTimeout(scanPageElements, 600); // 600ms 디바운스로 스크롤/로딩 병목 방지
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(scanPage, 600);
   });
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+  // body가 준비될 때까지 대기
+  function startObserver() {
+    const target = document.body || document.documentElement;
+    if (!target) { setTimeout(startObserver, 200); return; }
+    observer.observe(target, { childList: true, subtree: true });
+    // 최초 1.5초 후 스캔 (SPA 초기 렌더 완료 대기)
+    setTimeout(scanPage, 1500);
+    // 5초 후 한 번 더 (늦게 렌더링되는 카드 대응)
+    setTimeout(scanPage, 5000);
+    console.log('[Th!nc-Extension] Observer started on', location.hostname);
+  }
 
-  // 최초 로드 즉시 스캔
-  setTimeout(scanPageElements, 1000);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startObserver);
+  } else {
+    startObserver();
+  }
 
-  // --- 재생 비디오 음성/자막 추출 연동 (VSA 및 가로채기 기본 포석) ---
+  // ── 현재 재생 중인 비디오 감지 (playback 이벤트 중계) ───────────────────────
   setInterval(() => {
-    const activeVideo = document.querySelector('video');
-    if (activeVideo && !activeVideo.dataset.thincTracked) {
-      activeVideo.dataset.thincTracked = 'true';
-      console.log('[Th!nc-Extension] Found playing video element, binding events.');
-
-      activeVideo.addEventListener('play', () => {
-        const videoId = extractVideoId(location.href);
+    const vid = document.querySelector('video');
+    if (vid && !vid.__thincTracked) {
+      vid.__thincTracked = true;
+      vid.addEventListener('play', () => {
+        const videoId = parseVideoId(location.href);
         if (videoId) {
-          console.log('[Th!nc-Extension] Video playback detected:', videoId);
-          if (window.ipcRenderer) {
-            window.ipcRenderer.send('video-playback-started', { videoId, platform: location.hostname });
-          } else {
-            const event = new CustomEvent('thinc-video-play', { detail: { videoId, platform: location.hostname } });
-            window.dispatchEvent(event);
-          }
+          // console.log으로 부모 렌더러에게 중계
+          console.log('[THINC-PLAYBACK]' + JSON.stringify({
+            videoId,
+            platform: location.hostname
+          }));
         }
       });
     }
-  }, 1500);
+  }, 2000);
 
 })();

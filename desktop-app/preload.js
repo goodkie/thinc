@@ -1,4 +1,15 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const fs   = require('fs');
+const path = require('path');
+
+// ── inject-social.js 내용을 preload 최상위 레벨에서 미리 읽어 캐시 ──
+// contextBridge 콜백 내부에서 require/fs는 사용 불가 → 여기서 미리 읽어야 함
+let _injectSocialScript = '';
+try {
+  _injectSocialScript = fs.readFileSync(path.join(__dirname, 'inject-social.js'), 'utf8');
+} catch (e) {
+  console.error('[Preload] inject-social.js 읽기 실패:', e.message);
+}
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),
@@ -16,15 +27,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('video-playback-started', (event, data) => callback(data));
   },
   
-  // 신규: inject-social.js 파일 내용을 읽어서 반환하는 API
-  readSocialInjectScript: () => {
-    const fs = require('fs');
-    const path = require('path');
-    try {
-      return fs.readFileSync(path.join(__dirname, 'inject-social.js'), 'utf8');
-    } catch (e) {
-      console.error('Failed to read inject-social.js:', e.message);
-      return '';
-    }
-  }
+  // inject-social.js 내용 반환 (preload 최상위에서 미리 읽은 값을 동기 반환)
+  readSocialInjectScript: () => _injectSocialScript,
 });

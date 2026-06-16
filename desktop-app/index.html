@@ -141,24 +141,26 @@
         </div>
 
         <div class="social-webview-container" id="social-webview-container">
-          <webview id="wv-youtube" class="social-webview active" src="https://m.youtube.com" useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"></webview>
-          <webview id="wv-facebook" class="social-webview" src="https://m.facebook.com" useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"></webview>
-          <webview id="wv-instagram" class="social-webview" src="https://www.instagram.com" useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"></webview>
-          <webview id="wv-tiktok" class="social-webview" src="https://www.tiktok.com" useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"></webview>
-        </div>
-      </section>- Trending Section -->
-            <div class="yt-trending-feed">
-              <div class="feed-section-title" id="txt-trending-title">🔥 실시간 인기 분석 비디오</div>
-              <div class="yt-video-grid" id="yt-video-grid"></div>
-            </div>
-          </div>
-
-          <div class="yt-placeholder hidden" id="yt-placeholder">
-            <div class="yt-placeholder-icon">📺</div>
-            <div class="yt-placeholder-title">YouTube로 이동하세요</div>
-            <div class="yt-placeholder-sub">위 검색창에 YouTube URL을 입력하거나<br>아래 인기 목록을 눌러 분석을 시작하세요</div>
-            <button class="yt-start-btn" id="btn-open-youtube">YouTube 열기</button>
-          </div>
+          <webview id="wv-youtube"   class="social-webview active"
+            src="https://m.youtube.com"
+            useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            disablewebsecurity
+            allowpopups></webview>
+          <webview id="wv-facebook"  class="social-webview"
+            src="https://m.facebook.com"
+            useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            disablewebsecurity
+            allowpopups></webview>
+          <webview id="wv-instagram" class="social-webview"
+            src="https://www.instagram.com"
+            useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            disablewebsecurity
+            allowpopups></webview>
+          <webview id="wv-tiktok"    class="social-webview"
+            src="https://www.tiktok.com"
+            useragent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            disablewebsecurity
+            allowpopups></webview>
         </div>
       </section>
 

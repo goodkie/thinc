@@ -201,7 +201,26 @@ app.whenReady().then(async () => {
   const serverPort = localServer.address().port;
   console.log(`[App] Local server running on port ${serverPort}`);
 
-  // 2. UI 생성
+  // 2. 세션 레벨 CSP 제거 — webview 내 소셜 미디어 페이지의 CSP가
+  //    inject-social.js 의 외부 Railway API fetch를 차단하지 않도록 처리
+  const { session } = require('electron');
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = { ...details.responseHeaders };
+    // CSP 및 X-Frame-Options 헤더 제거 (대소문자 무관)
+    Object.keys(headers).forEach(key => {
+      const lower = key.toLowerCase();
+      if (
+        lower === 'content-security-policy' ||
+        lower === 'content-security-policy-report-only' ||
+        lower === 'x-frame-options'
+      ) {
+        delete headers[key];
+      }
+    });
+    callback({ responseHeaders: headers });
+  });
+
+  // 3. UI 생성
   createSplash();
   buildMenu();
   createTray();
