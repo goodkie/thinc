@@ -1904,6 +1904,42 @@
       }
     });
 
+    function extractVideoIdFromUrl(url) {
+      if (!url) return null;
+      try {
+        const parsed = new URL(url);
+        if (parsed.hostname.includes('youtube.com')) {
+          return parsed.searchParams.get('v');
+        } else if (parsed.hostname.includes('youtu.be')) {
+          return parsed.pathname.substring(1);
+        } else if (parsed.pathname.includes('/watch')) {
+          const match = parsed.search.match(/v=([^&]+)/);
+          return match ? match[1] : null;
+        } else if (parsed.pathname.includes('/shorts/')) {
+          const parts = parsed.pathname.split('/shorts/');
+          return parts[1] ? parts[1].split('?')[0] : null;
+        } else if (parsed.hostname.includes('tiktok.com') && parsed.pathname.includes('/video/')) {
+          const parts = parsed.pathname.split('/video/');
+          return parts[1] ? parts[1].split('?')[0] : null;
+        } else if (parsed.hostname.includes('instagram.com') && parsed.pathname.includes('/reel/')) {
+          const parts = parsed.pathname.split('/reel/');
+          return parts[1] ? parts[1].split('/')[0] : null;
+        } else if (parsed.hostname.includes('facebook.com') && (parsed.pathname.includes('/videos/') || parsed.pathname.includes('/watch/'))) {
+          const match = parsed.pathname.match(/\/(?:videos|watch)\/([0-9]+)/);
+          return match ? match[1] : null;
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function checkAndTriggerAnalysis(url, webviewId) {
+      const videoId = extractVideoIdFromUrl(url);
+      if (videoId) {
+        console.log(`[Th!nc-Extension] Auto-triggered analysis from navigation: ${videoId}`);
+        loadSocialVideoAnalysis(videoId, webviewId);
+      }
+    }
+
     // 5. 웹뷰 로딩 이벤트 감지 및 주소창 동기화 + 인젝션
     const injectScriptText = (window.electronAPI && window.electronAPI.readSocialInjectScript) ? window.electronAPI.readSocialInjectScript() : '';
 
@@ -1912,10 +1948,27 @@
         if (wv === activeWebview) {
           urlInput.value = e.url;
         }
+        checkAndTriggerAnalysis(e.url, wv.id);
       });
       wv.addEventListener('did-navigate-in-page', (e) => {
         if (wv === activeWebview) {
           urlInput.value = e.url;
+        }
+        checkAndTriggerAnalysis(e.url, wv.id);
+      });
+
+      wv.addEventListener('console-message', (e) => {
+        const msg = e.message;
+        if (msg && msg.startsWith('[THINC-PLAYBACK]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-PLAYBACK]'.length));
+            console.log(`[Th!nc-Extension] Received playback console msg:`, data);
+            if (data.videoId) {
+              loadSocialVideoAnalysis(data.videoId, data.platform);
+            }
+          } catch(err) {
+            console.error('Failed to parse playback msg:', err);
+          }
         }
       });
 
