@@ -122,26 +122,41 @@
     for (const baseUrl of uniqueUrls) {
       // Skip if the caller's overall signal already aborted
       if (userSignal && userSignal.aborted) break;
+      const startTime = performance.now();
+      const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
       try {
-        const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
         // Each attempt: 8 s per-host cap, honouring caller signal when provided
         const perAttemptController = new AbortController();
         const perAttemptTimer = setTimeout(() => perAttemptController.abort(), 8000);
         if (userSignal) {
           userSignal.addEventListener('abort', () => perAttemptController.abort(), { once: true });
         }
+        
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Network', 'Backend Attempt Start', 0, 'Info', `Target: ${fullUrl}`);
+        }
+        
         const res = await fetch(fullUrl, { ...restOptions, signal: perAttemptController.signal });
         clearTimeout(perAttemptTimer);
+        const duration = performance.now() - startTime;
+        
         if (res.ok) {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Network', 'Backend Attempt Success', duration, 'Success', `URL: ${fullUrl}, status: ${res.status}`);
+          }
           return res;
         }
         throw new Error(`HTTP ${res.status}`);
       } catch (err) {
+        const duration = performance.now() - startTime;
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Network', 'Backend Attempt Failed', duration, 'Failed', `URL: ${fullUrl}, error: ${err.message}`);
+        }
         console.warn(`[Backend Fallback] Call failed for ${baseUrl || 'relative'}${endpoint}:`, err.message);
         lastError = err;
       }
     }
-    throw lastError || new Error(`All backend fallbacks failed for ${endpoint}`);
+    throw lastError || new Error('All backend URLs failed');
   }
 
   const TRANSLATIONS = {
@@ -3744,82 +3759,147 @@
 
   async function loadCaptionsForVideo(videoId) {
     captionLoadStatus = 'loading';
+    const overallStartTime = performance.now();
+    if (window.PerformanceLogger) {
+      window.PerformanceLogger.log('Captions', 'Load Captions Started', 0, 'Info', `Video ID: ${videoId}`);
+    }
     
     // 1. Try local/online backend first (generous timeout: backend may cascade through multiple fallbacks)
     let captionData = null;
+    const backendStartTime = performance.now();
     try {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 1: Backend Call', 0, 'Info', `Requesting captions for ${videoId}`);
+      }
       const res = await fetchWithBackendFallback(`/api/captions?id=${encodeURIComponent(videoId)}&lang=${currentLang}`);
       if (res.ok) {
         captionData = await res.json();
       }
     } catch (err) {
       console.warn('Backend captions load failed:', err.message);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 1: Backend Call Failed', performance.now() - backendStartTime, 'Warning', err.message);
+      }
     }
 
     if (captionData && captionData.captions && captionData.captions.length > 0) {
+      const transStartTime = performance.now();
       liveCaptions = await translateCaptionsIfRequired(captionData.captions, currentLang);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Translate Captions', performance.now() - transStartTime, 'Success', `Translating to ${currentLang}`);
+      }
       captionLoadStatus = 'loaded';
       const localizedLang = captionData.lang === 'ko' ? (currentLang === 'ko' ? '한국어' : 'Korean') : (currentLang === 'ko' ? '영어' : 'English');
       showToast(t('toast_captions_loaded').replace('{lang}', localizedLang).replace('{count}', captionData.captions.length));
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Load Captions Complete', performance.now() - overallStartTime, 'Success', `Source: Backend, Count: ${captionData.captions.length}`);
+      }
       return;
+    } else {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 1: Backend Returned No Data', performance.now() - backendStartTime, 'Warning', 'Moving to Piped fallback');
+      }
     }
     
     // 2. Try Piped API captions (parallel race, fastest fallback)
+    const pipedStartTime = performance.now();
     try {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 2: Piped API Call', 0, 'Info', 'Fetching from Piped instances');
+      }
       const captions = await fetchPipedCaptions(videoId);
       if (captions && captions.length > 0) {
         liveCaptions = await translateCaptionsIfRequired(captions, currentLang);
         captionLoadStatus = 'loaded';
         showToast(t('toast_captions_loaded').replace('{lang}', 'Piped').replace('{count}', captions.length));
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Load Captions Complete', performance.now() - overallStartTime, 'Success', `Source: Piped, Count: ${captions.length}`);
+        }
         return;
       }
     } catch (err) {
       console.warn('Piped captions failed:', err.message);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 2: Piped API Failed', performance.now() - pipedStartTime, 'Warning', err.message);
+      }
     }
 
     // 3. Try official YouTube timedtext API via CORS proxy
+    const timedtextStartTime = performance.now();
     try {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 3: YouTube timedtext', 0, 'Info', 'Fetching from official timedtext API');
+      }
       const resData = await fetchYoutubeTimedTextOfficialFrontend(videoId);
       if (resData && resData.captions && resData.captions.length > 0) {
         liveCaptions = await translateCaptionsIfRequired(resData.captions, currentLang);
         captionLoadStatus = 'loaded';
         const localizedLang = resData.lang === 'ko' ? (currentLang === 'ko' ? '한국어' : 'Korean') : (currentLang === 'ko' ? '영어' : 'English');
         showToast(t('toast_captions_loaded').replace('{lang}', localizedLang).replace('{count}', resData.captions.length));
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Load Captions Complete', performance.now() - overallStartTime, 'Success', `Source: timedtext API, Count: ${resData.captions.length}`);
+        }
         return;
       }
     } catch (err) {
       console.warn('Frontend YouTube timedtext API failed:', err.message);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 3: YouTube timedtext Failed', performance.now() - timedtextStartTime, 'Warning', err.message);
+      }
     }
 
     // 4. Try YouTube watch page scraping via CORS proxy
+    const scrapingStartTime = performance.now();
     try {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 4: Watch Page Scrape', 0, 'Info', 'Scraping YouTube watch page');
+      }
       const captions = await fetchYoutubeCaptionsOfficialFrontend(videoId);
       if (captions && captions.length > 0) {
         liveCaptions = await translateCaptionsIfRequired(captions, currentLang);
         captionLoadStatus = 'loaded';
         showToast(t('toast_captions_loaded').replace('{lang}', currentLang === 'ko' ? '공식 자막' : 'Official Captions').replace('{count}', captions.length));
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Load Captions Complete', performance.now() - overallStartTime, 'Success', `Source: Watch Page Scrape, Count: ${captions.length}`);
+        }
         return;
       }
     } catch (err) {
       console.warn('YouTube watch page captions failed:', err.message);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 4: Watch Page Scrape Failed', performance.now() - scrapingStartTime, 'Warning', err.message);
+      }
     }
     
     // 5. Try Invidious captions fallback on the frontend via CORS proxy parallel race
+    const invidiousStartTime = performance.now();
     try {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 5: Invidious Race', 0, 'Info', 'Fetching from Invidious instances');
+      }
       const captions = await fetchInvidiousCaptionsParallel(videoId);
       if (captions && captions.length > 0) {
         liveCaptions = await translateCaptionsIfRequired(captions, currentLang);
         captionLoadStatus = 'loaded';
         showToast(t('toast_captions_loaded').replace('{lang}', currentLang === 'ko' ? '한국어/영어' : 'Korean/English').replace('{count}', captions.length));
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Load Captions Complete', performance.now() - overallStartTime, 'Success', `Source: Invidious, Count: ${captions.length}`);
+        }
         return;
       }
     } catch (err) {
       console.warn('Frontend Invidious captions load failed:', err.message);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Step 5: Invidious Race Failed', performance.now() - invidiousStartTime, 'Warning', err.message);
+      }
     }
     
     captionLoadStatus = 'failed';
     console.warn('All captions sources failed, using VSA mode');
     showToast(t('toast_captions_unavailable_online'), 8000);
+    if (window.PerformanceLogger) {
+      window.PerformanceLogger.log('Captions', 'Load Captions Failed', performance.now() - overallStartTime, 'Failed', 'All caption pipelines failed. VSA fallback enabled.');
+    }
   }
 
   // Fetch captions via Piped API (parallel race across instances with robust VTT checking)
@@ -6941,6 +7021,11 @@
     // Initialize legal disclaimer modal
     initDisclaimerModal();
 
+    // Initialize Diagnostic UI keyboard shortcut
+    if (window.DiagnosticUI) {
+      window.DiagnosticUI.initShortcut();
+    }
+
     // 100% Real-time Admin Settings Hot-Swap Listener
     window.addEventListener('storage', (e) => {
       if (e.key === 'thinc_admin_settings' && analyzer) {
@@ -6959,3 +7044,350 @@
   });
 
 })();
+
+// ===== Diagnostic & Performance Logger =====
+const PerformanceLogger = (function() {
+  const logs = [];
+  const MAX_LOGS = 150;
+
+  function getTimestamp() {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    const ms = String(now.getMilliseconds()).padStart(3, '0');
+    return `${h}:${m}:${s}.${ms}`;
+  }
+
+  return {
+    log: function(category, operation, durationMs, status, details) {
+      const item = {
+        timestamp: getTimestamp(),
+        category: category || 'System',
+        operation: operation || 'Unknown',
+        durationMs: durationMs !== null && durationMs !== undefined ? Math.round(durationMs) : null,
+        status: status || 'Info',
+        details: details || ''
+      };
+      logs.push(item);
+      if (logs.length > MAX_LOGS) {
+        logs.shift();
+      }
+      console.log(`[Diagnostic][${item.category}][${item.status}] ${item.operation} (${item.durationMs ? item.durationMs + 'ms' : 'N/A'}) - ${item.details}`);
+    },
+    getLogs: function() {
+      return logs;
+    },
+    clearLogs: function() {
+      logs.length = 0;
+      this.log('System', 'Logs cleared by user', 0, 'Info', 'Diagnostic database initialized.');
+    },
+    copyToClipboard: function() {
+      const isElectron = window.electronAPI && window.electronAPI.isElectron;
+      const isCapacitor = window.Capacitor && window.Capacitor.isNative;
+      const platformType = isElectron ? 'Electron Desktop App' : (isCapacitor ? 'Capacitor Mobile App' : 'Standard Web Browser');
+      
+      const header = `=== THE TRUTH UNTOLD DIAGNOSTIC LOG ===\nGenerated at: ${new Date().toLocaleString()}\nPlatform: ${platformType}\nUser Agent: ${navigator.userAgent}\n---------------------------------------\n`;
+      const body = logs.map(l => `[${l.timestamp}][${l.category}][${l.status}] ${l.operation} (${l.durationMs !== null ? l.durationMs + 'ms' : 'N/A'}) - ${l.details}`).join('\n');
+      const text = header + body;
+      
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          alert('Diagnostic logs copied to clipboard!');
+        }).catch(err => {
+          console.error('Failed to copy via navigator.clipboard:', err);
+          fallbackCopy(text);
+        });
+      } else {
+        fallbackCopy(text);
+      }
+    }
+  };
+
+  function fallbackCopy(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.width = "2em";
+    textArea.style.height = "2em";
+    textArea.style.padding = "0";
+    textArea.style.border = "none";
+    textArea.style.outline = "none";
+    textArea.style.boxShadow = "none";
+    textArea.style.background = "transparent";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) alert('Diagnostic logs copied to clipboard!');
+      else alert('Unable to copy logs.');
+    } catch (err) {
+      alert('Copy failed: ' + err.message);
+    }
+    document.body.removeChild(textArea);
+  }
+})();
+window.PerformanceLogger = PerformanceLogger;
+
+// ===== Diagnostic Log Viewer UI =====
+const DiagnosticUI = (function() {
+  let modalElement = null;
+
+  function createModal() {
+    const styleId = 'diagnostic-ui-style';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.innerHTML = `
+        .diag-modal-overlay {
+          position: fixed;
+          top: 0; left: 0; width: 100vw; height: 100vh;
+          background: rgba(10, 10, 26, 0.75);
+          backdrop-filter: blur(12px);
+          z-index: 999999;
+          display: flex; align-items: center; justify-content: center;
+          font-family: 'Inter', -apple-system, sans-serif;
+          color: #e2e8f0;
+        }
+        .diag-modal-content {
+          width: 80%; max-width: 900px; height: 75vh;
+          background: rgba(15, 23, 42, 0.85);
+          border: 1px solid rgba(59, 130, 246, 0.4);
+          border-radius: 16px;
+          box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
+          display: flex; flex-direction: column;
+          overflow: hidden;
+          animation: diagFadeIn 0.25s ease-out;
+        }
+        @keyframes diagFadeIn {
+          from { opacity: 0; transform: scale(0.97); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .diag-header {
+          padding: 16px 24px;
+          background: rgba(30, 41, 59, 0.5);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          display: flex; justify-content: space-between; align-items: center;
+        }
+        .diag-title {
+          font-size: 1.15rem; font-weight: 700;
+          color: #60a5fa; display: flex; align-items: center; gap: 8px;
+        }
+        .diag-actions {
+          display: flex; gap: 10px;
+        }
+        .diag-btn {
+          background: rgba(59, 130, 246, 0.2);
+          border: 1px solid rgba(59, 130, 246, 0.5);
+          color: #60a5fa; padding: 6px 12px; border-radius: 6px;
+          cursor: pointer; font-size: 0.85rem; font-weight: 500;
+          transition: all 0.2s ease;
+        }
+        .diag-btn:hover {
+          background: rgba(59, 130, 246, 0.4);
+          box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        }
+        .diag-btn-danger {
+          background: rgba(239, 68, 68, 0.2);
+          border: 1px solid rgba(239, 68, 68, 0.5);
+          color: #f87171;
+        }
+        .diag-btn-danger:hover {
+          background: rgba(239, 68, 68, 0.4);
+          box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+        }
+        .diag-btn-close {
+          background: transparent; border: none; color: #94a3b8;
+          font-size: 1.5rem; cursor: pointer; display: flex; align-items: center;
+        }
+        .diag-btn-close:hover { color: #f87171; }
+        .diag-body {
+          flex: 1; padding: 20px; overflow-y: auto;
+          display: flex; flex-direction: column; gap: 16px;
+        }
+        .diag-sysinfo {
+          background: rgba(30, 41, 59, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 8px; padding: 12px; font-size: 0.85rem;
+          line-height: 1.5; color: #94a3b8;
+        }
+        .diag-sysinfo-grid {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+        }
+        .diag-table-container {
+          flex: 1; border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 8px; overflow: hidden; background: rgba(15, 23, 42, 0.5);
+        }
+        .diag-table {
+          width: 100%; border-collapse: collapse; font-size: 0.85rem;
+          text-align: left;
+        }
+        .diag-table th {
+          background: rgba(30, 41, 59, 0.8); padding: 10px 12px;
+          color: #94a3b8; font-weight: 600; font-size: 0.8rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .diag-table td {
+          padding: 8px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+          color: #cbd5e1; word-break: break-all;
+        }
+        .diag-table tr:hover {
+          background: rgba(255, 255, 255, 0.02);
+        }
+        .badge-status {
+          display: inline-block; padding: 2px 6px; border-radius: 4px;
+          font-size: 0.75rem; font-weight: 600;
+        }
+        .badge-Success { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
+        .badge-Warning { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4); }
+        .badge-Failed { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+        .badge-Info { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.4); }
+        .badge-category {
+          color: #60a5fa; font-weight: 500;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'diag-modal-overlay';
+    
+    const isElectron = window.electronAPI && window.electronAPI.isElectron;
+    const isCapacitor = window.Capacitor && window.Capacitor.isNative;
+    const platformType = isElectron ? 'Electron Desktop App' : (isCapacitor ? 'Capacitor Mobile App' : 'Standard Web Browser');
+    
+    overlay.innerHTML = `
+      <div class="diag-modal-content">
+        <div class="diag-header">
+          <div class="diag-title">
+            <span>📊</span> System Diagnostic & Performance Log
+          </div>
+          <div class="diag-actions">
+            <button class="diag-btn" id="diag-btn-copy">Copy Logs</button>
+            <button class="diag-btn diag-btn-danger" id="diag-btn-clear">Clear Logs</button>
+            <button class="diag-btn-close" id="diag-btn-close">&times;</button>
+          </div>
+        </div>
+        <div class="diag-body">
+          <div class="diag-sysinfo">
+            <div class="diag-sysinfo-grid">
+              <div><strong>Platform:</strong> ${platformType}</div>
+              <div><strong>Language:</strong> ${navigator.language}</div>
+              <div style="grid-column: span 2"><strong>User Agent:</strong> ${navigator.userAgent}</div>
+            </div>
+          </div>
+          <div class="diag-table-container">
+            <div style="max-height: 48vh; overflow-y: auto;">
+              <table class="diag-table">
+                <thead>
+                  <tr>
+                    <th style="width: 100px;">Time</th>
+                    <th style="width: 80px;">Category</th>
+                    <th style="width: 180px;">Operation</th>
+                    <th style="width: 80px;">Duration</th>
+                    <th style="width: 70px;">Status</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody id="diag-logs-tbody">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    modalElement = overlay;
+
+    document.getElementById('diag-btn-close').addEventListener('click', hide);
+    document.getElementById('diag-btn-clear').addEventListener('click', () => {
+      PerformanceLogger.clearLogs();
+      renderLogs();
+    });
+    document.getElementById('diag-btn-copy').addEventListener('click', () => {
+      PerformanceLogger.copyToClipboard();
+    });
+    
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) hide();
+    });
+
+    renderLogs();
+  }
+
+  function renderLogs() {
+    const tbody = document.getElementById('diag-logs-tbody');
+    if (!tbody) return;
+    
+    const logs = PerformanceLogger.getLogs();
+    if (logs.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 20px;">No diagnostic logs captured yet.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = logs.slice().reverse().map(log => `
+      <tr>
+        <td style="color: #64748b; font-family: monospace;">${log.timestamp}</td>
+        <td><span class="badge-category">${log.category}</span></td>
+        <td style="font-weight: 500;">${log.operation}</td>
+        <td style="font-family: monospace; color: ${log.durationMs && log.durationMs > 2000 ? '#facc15' : '#cbd5e1'}">
+          ${log.durationMs !== null ? log.durationMs + ' ms' : '-'}
+        </td>
+        <td><span class="badge-status badge-${log.status}">${log.status}</span></td>
+        <td style="color: #94a3b8; font-size: 0.8rem;">${log.details}</td>
+      </tr>
+    `).join('');
+  }
+
+  function show() {
+    if (modalElement) {
+      renderLogs();
+      modalElement.style.display = 'flex';
+    } else {
+      createModal();
+    }
+    PerformanceLogger.log('System', 'Opened Diagnostic Log Viewer', 0, 'Info', 'Diagnostic UI displayed.');
+  }
+
+  function hide() {
+    if (modalElement) {
+      modalElement.style.display = 'none';
+    }
+  }
+
+  function toggle() {
+    if (modalElement && modalElement.style.display !== 'none') {
+      hide();
+    } else {
+      show();
+    }
+  }
+
+  function initShortcut() {
+    window.addEventListener('keydown', (e) => {
+      const isL = e.key === 'l' || e.key === 'L' || e.keyCode === 76;
+      const isCtrl = e.ctrlKey || e.metaKey;
+      const isShift = e.shiftKey;
+      
+      if (isCtrl && isShift && isL) {
+        e.preventDefault();
+        toggle();
+      }
+    });
+    PerformanceLogger.log('System', 'PerformanceLogger Initialized', 0, 'Success', 'Keyboard shortcut registered (Ctrl+Shift+L).');
+  }
+
+  return {
+    show: show,
+    hide: hide,
+    toggle: toggle,
+    initShortcut: initShortcut
+  };
+})();
+window.DiagnosticUI = DiagnosticUI;
+
