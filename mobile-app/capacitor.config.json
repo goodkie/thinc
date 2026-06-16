@@ -8,8 +8,17 @@
     "allowNavigation": [
       "*.youtube.com",
       "*.googlevideo.com",
+      "*.googleapis.com",
       "inv.nadeko.net",
-      "api.piped.private.coffee"
+      "api.piped.private.coffee",
+      "pipedapi.kavin.rocks",
+      "piped-api.lunar.icu",
+      "thinc-lie-detector-production.up.railway.app",
+      "corsproxy.io",
+      "corsproxy.org",
+      "api.allorigins.win",
+      "api.codetabs.com",
+      "cors.eu.org"
     ]
   },
   "android": {
@@ -21,6 +30,9 @@
     "contentInset": "automatic"
   },
   "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
     "SplashScreen": {
       "launchShowDuration": 2000,
       "launchAutoHide": true,

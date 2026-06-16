@@ -1802,10 +1802,12 @@
   ];
 
   async function fetchViaCORSProxy(targetUrl) {
-    // Electron 환경(webSecurity: false)에서는 프록시 없이 직접 Fetch를 먼저 시도
-    if (window.electronAPI && window.electronAPI.isElectron) {
+    // Electron(데스크톱) 또는 Capacitor(모바일) 환경: CORS 제약 없이 직접 Fetch를 먼저 시도
+    const isElectron = window.electronAPI && window.electronAPI.isElectron;
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    if (isElectron || isCapacitor) {
       try {
-        console.log(`[Electron Direct] Fetching directly: ${targetUrl}`);
+        console.log(`[Direct] Fetching directly: ${targetUrl}`);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(targetUrl, { signal: controller.signal });
@@ -1817,7 +1819,7 @@
           }
         }
       } catch (err) {
-        console.warn(`[Electron Direct] Direct fetch failed for ${targetUrl}, falling back to proxies:`, err.message || err);
+        console.warn(`[Direct] Direct fetch failed for ${targetUrl}, falling back to proxies:`, err.message || err);
       }
     }
 

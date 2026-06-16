@@ -80,22 +80,35 @@
   // ===== Backend Call Fallback Helper =====
   async function fetchWithBackendFallback(endpoint, options = {}) {
     const baseUrls = [];
-    
-    // 1. Relative path (Same host server context)
-    baseUrls.push('');
-    
-    // 2. Custom Backend URL from admin console
-    const savedUrl = localStorage.getItem('thinc_backend_url');
-    if (savedUrl && savedUrl.trim().startsWith('http')) {
-      baseUrls.push(savedUrl.trim().replace(/\/$/, ''));
+
+    // 모바일(Capacitor) 환경에서는 Railway 백엔드를 최우선으로 시도
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    if (isCapacitor) {
+      // 모바일: Railway 백엔드 → 커스텀 → localhost
+      const savedUrl = localStorage.getItem('thinc_backend_url');
+      if (savedUrl && savedUrl.trim().startsWith('http')) {
+        baseUrls.push(savedUrl.trim().replace(/\/$/, ''));
+      }
+      baseUrls.push('https://thinc-lie-detector-production.up.railway.app');
+      baseUrls.push('http://localhost:8080');
+      baseUrls.push('http://127.0.0.1:8080');
+    } else {
+      // 1. Relative path (Same host server context)
+      baseUrls.push('');
+      
+      // 2. Custom Backend URL from admin console
+      const savedUrl = localStorage.getItem('thinc_backend_url');
+      if (savedUrl && savedUrl.trim().startsWith('http')) {
+        baseUrls.push(savedUrl.trim().replace(/\/$/, ''));
+      }
+      
+      // 3. Default deployed online backend server (Automatic fallback)
+      baseUrls.push('https://thinc-lie-detector-production.up.railway.app');
+      
+      // 4. Localhost fallbacks
+      baseUrls.push('http://localhost:8080');
+      baseUrls.push('http://127.0.0.1:8080');
     }
-    
-    // 3. Default deployed online backend server (Automatic fallback)
-    baseUrls.push('https://thinc-lie-detector-production.up.railway.app');
-    
-    // 4. Localhost fallbacks
-    baseUrls.push('http://localhost:8080');
-    baseUrls.push('http://127.0.0.1:8080');
     
     const uniqueUrls = Array.from(new Set(baseUrls));
     let lastError = null;
@@ -1802,6 +1815,26 @@
   ];
 
   async function fetchViaCORSProxy(targetUrl) {
+    // 모바일(Capacitor) 또는 데스크톱(Electron) 환경: CORS 제약 없이 직접 Fetch 먼저 시도
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isElectron = typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron;
+    if (isCapacitor || isElectron) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch(targetUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (response.ok) {
+          const text = await response.text();
+          if (text && !text.includes("pricing") && !text.includes("limited to localhost") && !text.includes("Access Denied")) {
+            return text;
+          }
+        }
+      } catch (err) {
+        console.warn(`[Direct] fetch failed for ${targetUrl}, falling back to proxies:`, err.message || err);
+      }
+    }
+
     // 1. Try primary configured proxies first
     for (const getProxyUrl of CORS_PROXIES) {
       try {
