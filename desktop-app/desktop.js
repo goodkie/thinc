@@ -80,22 +80,36 @@
   // ===== Backend Call Fallback Helper =====
   async function fetchWithBackendFallback(endpoint, options = {}) {
     const baseUrls = [];
+
+    // 모바일(Capacitor) 또는 데스크톱(Electron) 환경에서는 Railway 백엔드를 최우선으로 시도
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isElectron = typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron;
     
-    // 1. Relative path (Same host server context)
-    baseUrls.push('');
-    
-    // 2. Custom Backend URL from admin console
-    const savedUrl = localStorage.getItem('thinc_backend_url');
-    if (savedUrl && savedUrl.trim().startsWith('http')) {
-      baseUrls.push(savedUrl.trim().replace(/\/$/, ''));
+    if (isCapacitor || isElectron) {
+      const savedUrl = localStorage.getItem('thinc_backend_url');
+      if (savedUrl && savedUrl.trim().startsWith('http')) {
+        baseUrls.push(savedUrl.trim().replace(/\/$/, ''));
+      }
+      baseUrls.push('https://thinc-lie-detector-production.up.railway.app');
+      baseUrls.push('http://localhost:8080');
+      baseUrls.push('http://127.0.0.1:8080');
+    } else {
+      // 1. Relative path (Same host server context)
+      baseUrls.push('');
+      
+      // 2. Custom Backend URL from admin console
+      const savedUrl = localStorage.getItem('thinc_backend_url');
+      if (savedUrl && savedUrl.trim().startsWith('http')) {
+        baseUrls.push(savedUrl.trim().replace(/\/$/, ''));
+      }
+      
+      // 3. Default deployed online backend server (Automatic fallback)
+      baseUrls.push('https://thinc-lie-detector-production.up.railway.app');
+      
+      // 4. Localhost fallbacks
+      baseUrls.push('http://localhost:8080');
+      baseUrls.push('http://127.0.0.1:8080');
     }
-    
-    // 3. Default deployed online backend server (Automatic fallback)
-    baseUrls.push('https://thinc-lie-detector-production.up.railway.app');
-    
-    // 4. Localhost fallbacks
-    baseUrls.push('http://localhost:8080');
-    baseUrls.push('http://127.0.0.1:8080');
     
     const uniqueUrls = Array.from(new Set(baseUrls));
     let lastError = null;
@@ -1822,10 +1836,12 @@
   ];
 
   async function fetchViaCORSProxy(targetUrl) {
-    // Electron 환경(webSecurity: false)에서는 프록시 없이 직접 Fetch를 먼저 시도
-    if (window.electronAPI && window.electronAPI.isElectron) {
+    // Electron(데스크톱) 또는 Capacitor(모바일) 환경: CORS 제약 없이 직접 Fetch를 먼저 시도
+    const isElectron = window.electronAPI && window.electronAPI.isElectron;
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    if (isElectron || isCapacitor) {
       try {
-        console.log(`[Electron Direct] Fetching directly: ${targetUrl}`);
+        console.log(`[Direct] Fetching directly: ${targetUrl}`);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(targetUrl, { signal: controller.signal });
@@ -1837,7 +1853,7 @@
           }
         }
       } catch (err) {
-        console.warn(`[Electron Direct] Direct fetch failed for ${targetUrl}, falling back to proxies:`, err.message || err);
+        console.warn(`[Direct] Direct fetch failed for ${targetUrl}, falling back to proxies:`, err.message || err);
       }
     }
 
