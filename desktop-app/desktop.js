@@ -1971,11 +1971,17 @@
         if (wv === activeWebview) {
           urlInput.value = e.url;
         }
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Webview', `Webview Navigated (${wv.id})`, 0, 'Info', `URL: ${e.url}`);
+        }
         checkAndTriggerAnalysis(e.url, wv.id);
       });
       wv.addEventListener('did-navigate-in-page', (e) => {
         if (wv === activeWebview) {
           urlInput.value = e.url;
+        }
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Webview', `Webview In-Page Navigated (${wv.id})`, 0, 'Info', `URL: ${e.url}`);
         }
         checkAndTriggerAnalysis(e.url, wv.id);
       });
@@ -1986,18 +1992,34 @@
           try {
             const data = JSON.parse(msg.substring('[THINC-PLAYBACK]'.length));
             console.log(`[Th!nc-Extension] Received playback console msg:`, data);
+            if (window.PerformanceLogger) {
+              window.PerformanceLogger.log('Webview', `Playback Detected (${wv.id})`, 0, 'Info', `Video ID: ${data.videoId}`);
+            }
             if (data.videoId) {
               loadSocialVideoAnalysis(data.videoId, data.platform);
             }
           } catch(err) {
             console.error('Failed to parse playback msg:', err);
           }
+        } else if (msg && msg.startsWith('[THINC-TIMEUPDATE]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-TIMEUPDATE]'.length));
+            if (data.videoId === activeVideoId) {
+              captionPlaybackSec = data.currentTime;
+            }
+          } catch(err) {}
         }
       });
 
       wv.addEventListener('dom-ready', () => {
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Webview', `DOM Ready (${wv.id})`, 0, 'Success', `Guest webview content loaded.`);
+        }
         if (injectScriptText) {
           console.log(`[Th!nc-Extension] Injecting script to webview: ${wv.id}`);
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Webview', `Injecting Social Extension (${wv.id})`, 0, 'Info', `Executing inject-social.js`);
+          }
           wv.executeJavaScript(injectScriptText);
         }
       });
@@ -2019,6 +2041,10 @@
     console.log(`[Th!nc-Extension] Requesting analysis for video: ${videoId} on ${platform}`);
     activeVideoId = videoId;
     
+    if (window.PerformanceLogger) {
+      window.PerformanceLogger.log('Analysis', 'Social Video Analysis Requested', 0, 'Info', `Video ID: ${videoId}, Platform: ${platform}`);
+    }
+
     const bannerText = document.getElementById('banner-text');
     if (bannerText) bannerText.innerText = '분석 시작 중...';
     
@@ -2026,56 +2052,100 @@
     liveCaptions = [];
     subtitleRecords = [];
 
+    let captionsLoaded = false;
+
     // 유튜브 백그라운드 자막 가져오기
     if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions && platform.includes('youtube')) {
       try {
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Background Captions Fetch Start', 0, 'Info', `Requesting background scraper window for video ${videoId}`);
+        }
         const result = await window.electronAPI.fetchBackgroundCaptions(videoId);
         if (result && result.ok && result.captions) {
           console.log(`[Th!nc-Extension] Successfully fetched background captions (${result.captions.length} segments).`);
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Background Captions Scraping Success', 0, 'Success', `Scraped ${result.captions.length} caption segments.`);
+          }
           liveCaptions = result.captions;
           captionLoadStatus = 'loaded';
-          
-          if (bannerText) bannerText.innerText = '음성 분석 중...';
-          
+          captionsLoaded = true;
           captionPlaybackSec = 0;
           lastShownCaptionIdx = -1;
-          
-          // 실시간 VSA 차트 분석 기동
-          if (!isRunning) {
-            const btnToggle = document.getElementById('btn-toggle');
-            if (btnToggle && btnToggle.dataset.running === 'false') {
-              btnToggle.click();
-            }
+        } else {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Background Captions Scraping Empty', 0, 'Warning', result ? result.error || 'No captions returned' : 'No result');
           }
-          return;
         }
       } catch (err) {
         console.warn('[Th!nc-Extension] Background caption fetch exception:', err.message);
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Background Captions Scraping Error', 0, 'Failed', err.message);
+        }
+      }
+    }
+
+    // 유튜브 백그라운드 수집 실패 시, 강력한 5계층 자막 획득 에이전트(loadCaptionsForVideo)로 우회 시도
+    if (!captionsLoaded && platform.includes('youtube')) {
+      console.log(`[Th!nc-Extension] Background scraper failed or skipped. Trying robust loadCaptionsForVideo fallback...`);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Triggering loadCaptionsForVideo Fallback', 0, 'Info', 'Running 5-tier robust transcription cascade');
+      }
+      try {
+        await loadCaptionsForVideo(videoId);
+        if (liveCaptions && liveCaptions.length > 0) {
+          captionsLoaded = true;
+          captionPlaybackSec = 0;
+          lastShownCaptionIdx = -1;
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Robust Caption Fallback Loaded', 0, 'Success', `Loaded ${liveCaptions.length} segments via frontend cascade.`);
+          }
+        } else {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Robust Caption Fallback Failed', 0, 'Failed', 'No subtitles retrieved via cascade.');
+          }
+        }
+      } catch (err) {
+        console.warn('[Th!nc-Extension] Robust caption load fallback failed:', err.message);
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Robust Caption Fallback Error', 0, 'Failed', err.message);
+        }
       }
     }
 
     // 유튜브 백그라운드 수집 실패 또는 타 플랫폼(페이스북, 인스타, 틱톡)
     try {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Network', 'Fetch Fast Rating Score', 0, 'Info', `Requesting fast analyze API for ${videoId}`);
+      }
       const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${videoId}`);
       const data = await resp.json();
       if (data && data.ok) {
         console.log(`[Th!nc-Extension] Fast rating score obtained: ${data.score}%`);
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Network', 'Fast Rating Score Received', 0, 'Success', `Reliability Score: ${data.score}%, rating: ${data.rating}`);
+        }
         
         targetScore = data.score;
         const relBadge = document.getElementById('det-rel-badge');
         if (relBadge) relBadge.innerText = `${data.score}% RELIABILITY`;
-
-        if (bannerText) bannerText.innerText = '음성 분석 중...';
-
-        if (!isRunning) {
-          const btnToggle = document.getElementById('btn-toggle');
-          if (btnToggle && btnToggle.dataset.running === 'false') {
-            btnToggle.click();
-          }
-        }
       }
     } catch (e) {
       console.warn('[Th!nc-Extension] Fallback fast rating failed:', e.message);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Network', 'Fast Rating Fetch Failed', 0, 'Failed', e.message);
+      }
+    }
+
+    // 분석 기능 기동 (음성/자막)
+    if (bannerText) bannerText.innerText = '음성 분석 중...';
+    if (!isRunning) {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Analysis', 'Auto-starting VSA engine', 0, 'Info', 'Triggering analysis toggle session');
+      }
+      const btnToggle = document.getElementById('btn-toggle');
+      if (btnToggle && btnToggle.dataset.running === 'false') {
+        btnToggle.click();
+      }
     }
   }
 
@@ -3105,139 +3175,7 @@
     }
   }
 
-  async function toggleSession() {
-    const btn = document.getElementById('btn-toggle');
-    const bannerDot = document.getElementById('banner-dot');
-    const bannerText = document.getElementById('banner-text');
-    const quickstartBtn = document.getElementById('btn-yt-quickstart');
 
-    if (isRunning) {
-      isRunning = false;
-      btn.dataset.running = "false";
-      btn.querySelector('#btn-icon').innerText = "▶";
-      btn.querySelector('#btn-text').innerText = t('start');
-      
-      if (quickstartBtn) {
-        quickstartBtn.classList.remove('running');
-        quickstartBtn.innerText = "▶️ " + t('start');
-      }
-      
-      bannerDot.classList.remove('active');
-      bannerText.innerText = t('idle');
-
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-      
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-      }
-
-      const liveBar = document.getElementById('yt-live-reliability-bar');
-      if (liveBar) {
-        liveBar.classList.add('hidden');
-      }
-      showAnalysisEndOverlay();
-
-      // Hide Live Truth Floating Bar
-      const truthBarContainer = document.getElementById('yt-live-truth-bar-container');
-      if (truthBarContainer) {
-        truthBarContainer.classList.add('hidden');
-      }
-
-      saveSessionToHistory();
-      renderReportTab();
-      showToast(t('toast_session_saved'));
-      
-      const truthModal = document.getElementById('truth-modal');
-      if (truthModal) {
-        truthModal.classList.remove('hidden');
-      }
-      
-    } else {
-      isRunning = true;
-      btn.dataset.running = "true";
-      btn.querySelector('#btn-icon').innerText = "■";
-      btn.querySelector('#btn-text').innerText = t('stop');
-      
-      if (quickstartBtn) {
-        quickstartBtn.classList.add('running');
-        quickstartBtn.innerText = "■ " + t('stop');
-      }
-      
-      bannerDot.classList.add('active');
-      bannerText.innerText = t('scanning');
-
-      sessionData = [];
-      subtitleRecords = [];
-      currentSubRecord = null;
-      document.getElementById('sentence-list').innerHTML = "";
-
-      const overlay = document.getElementById('yt-analysis-end-overlay');
-      if (overlay) {
-        overlay.classList.add('hidden');
-      }
-
-      const liveBar = document.getElementById('yt-live-reliability-bar');
-      if (liveBar) {
-        liveBar.classList.remove('hidden');
-        const ctx = liveBar.getContext('2d');
-        ctx.clearRect(0, 0, liveBar.width, liveBar.height);
-      }
-      
-      // Show Live Truth Floating Bar
-      const truthBarContainer = document.getElementById('yt-live-truth-bar-container');
-      if (truthBarContainer) {
-        truthBarContainer.classList.remove('hidden');
-        updateLiveTruthBar();
-      }
-
-      await startAudioRecording();
-      requestAnimationFrame(loop);
-    }
-  }
-
-  function loop(timestamp) {
-    if (!isRunning) return;
-    performCapture();
-    animationId = requestAnimationFrame(loop);
-  }
-
-  function performCapture() {
-    if (!audioContext || audioContext.state !== 'running') return;
-    
-    analyser.getByteFrequencyData(dataArray);
-    let sum = 0;
-    for(let i = 0; i < bufferLength; i++) {
-        sum += dataArray[i];
-    }
-    let average = sum / bufferLength;
-    
-    const timestamp = Date.now();
-    sessionData.push({ timestamp, score: average });
-    
-    drawLiveReliabilityBar(average);
-  }
-
-  function drawLiveReliabilityBar(val) {
-    const canvas = document.getElementById('yt-live-reliability-bar');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
-    const x = (sessionData.length % (canvas.width / 2)) * 2;
-    const h = (val / 255) * canvas.height;
-    
-    ctx.fillStyle = val > 100 ? '#ff4757' : '#2ed573';
-    ctx.fillRect(x, canvas.height - h, 1, h);
-  }
-
-  function showAnalysisEndOverlay() {
-    const overlay = document.getElementById('yt-analysis-end-overlay');
-    if (overlay) {
-      overlay.classList.remove('hidden');
-    }
-  }
 
   function showBrowserFeed() {
     const ytWrapperEl = document.getElementById('yt-player-wrapper');
@@ -4562,6 +4500,10 @@
       btn.querySelector('#btn-icon').innerText = "▶";
       btn.querySelector('#btn-text').innerText = t('start');
       
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Session', 'Stop Analysis Session', 0, 'Info', `VSA session stopped. Total datapoints collected: ${sessionData.length}`);
+      }
+
       if (quickstartBtn) {
         quickstartBtn.classList.remove('running');
         quickstartBtn.innerText = "▶️ " + t('start');
@@ -4603,6 +4545,10 @@
       btn.querySelector('#btn-icon').innerText = "■";
       btn.querySelector('#btn-text').innerText = t('stop');
       
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Session', 'Start Analysis Session', 0, 'Info', `VSA session started. Target video ID: ${activeVideoId || 'None'}`);
+      }
+
       if (quickstartBtn) {
         quickstartBtn.classList.add('running');
         quickstartBtn.innerText = "■ " + t('stop');
@@ -4652,6 +4598,9 @@
         }
       } catch (ctxErr) {
         console.warn('AudioContext init failed:', ctxErr.message);
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Audio', 'AudioContext Initialization Failed', 0, 'Failed', ctxErr.message);
+        }
       }
 
       // Tier 1: Try tab audio capture (getDisplayMedia) — only if supported
@@ -4660,6 +4609,9 @@
 
       if (hasGetDisplayMedia && audioCtx) {
         try {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Tab Audio Capture Request', 0, 'Info', 'Requesting getDisplayMedia for tab audio.');
+          }
           // Pre-capture guidance toast (read it before the system dialog appears)
           showToast(t('toast_audio_check'));
           await new Promise(resolve => setTimeout(resolve, 900));
@@ -4682,20 +4634,32 @@
             analyzer.gainNode.connect(analyzer.analyser);
             audioConnected = true;
             showToast(t('toast_audio_captured'));
+            if (window.PerformanceLogger) {
+              window.PerformanceLogger.log('Audio', 'Tab Audio Capture Success', 0, 'Success', 'Display audio track successfully bound to VSA.');
+            }
           } else {
             // User shared screen but did not check "Share audio" — silently clean up
             displayStream.getTracks().forEach(t => t.stop());
             console.info('[Th!nc] Tab shared without audio — falling back to mic or context mode.');
+            if (window.PerformanceLogger) {
+              window.PerformanceLogger.log('Audio', 'Tab Shared Without Audio', 0, 'Warning', 'User shared display without enabling tab audio.');
+            }
           }
         } catch (tabErr) {
           // User cancelled the dialog or browser blocked — NOT an error from user perspective
           console.info('[Th!nc] Tab audio capture not established:', tabErr.message);
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Tab Audio Capture Skipped/Failed', 0, 'Warning', tabErr.message);
+          }
         }
       }
 
       // Tier 2: Microphone fallback — only attempt if mediaDevices is available
       if (!audioConnected && hasMediaDevices && audioCtx) {
         try {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Microphone Capture Request', 0, 'Info', 'Attempting getUserMedia fallback.');
+          }
           const micStream = await navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: true, noiseSuppression: true }
           });
@@ -4706,8 +4670,14 @@
           analyzer.gainNode.connect(analyzer.analyser);
           audioConnected = true;
           showToast(t('toast_mic_captured'));
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Microphone Capture Success', 0, 'Success', 'Microphone stream successfully bound to VSA.');
+          }
         } catch (micErr) {
           console.info('[Th!nc] Microphone not available:', micErr.message);
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Microphone Capture Failed', 0, 'Failed', micErr.message);
+          }
         }
       }
 
@@ -4716,6 +4686,9 @@
       if (!audioConnected) {
         analyzer = null;
         showToast(t('toast_ai_active'));
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Audio', 'VSA Running on Caption Context Model Only', 0, 'Success', 'No physical audio captured. Utilizing context linguistic analysis.');
+        }
       }
 
       startAnalysisLoop();
@@ -7384,7 +7357,7 @@
 // ===== Diagnostic & Performance Logger =====
 const PerformanceLogger = (function() {
   const logs = [];
-  const MAX_LOGS = 150;
+  const MAX_LOGS = 1000;
 
   function getTimestamp() {
     const now = new Date();
@@ -7436,6 +7409,31 @@ const PerformanceLogger = (function() {
         });
       } else {
         fallbackCopy(text);
+      }
+    },
+    saveToFile: function() {
+      const isElectron = window.electronAPI && window.electronAPI.isElectron;
+      const isCapacitor = window.Capacitor && window.Capacitor.isNative;
+      const platformType = isElectron ? 'Electron Desktop App' : (isCapacitor ? 'Capacitor Mobile App' : 'Standard Web Browser');
+      
+      const header = `=== THE TRUTH UNTOLD DIAGNOSTIC LOG ===\nGenerated at: ${new Date().toLocaleString()}\nPlatform: ${platformType}\nUser Agent: ${navigator.userAgent}\n---------------------------------------\n`;
+      const body = logs.map(l => `[${l.timestamp}][${l.category}][${l.status}] ${l.operation} (${l.durationMs !== null ? l.durationMs + 'ms' : 'N/A'}) - ${l.details}`).join('\n');
+      const text = header + body;
+      
+      try {
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `thinc_diagnostic_logs_${Date.now()}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        this.log('System', 'Diagnostic logs saved to file', 0, 'Success', 'Logs downloaded successfully.');
+      } catch (err) {
+        alert('File download failed: ' + err.message);
+        this.log('System', 'Diagnostic save failed', 0, 'Failed', err.message);
       }
     }
   };
@@ -7599,11 +7597,23 @@ const DiagnosticUI = (function() {
       <div class="diag-modal-content">
         <div class="diag-header">
           <div class="diag-title">
-            <span>📊</span> System Diagnostic & Performance Log
+            <span>📊</span> Th!nc 히든 진단 로그 (Ctrl+Shift+L)
           </div>
           <div class="diag-actions">
-            <button class="diag-btn" id="diag-btn-copy">Copy Logs</button>
-            <button class="diag-btn diag-btn-danger" id="diag-btn-clear">Clear Logs</button>
+            <select id="diag-filter-cat" style="background:rgba(30,41,59,0.8);color:#cbd5e1;border:1px solid rgba(59,130,246,0.4);border-radius:6px;padding:5px 8px;font-size:0.82rem;cursor:pointer;">
+              <option value="all">전체 카테고리</option>
+              <option value="System">System</option>
+              <option value="Audio">Audio</option>
+              <option value="Captions">Captions</option>
+              <option value="Network">Network</option>
+              <option value="Webview">Webview</option>
+              <option value="Analysis">Analysis</option>
+              <option value="Session">Session</option>
+              <option value="Error">Error</option>
+            </select>
+            <button class="diag-btn" id="diag-btn-copy">📋 복사</button>
+            <button class="diag-btn" id="diag-btn-save">💾 파일저장</button>
+            <button class="diag-btn diag-btn-danger" id="diag-btn-clear">🗑 초기화</button>
             <button class="diag-btn-close" id="diag-btn-close">&times;</button>
           </div>
         </div>
@@ -7612,20 +7622,22 @@ const DiagnosticUI = (function() {
             <div class="diag-sysinfo-grid">
               <div><strong>Platform:</strong> ${platformType}</div>
               <div><strong>Language:</strong> ${navigator.language}</div>
+              <div><strong>Total Logs:</strong> <span id="diag-log-count">0</span> / 1000</div>
+              <div><strong>Session Start:</strong> ${new Date().toLocaleTimeString()}</div>
               <div style="grid-column: span 2"><strong>User Agent:</strong> ${navigator.userAgent}</div>
             </div>
           </div>
           <div class="diag-table-container">
-            <div style="max-height: 48vh; overflow-y: auto;">
+            <div style="max-height: 44vh; overflow-y: auto;" id="diag-scroll-area">
               <table class="diag-table">
                 <thead>
                   <tr>
-                    <th style="width: 100px;">Time</th>
-                    <th style="width: 80px;">Category</th>
-                    <th style="width: 180px;">Operation</th>
-                    <th style="width: 80px;">Duration</th>
-                    <th style="width: 70px;">Status</th>
-                    <th>Details</th>
+                    <th style="width: 95px;">시간</th>
+                    <th style="width: 90px;">카테고리</th>
+                    <th style="width: 200px;">작업</th>
+                    <th style="width: 75px;">소요(ms)</th>
+                    <th style="width: 75px;">상태</th>
+                    <th>상세 내용</th>
                   </tr>
                 </thead>
                 <tbody id="diag-logs-tbody">
@@ -7648,6 +7660,12 @@ const DiagnosticUI = (function() {
     document.getElementById('diag-btn-copy').addEventListener('click', () => {
       PerformanceLogger.copyToClipboard();
     });
+    document.getElementById('diag-btn-save').addEventListener('click', () => {
+      PerformanceLogger.saveToFile();
+    });
+    document.getElementById('diag-filter-cat').addEventListener('change', () => {
+      renderLogs();
+    });
     
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) hide();
@@ -7660,25 +7678,39 @@ const DiagnosticUI = (function() {
     const tbody = document.getElementById('diag-logs-tbody');
     if (!tbody) return;
     
-    const logs = PerformanceLogger.getLogs();
+    const allLogs = PerformanceLogger.getLogs();
+    const filterEl = document.getElementById('diag-filter-cat');
+    const filterCat = filterEl ? filterEl.value : 'all';
+    const logs = filterCat === 'all' ? allLogs : allLogs.filter(l => l.category === filterCat);
+
+    const countEl = document.getElementById('diag-log-count');
+    if (countEl) countEl.textContent = allLogs.length;
+    
     if (logs.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 20px;">No diagnostic logs captured yet.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 20px;">${filterCat !== 'all' ? filterCat + ' 카테고리에 로그 없음' : '로그가 없습니다.'}</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = logs.slice().reverse().map(log => `
-      <tr>
-        <td style="color: #64748b; font-family: monospace;">${log.timestamp}</td>
-        <td><span class="badge-category">${log.category}</span></td>
-        <td style="font-weight: 500;">${log.operation}</td>
-        <td style="font-family: monospace; color: ${log.durationMs && log.durationMs > 2000 ? '#facc15' : '#cbd5e1'}">
+    tbody.innerHTML = logs.slice().reverse().map(log => {
+      const rowBg = log.status === 'Failed' ? 'rgba(239,68,68,0.06)' : log.status === 'Warning' ? 'rgba(234,179,8,0.05)' : '';
+      return `
+      <tr style="background: ${rowBg}">
+        <td style="color: #64748b; font-family: monospace; font-size:0.78rem;">${log.timestamp}</td>
+        <td><span class="badge-category" style="font-size:0.78rem;">${log.category}</span></td>
+        <td style="font-weight: 500; font-size:0.82rem;">${log.operation}</td>
+        <td style="font-family: monospace; font-size:0.8rem; color: ${log.durationMs && log.durationMs > 2000 ? '#facc15' : log.durationMs && log.durationMs > 500 ? '#fb923c' : '#cbd5e1'}">
           ${log.durationMs !== null ? log.durationMs + ' ms' : '-'}
         </td>
         <td><span class="badge-status badge-${log.status}">${log.status}</span></td>
-        <td style="color: #94a3b8; font-size: 0.8rem;">${log.details}</td>
+        <td style="color: #94a3b8; font-size: 0.78rem; word-break: break-word; max-width: 340px;">${log.details}</td>
       </tr>
-    `).join('');
+    `}).join('');
+
+    // 자동 스크롤 (가장 최신 로그가 맨 위에 표시됨)
+    const scrollArea = document.getElementById('diag-scroll-area');
+    if (scrollArea) scrollArea.scrollTop = 0;
   }
+
 
   function show() {
     if (modalElement) {

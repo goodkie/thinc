@@ -115,6 +115,7 @@ function createMain(serverPort) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: false,                  // 프리로드에서 fs, path 사용을 위해 샌드박스 비활성화
       webSecurity: false,              // CORS 완전 우회 — YouTube 자막 직접 접근
       allowRunningInsecureContent: true,
       webviewTag: true,                // 렌더러 내 웹뷰 태그 활성화
@@ -129,6 +130,14 @@ function createMain(serverPort) {
     }
     return { action: 'deny' };
   });
+
+  // Renderer console logs redirection to terminal for debugging
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer Console] [Level ${level}] ${message} (at ${sourceId}:${line})`);
+  });
+
+  // Open Developer Tools automatically on startup
+  mainWindow.webContents.openDevTools();
 
   // ✅ http://localhost 로 로드 → YouTube 플레이어 오류 153 해결
   mainWindow.loadURL(`http://127.0.0.1:${serverPort}/index.html`);
@@ -267,6 +276,9 @@ ipcMain.handle('fetch-background-captions', (event, videoId) => {
         preload: path.join(__dirname, 'preload-background.js')
       }
     });
+
+    // Mute background scraping window to prevent audio noise/autoplay sound
+    bgWin.webContents.setAudioMuted(true);
 
     activeBackgroundWindows.set(videoId, bgWin);
 

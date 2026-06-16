@@ -287,22 +287,36 @@
     startObserver();
   }
 
-  // ── 현재 재생 중인 비디오 감지 (playback 이벤트 중계) ───────────────────────
+  // ── 현재 재생 중인 비디오 감지 및 재생 시간 정보 중계 ───────────────────────
   setInterval(() => {
     const vid = document.querySelector('video');
-    if (vid && !vid.__thincTracked) {
-      vid.__thincTracked = true;
-      vid.addEventListener('play', () => {
+    if (vid) {
+      if (!vid.__thincTracked) {
+        vid.__thincTracked = true;
+        vid.addEventListener('play', () => {
+          const videoId = parseVideoId(location.href);
+          if (videoId) {
+            // console.log으로 부모 렌더러에게 중계
+            console.log('[THINC-PLAYBACK]' + JSON.stringify({
+              videoId,
+              platform: location.hostname
+            }));
+          }
+        });
+      }
+
+      // 비디오가 재생 중이면 현재 재생 시간(currentTime)을 주기적으로 부모 렌더러에 중계
+      if (!vid.paused && !vid.ended) {
         const videoId = parseVideoId(location.href);
         if (videoId) {
-          // console.log으로 부모 렌더러에게 중계
-          console.log('[THINC-PLAYBACK]' + JSON.stringify({
+          console.log('[THINC-TIMEUPDATE]' + JSON.stringify({
             videoId,
+            currentTime: vid.currentTime,
             platform: location.hostname
           }));
         }
-      });
+      }
     }
-  }, 2000);
+  }, 500);
 
 })();
