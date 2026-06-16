@@ -3,7 +3,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
-const { YoutubeTranscript } = require('@danielxceron/youtube-transcript');
+const { YoutubeTranscript } = require('youtube-transcript');
 
 // --- Failed Nodes Blacklist Cache ---
 const failedNodesCache = new Map(); // hostname -> timestamp
