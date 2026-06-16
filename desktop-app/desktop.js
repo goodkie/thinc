@@ -52,6 +52,7 @@
   let lastShownCaptionIdx = -1;   // Track which caption was last displayed
   let activeCardElement = null;   // Active card DOM element in sentence list
   let captionLoadStatus = 'none'; // 'none' | 'loading' | 'loaded' | 'failed'
+  let isAnalysisLocked = false;   // ✅ 중복 loadSocialVideoAnalysis 실행 방지 전역 잠금 플래그
 
   // History sessions list
   let sessionHistory = [];
@@ -1801,6 +1802,7 @@
       });
     }
 
+
     // Export report CSV
     const btnExportCsv = document.getElementById('btn-export-csv');
     if (btnExportCsv) btnExportCsv.addEventListener('click', exportCSV);
@@ -2038,22 +2040,23 @@
 
   // 유튜브 및 타 소셜 영상 실시간 분석 트리거 함수
   async function loadSocialVideoAnalysis(videoId, platform) {
-    // ✅ 중복 분석 방지 가드: 동일 비디오가 이미 로드/로딩 중이면 스킵
+    // ✅ 진행 중인 분석이 있거나 동일 비디오이면 스킵
+    if (isAnalysisLocked) {
+      console.log(`[Th!nc-Extension] Analysis already running (locked). Ignoring call for: ${videoId}`);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Analysis', 'Social Video Analysis Skipped (Locked)', 0, 'Info', `Already analyzing: ${activeVideoId}, new request: ${videoId}`);
+      }
+      return;
+    }
     if (activeVideoId === videoId && (captionLoadStatus === 'loaded' || captionLoadStatus === 'loading')) {
       console.log(`[Th!nc-Extension] Analysis already active/loading for video: ${videoId}. Skipping re-fetch. (Status: ${captionLoadStatus})`);
       if (window.PerformanceLogger) {
         window.PerformanceLogger.log('Analysis', 'Social Video Analysis Skipped (Already Active)', 0, 'Info', `Video ID: ${videoId}, Status: ${captionLoadStatus}`);
       }
-      // 분석 엔진이 정지된 특이 상황에만 재가동 (토글 오작동 방지)
-      if (typeof isRunning !== 'undefined' && !isRunning) {
-        const btnToggle = document.getElementById('btn-toggle');
-        if (btnToggle && btnToggle.dataset.running === 'false') {
-          btnToggle.click();
-        }
-      }
       return;
     }
 
+    isAnalysisLocked = true; // ✅ 잠금 활성화
     console.log(`[Th!nc-Extension] Requesting analysis for video: ${videoId} on ${platform}`);
     activeVideoId = videoId;
     
@@ -2152,7 +2155,7 @@
       }
     }
 
-    // 분석 기능 기동 (음성/자막)
+    // 분석 기능 기동 (음성/자막) - 이미 실행 중이면 중복 클릭 방지
     if (bannerText) bannerText.innerText = '음성 분석 중...';
     if (!isRunning) {
       if (window.PerformanceLogger) {
@@ -2163,6 +2166,8 @@
         btnToggle.click();
       }
     }
+
+    isAnalysisLocked = false; // ✅ 분석 요청 완료 후 잠금 해제 (다음 영상 분석 허용)
   }
 
   const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -3787,8 +3792,40 @@
   async function fetchYoutubeCaptionsOfficialFrontend(videoId) {
     console.log(`[Diagnostic] fetchYoutubeCaptionsOfficialFrontend started for ${videoId}`);
     const pageUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const html = await fetchViaCORSProxy(pageUrl);
-    console.log(`[Diagnostic] HTML fetched via CORS, length: ${html?.length}`);
+    const isElectronEnv = !!(window.electronAPI && window.electronAPI.isElectron);
+
+    let html = null;
+
+    // ✅ Electron 환경에서는 직접 fetch (CORS 제한 없음)
+    if (isElectronEnv) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(pageUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          }
+        });
+        clearTimeout(tid);
+        if (res.ok) {
+          html = await res.text();
+          console.log(`[Diagnostic] HTML fetched via Electron direct, length: ${html?.length}`);
+        }
+      } catch (err) {
+        console.warn('[Diagnostic] Electron direct page fetch failed:', err.message);
+      }
+    }
+
+    // 직접 페치 실패 시 CORS 프록시 폴백
+    if (!html) {
+      html = await fetchViaCORSProxy(pageUrl);
+      console.log(`[Diagnostic] HTML fetched via CORS proxy, length: ${html?.length}`);
+    }
+
+
     
     let captionTracks = null;
     

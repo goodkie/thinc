@@ -136,8 +136,8 @@ function createMain(serverPort) {
     console.log(`[Renderer Console] [Level ${level}] ${message} (at ${sourceId}:${line})`);
   });
 
-  // Open Developer Tools automatically on startup
-  mainWindow.webContents.openDevTools();
+  // [DEBUG REMOVED] DevTools no longer opens automatically
+  // mainWindow.webContents.openDevTools();
 
   // ✅ http://localhost 로 로드 → YouTube 플레이어 오류 153 해결
   mainWindow.loadURL(`http://127.0.0.1:${serverPort}/index.html`);
@@ -277,8 +277,14 @@ ipcMain.handle('fetch-background-captions', (event, videoId) => {
       }
     });
 
-    // Mute background scraping window to prevent audio noise/autoplay sound
+    // ♊️ 백그라운드 스크래핑 창을 뮤트 후 로드 (setAudioMuted 는 did-finish-load 전에 적용)
     bgWin.webContents.setAudioMuted(true);
+    bgWin.webContents.on('did-start-loading', () => {
+      try { bgWin.webContents.setAudioMuted(true); } catch(e) {}
+    });
+    bgWin.webContents.on('did-finish-load', () => {
+      try { bgWin.webContents.setAudioMuted(true); } catch(e) {}
+    });
 
     activeBackgroundWindows.set(videoId, bgWin);
 
@@ -295,9 +301,7 @@ ipcMain.handle('fetch-background-captions', (event, videoId) => {
       if (result.videoId === videoId) {
         clearTimeout(timeout);
         ipcMain.off('background-captions-result', handleResult);
-        
         console.log(`[Main] Scraper returned status: ${result.ok} for video ${videoId}`);
-        
         if (activeBackgroundWindows.has(videoId)) {
           try { bgWin.close(); } catch(e) {}
           activeBackgroundWindows.delete(videoId);
