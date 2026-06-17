@@ -3966,16 +3966,11 @@
     // baseUrl이 없으면 languageCode로 timedtext URL 직접 구성
     let xmlUrl = track.baseUrl;
     if (!xmlUrl && track.languageCode) {
-      xmlUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${track.languageCode}&fmt=json3`;
+      xmlUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${track.languageCode}&fmt=srv1`;
       console.log(`[Diagnostic] No baseUrl, constructed timedtext URL for lang ${track.languageCode}`);
     } else if (xmlUrl) {
-      // JSON3 포맷으로 강제 요청 (더 안정적)
       if (!xmlUrl.startsWith('http')) xmlUrl = 'https:' + xmlUrl;
-      if (xmlUrl.includes('fmt=')) {
-        xmlUrl = xmlUrl.replace(/fmt=[^&]+/, 'fmt=json3');
-      } else {
-        xmlUrl += (xmlUrl.includes('?') ? '&' : '?') + 'fmt=json3';
-      }
+      // 유튜브 서명 URL(baseUrl)은 절대 변조(fmt=json3 강제 등)하면 안 됩니다. 서명이 깨져 빈 응답이 옵니다.
     }
     console.log(`[Diagnostic] Selected track language: ${track.languageCode}, URL: ${xmlUrl}`);
     let xmlText = null;
