@@ -2850,7 +2850,7 @@
     const cards = document.querySelectorAll('.yt-video-card:not([data-scanned])');
     if (cards.length === 0) return;
     
-    const CONCURRENCY = 3; // 동시 요청 수 제한으로 초고속 처리
+    const CONCURRENCY = 4; // 동시 요청 수 제한
     
     const scanCard = async (card) => {
       const videoId = card.getAttribute('data-video-id') || 
@@ -2865,26 +2865,30 @@
       // 파이차트 진행률 뱃지 삽입
       const pieBadge = document.createElement('div');
       pieBadge.className = 'yt-lie-badge scan-pie';
-      pieBadge.innerHTML = `
-        <svg class="scan-pie-svg" viewBox="0 0 20 20">
-          <circle class="scan-pie-bg" cx="10" cy="10" r="9" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-          <circle class="scan-pie-arc" cx="10" cy="10" r="9" fill="none" stroke="#f1c40f" stroke-width="2"
-            stroke-dasharray="0 56.55" stroke-linecap="round" transform="rotate(-90 10 10)"/>
-        </svg>
-      `;
+      pieBadge.innerHTML = `<svg class="scan-pie-svg" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" fill="rgba(10,10,20,0.7)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+        <circle class="scan-pie-track" cx="12" cy="12" r="9" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2.5"/>
+        <circle class="scan-pie-arc" cx="12" cy="12" r="9" fill="none" stroke="#f1c40f" stroke-width="2.5"
+          stroke-dasharray="0 56.55" stroke-linecap="round" transform="rotate(-90 12 12)"/>
+        <circle cx="12" cy="12" r="2" fill="#f1c40f" opacity="0.85"/>
+      </svg>`;
       thumbWrap.appendChild(pieBadge);
       
-      // 파이 애니메이션 진행
+      // 이징 애니메이션 (천천히 시작 → 빠르게 → 95%에서 멈춤)
       const arc = pieBadge.querySelector('.scan-pie-arc');
       const CIRC = 56.55;
       let animFrame;
-      let startTime = Date.now();
-      const animDuration = 4000; // 예상 스캔 시간
+      const startTime = Date.now();
+      const ANIM_DURATION = 5500; // 최대 예상 스캔 시간
+      
+      const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+      
       const animate = () => {
         const elapsed = Date.now() - startTime;
-        const pct = Math.min(elapsed / animDuration, 0.95);
+        const rawPct = Math.min(elapsed / ANIM_DURATION, 1);
+        const pct = easeOutCubic(rawPct) * 0.95; // 최대 95%까지
         if (arc) arc.setAttribute('stroke-dasharray', `${pct * CIRC} ${CIRC}`);
-        if (elapsed < animDuration) animFrame = requestAnimationFrame(animate);
+        if (rawPct < 1) animFrame = requestAnimationFrame(animate);
       };
       animFrame = requestAnimationFrame(animate);
       
@@ -2892,16 +2896,26 @@
         const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
         const data = await resp.json();
         
+        // 완료: 파이를 100%로 채운 뒤 뱃지로 교체
         cancelAnimationFrame(animFrame);
+        if (arc) arc.setAttribute('stroke-dasharray', `${CIRC} ${CIRC}`);
+        
+        await new Promise(r => setTimeout(r, 150)); // 잠깐 100% 표시
+        pieBadge.style.transition = 'opacity 0.25s ease';
+        pieBadge.style.opacity = '0';
+        await new Promise(r => setTimeout(r, 250));
         pieBadge.remove();
         
         if (data && data.ok) {
           if (thumbWrap.querySelector('.yt-lie-badge:not(.scan-pie)')) return;
           const badge = document.createElement('div');
           badge.className = `yt-lie-badge ${data.rating}`;
+          badge.style.opacity = '0';
+          badge.style.transition = 'opacity 0.3s ease';
           const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : '🔴';
           badge.innerHTML = `${emoji} ${data.badgeText || data.score + '%'}`;
           thumbWrap.appendChild(badge);
+          requestAnimationFrame(() => { badge.style.opacity = '1'; });
         }
       } catch (e) {
         cancelAnimationFrame(animFrame);
@@ -2909,7 +2923,7 @@
       }
     };
     
-    // CONCURRENCY 개씩 나누어 초고속 처리
+    // CONCURRENCY 개씩 배치 처리
     const cardArray = Array.from(cards);
     for (let i = 0; i < cardArray.length; i += CONCURRENCY) {
       const batch = cardArray.slice(i, i + CONCURRENCY);

@@ -1325,6 +1325,8 @@ function handleCaptions(req, res) {
 
 // ─── /api/analyze-video-fast ──────────────────────────────────────────────────
 // 초고속 비디오 자막 신뢰도(거짓) 스캔 및 3색 등급 판별 API
+// - 음성이 처음 감지되는 세그먼트 시점부터 30초만 샘플링
+// - YoutubeTranscript → getYouTubeTranscriptDirect → Piped 순서 폴백
 async function handleAnalyzeVideoFast(req, res) {
   const parsedUrl = url.parse(req.url, true);
   const videoId = (parsedUrl.query.id || '').trim();
@@ -1338,32 +1340,67 @@ async function handleAnalyzeVideoFast(req, res) {
 
   console.log(`[handleAnalyzeVideoFast] Scanning video: ${videoId}`);
 
-  let textBuffer = '';
+  // ── 자막 세그먼트 수집 (다단 폴백) ──────────────────────────────────────────
+  let rawSegments = null;
+  
+  // 1차: YoutubeTranscript 라이브러리 (가장 빠름)
   try {
-    const segments = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'ko' })
-      .catch(() => YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' }))
-      .catch(() => getYouTubeTranscriptDirect(videoId, 'ko'))
-      .catch(() => getYouTubeTranscriptDirect(videoId, 'en'));
-
-    if (segments && segments.length > 0) {
-      // 첫 음성 감지(첫 자막) 시점부터 30초 구간만 샘플링
-      const firstSegment = segments[0];
-      const isMs = segments.some(s => s.offset > 1000) || segments.some(s => s.duration > 1000);
-      const firstTime = firstSegment.offset !== undefined ? firstSegment.offset : (firstSegment.start !== undefined ? firstSegment.start : 0);
-      const limit = isMs ? 30000 : 30;
-      
-      const filteredSegments = segments.filter(s => {
-        const timeVal = s.offset !== undefined ? s.offset : (s.start !== undefined ? s.start : 0);
-        return timeVal >= firstTime && timeVal <= (firstTime + limit);
-      });
-      
-      textBuffer = filteredSegments.map(s => s.text).join(' ');
-      console.log(`[handleAnalyzeVideoFast] 30s active voice sampling: from ${firstTime} to ${firstTime + limit} (isMs=${isMs}). Filtered ${filteredSegments.length}/${segments.length} segments.`);
+    rawSegments = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'ko' });
+  } catch (e1) {
+    try {
+      rawSegments = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' });
+    } catch (e2) {
+      // no-op, try next
     }
-  } catch (err) {
-    console.warn(`[handleAnalyzeVideoFast] Fast caption fetch failed for ${videoId}:`, err.message);
+  }
+  
+  // 2차: YouTube 직접 스크래핑 폴백
+  if (!rawSegments || rawSegments.length === 0) {
+    try {
+      rawSegments = await getYouTubeTranscriptDirect(videoId, 'ko');
+    } catch(e) {}
+  }
+  if (!rawSegments || rawSegments.length === 0) {
+    try {
+      rawSegments = await getYouTubeTranscriptDirect(videoId, 'en');
+    } catch(e) {}
+  }
+  
+  // 3차: Piped 폴백 (병렬 다인스턴스 레이스)
+  if (!rawSegments || rawSegments.length === 0) {
+    try {
+      rawSegments = await fetchPipedCaptionsBackend(videoId);
+    } catch(e) {
+      console.warn(`[handleAnalyzeVideoFast] Piped fallback failed: ${e.message}`);
+    }
   }
 
+  // ── 30초 음성 구간 샘플링 ─────────────────────────────────────────────────────
+  let textBuffer = '';
+  if (rawSegments && rawSegments.length > 0) {
+    // 세그먼트 시간 필드 통일 (start/offset 둘 다 지원)
+    const normalizedSegs = rawSegments.map(s => ({
+      text: (s.text || '').replace(/\[.*?\]/g, '').trim(),
+      startSec: s.start !== undefined ? s.start : (s.offset !== undefined ? s.offset / 1000 : 0),
+      dur: s.duration !== undefined ? s.duration : (s.dur !== undefined ? s.dur : 1)
+    })).filter(s => s.text.length > 0);
+    
+    if (normalizedSegs.length > 0) {
+      // 첫 음성 감지 시점(무음·공백 제외 첫 세그먼트)부터 30초
+      const firstSec = normalizedSegs[0].startSec;
+      const endSec = firstSec + 30;
+      
+      const filtered = normalizedSegs.filter(s => s.startSec >= firstSec && s.startSec <= endSec);
+      textBuffer = filtered.map(s => s.text).join(' ');
+      
+      console.log(`[handleAnalyzeVideoFast] 30s sampling: ${firstSec.toFixed(1)}s → ${endSec.toFixed(1)}s | ` +
+        `${filtered.length}/${normalizedSegs.length} segs | "${textBuffer.substring(0, 80)}..."`);
+    }
+  } else {
+    console.warn(`[handleAnalyzeVideoFast] No captions retrieved for ${videoId}`);
+  }
+
+  // ── 거짓 감지 로직 ────────────────────────────────────────────────────────────
   let score = 80;
   const detected = [];
 
@@ -1402,7 +1439,7 @@ async function handleAnalyzeVideoFast(req, res) {
     score = 100 - (dangerCount * 12 + suspiciousCount * 4);
     score = Math.max(10, Math.min(100, score));
   } else {
-    score = 85;
+    score = 82; // 자막 없을 때 기본값
   }
 
   let rating = 'safe';
@@ -1423,7 +1460,8 @@ async function handleAnalyzeVideoFast(req, res) {
     score,
     rating,
     badgeText,
-    detectedKeywords: detected.slice(0, 10)
+    detectedKeywords: detected.slice(0, 10),
+    captionAvailable: textBuffer.length > 0
   }));
 }
 

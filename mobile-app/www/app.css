@@ -4000,21 +4000,22 @@ body::before {
   animation: pulseScan 1.5s infinite;
 }
 .yt-lie-badge.scan-pie {
-  background: rgba(20, 20, 30, 0.75);
-  backdrop-filter: blur(6px);
-  padding: 4px;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+  padding: 0;
   border-radius: 50%;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
   animation: none;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6));
 }
 .yt-lie-badge.scan-pie .scan-pie-svg {
-  width: 20px;
-  height: 20px;
+  width: 30px;
+  height: 30px;
   display: block;
 }
 .yt-lie-badge.truth {
