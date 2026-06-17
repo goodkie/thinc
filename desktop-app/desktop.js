@@ -4575,7 +4575,8 @@
 
   // Poll YouTube player API directly for high-resolution playback sync (every 100ms)
   setInterval(() => {
-    if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
+    const isLocalYoutube = activePlatform === 'youtube';
+    if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
       try {
         const t = ytPlayer.getCurrentTime();
         if (typeof t === 'number' && !isNaN(t)) {
@@ -4875,7 +4876,8 @@
       // ── Direct ytPlayer state poll each frame (more reliable than event callbacks) ──
       let playerState = -1;
       const isYoutube = activePlatform && activePlatform.includes('youtube');
-      if (isYoutube && ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+      const isLocalYoutube = activePlatform === 'youtube';
+      if (isLocalYoutube && ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
         try {
           playerState = ytPlayer.getPlayerState();
           // YT states: -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
@@ -4886,7 +4888,7 @@
       // Check if YouTube video is paused/stopped (if activeVideoId is set)
       // YT states: 2 = paused, 0 = ended, 5 = cued
       // NOTE: playerState -1(unstarted) 는 ytPlayer 초기화 중에도 발생하므로 제외
-      const isPausedOrEnded = isYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5);
+      const isPausedOrEnded = isLocalYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5);
 
       if (isPausedOrEnded) {
         // 동영상이 멈췄을 때는 점수나 플로팅 누적 바그래프를 초기화하지 않고, 분석 루프만 대기 상태로 유지합니다.
@@ -4895,7 +4897,7 @@
       }
 
       // ── Sync captionPlaybackSec from ytPlayer directly each frame ──
-      if (isYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
+      if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
         try {
           const t = ytPlayer.getCurrentTime();
           if (typeof t === 'number' && !isNaN(t) && t !== lastTimeValue) {
@@ -4909,7 +4911,7 @@
       // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
       let isPausedOrStopped = false;
       let isMutedOrSilent = false;
-      if (isYoutube && activeVideoId) {
+      if (isLocalYoutube && activeVideoId) {
         // Grace period: first 3 seconds of analysis exempt from pause detection
         // (gives YouTube Player API time to initialize and fire state events)
         const analysisElapsedMs = Date.now() - analysisStartTime;
@@ -4943,7 +4945,7 @@
       if (isYoutube && captionLoadStatus === 'loaded' && liveCaptions.length > 0) {
         // ── DIRECT ytPlayer position query for accurate gap detection ──
         let nowSec = 0;
-        if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+        if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
           try {
             const t = ytPlayer.getCurrentTime();
             if (typeof t === 'number' && !isNaN(t)) {
@@ -5087,7 +5089,8 @@
       if (captionLoadStatus === 'loaded' && liveCaptions.length > 0) {
         // ── DIRECT ytPlayer position query for accurate caption display ──
         let nowSec = 0;
-        if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+        const isLocalYoutube = activePlatform === 'youtube';
+        if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
           try {
             const t = ytPlayer.getCurrentTime();
             if (typeof t === 'number' && !isNaN(t)) nowSec = t;
@@ -5152,7 +5155,8 @@
     if (captionLoadStatus === 'loaded' && liveCaptions.length > 0) {
       // Direct player query first (most accurate)
       let nowSec = 0;
-      if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+      const isLocalYoutube = activePlatform === 'youtube';
+      if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
         try {
           const t = ytPlayer.getCurrentTime();
           if (typeof t === 'number' && !isNaN(t)) nowSec = t;
