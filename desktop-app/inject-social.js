@@ -53,6 +53,16 @@
       .thinc-badge.safe   { background: rgba(0,200,83,0.90) !important; border: 1px solid #00e676 !important; box-shadow: 0 0 8px rgba(0,200,83,0.5) !important; }
       .thinc-badge.caution{ background: rgba(255,145,0,0.90) !important; border: 1px solid #ffab40 !important; box-shadow: 0 0 8px rgba(255,145,0,0.5) !important; }
       .thinc-badge.danger { background: rgba(229,28,35,0.92) !important; border: 1px solid #ff5252 !important; box-shadow: 0 0 8px rgba(229,28,35,0.5) !important; }
+      .thinc-badge.scanning {
+        background: rgba(241, 196, 15, 0.9) !important;
+        border: 1px solid #f1c40f !important;
+        box-shadow: 0 0 8px rgba(241, 196, 15, 0.5) !important;
+        animation: thinc-pulse 1.2s infinite alternate !important;
+      }
+      @keyframes thinc-pulse {
+        0% { opacity: 0.6; }
+        100% { opacity: 1.0; }
+      }
       /* 컨테이너 relative 보장 */
       ytm-compact-video-renderer, ytm-video-with-context-renderer,
       ytm-media-item, ytm-rich-item-renderer, ytd-rich-grid-media,
@@ -126,13 +136,34 @@
     return null;
   }
 
+  // ── 스캔 중 배지 주입 ──────────────────────────────────────────────────────────
+  function injectScanningBadge(container, videoId) {
+    if (!container) return;
+    // 이미 일반 배지나 스캔 배지가 붙어 있으면 생략
+    if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
+
+    const badge = document.createElement('span');
+    badge.className = 'thinc-badge scanning';
+    badge.setAttribute('data-vid', videoId);
+    badge.textContent = '⏳ 스캔 중';
+
+    const pos = window.getComputedStyle(container).position;
+    if (pos === 'static' || pos === '') {
+      container.style.position = 'relative';
+    }
+    container.appendChild(badge);
+  }
+
   // ── 배지 DOM 주입 ────────────────────────────────────────────────────────────
   function injectBadge(container, videoId, data) {
     if (!container) return;
-    // 이미 배지가 있으면 스킵
-    if (container.querySelector('.thinc-badge[data-vid]')) return;
-    const existingBadge = container.querySelector(`.thinc-badge[data-vid="${videoId}"]`);
-    if (existingBadge) return;
+    
+    // 기존 스캔 중 배지 삭제
+    const scanningBadge = container.querySelector(`.thinc-badge.scanning[data-vid="${videoId}"]`);
+    if (scanningBadge) scanningBadge.remove();
+
+    // 이미 다른 배지가 주입되어 있으면 중복 주입하지 않음
+    if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]:not(.scanning)`)) return;
 
     const badge = document.createElement('span');
     badge.className = `thinc-badge ${data.rating}`;
@@ -195,9 +226,18 @@
       if (!videoId) return;
 
       const container = findThumbContainer(linkEl);
+      
+      // 이미 배지가 있으면 무시
+      if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
 
+      injectScanningBadge(container, videoId);
       fetchRating(videoId).then(data => {
-        if (data) injectBadge(container, videoId, data);
+        if (data) {
+          injectBadge(container, videoId, data);
+        } else {
+          const sc = container.querySelector(`.thinc-badge.scanning[data-vid="${videoId}"]`);
+          if (sc) sc.remove();
+        }
       });
     });
 
@@ -207,8 +247,16 @@
         const videoId = parseVideoId(a.getAttribute('href'));
         if (!videoId) return;
         const container = a.closest('figure, li, div[class*="item"], div[class*="card"]') || a;
+        if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
+
+        injectScanningBadge(container, videoId);
         fetchRating(videoId).then(data => {
-          if (data) injectBadge(container, videoId, data);
+          if (data) {
+            injectBadge(container, videoId, data);
+          } else {
+            const sc = container.querySelector(`.thinc-badge.scanning[data-vid="${videoId}"]`);
+            if (sc) sc.remove();
+          }
         });
       });
     }
@@ -219,8 +267,16 @@
       const videoId = parseVideoId(a.getAttribute('href'));
       if (!videoId) return;
       const container = a.closest('article, div[role="button"]') || a;
+      if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
+
+      injectScanningBadge(container, videoId);
       fetchRating(videoId).then(data => {
-        if (data) injectBadge(container, videoId, data);
+        if (data) {
+          injectBadge(container, videoId, data);
+        } else {
+          const sc = container.querySelector(`.thinc-badge.scanning[data-vid="${videoId}"]`);
+          if (sc) sc.remove();
+        }
       });
     });
   }
@@ -230,8 +286,16 @@
       const videoId = parseVideoId(a.getAttribute('href'));
       if (!videoId) return;
       const container = a.closest('div[class*="item"], li, article') || a;
+      if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
+
+      injectScanningBadge(container, videoId);
       fetchRating(videoId).then(data => {
-        if (data) injectBadge(container, videoId, data);
+        if (data) {
+          injectBadge(container, videoId, data);
+        } else {
+          const sc = container.querySelector(`.thinc-badge.scanning[data-vid="${videoId}"]`);
+          if (sc) sc.remove();
+        }
       });
     });
   }
@@ -243,8 +307,16 @@
       const videoId = parseVideoId(a.getAttribute('href'));
       if (!videoId) return;
       const container = a.closest('div[role="article"], div[class*="story"]') || a;
+      if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
+
+      injectScanningBadge(container, videoId);
       fetchRating(videoId).then(data => {
-        if (data) injectBadge(container, videoId, data);
+        if (data) {
+          injectBadge(container, videoId, data);
+        } else {
+          const sc = container.querySelector(`.thinc-badge.scanning[data-vid="${videoId}"]`);
+          if (sc) sc.remove();
+        }
       });
     });
   }
@@ -316,8 +388,27 @@
           }));
         }
       }
+
+      // 비디오 엘리먼트의 스크린 좌표 중계
+      const rect = vid.getBoundingClientRect();
+      const isVisible = rect.width > 0 && rect.height > 0 && window.getComputedStyle(vid).display !== 'none';
+      if (isVisible) {
+        console.log('[THINC-VIDEO-RECT]' + JSON.stringify({
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          windowWidth: window.innerWidth,
+          windowHeight: window.innerHeight,
+          isVisible: true
+        }));
+      } else {
+        console.log('[THINC-VIDEO-RECT]' + JSON.stringify({ isVisible: false }));
+      }
+    } else {
+      console.log('[THINC-VIDEO-RECT]' + JSON.stringify({ isVisible: false }));
     }
-  }, 500);
+  }, 200);
 
   // 외부 강제 호출용 바인딩
   window.forceScanPage = function() {

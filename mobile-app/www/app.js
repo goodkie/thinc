@@ -2389,6 +2389,7 @@
         </div>
       `;
     }).join('');
+    autoScanMobileVideos();
   }
 
   window.handleToggleFavClick = function(btn) {
@@ -2452,6 +2453,7 @@
 
     displayedVideoCount += nextChunk.length;
     reattachSentinel();
+    autoScanMobileVideos();
   }
 
   // Infinite Scroll Hook
@@ -4800,6 +4802,7 @@
       // Update UI
       updateDetectorUI(result, finalScore);
       drawHistoryCharts(result, finalScore);
+      fitOverlayToPlayer();
 
       // Draw Live timeline reliability bar
       drawLiveReliabilityBar();
@@ -4809,9 +4812,78 @@
         showToast(t('toast_high_stress'));
       }
 
-      animationId = requestAnimationFrame(loop);
     }
     loop();
+  }
+
+  function fitOverlayToPlayer() {
+    const overlay = document.getElementById('wv-float-overlay');
+    if (!overlay) return;
+
+    const wrapper = document.getElementById('yt-player-wrapper');
+    const isWrapperVisible = wrapper && !wrapper.classList.contains('hidden');
+
+    if (isWrapperVisible && isRunning) {
+      const altPlayer = document.getElementById('alt-player');
+      const ytPlayer = document.getElementById('yt-player');
+      const activePlayer = (altPlayer && !altPlayer.classList.contains('hidden')) ? altPlayer : ytPlayer;
+
+      if (activePlayer) {
+        const rect = activePlayer.getBoundingClientRect();
+        overlay.style.position = 'absolute';
+        overlay.style.left = `${rect.left}px`;
+        overlay.style.top = `${rect.top}px`;
+        overlay.style.width = `${rect.width}px`;
+        overlay.style.height = `${rect.height}px`;
+        overlay.classList.remove('hidden');
+      } else {
+        overlay.classList.add('hidden');
+      }
+    } else {
+      overlay.classList.add('hidden');
+    }
+  }
+
+  async function autoScanMobileVideos() {
+    const cards = document.querySelectorAll('.yt-video-card');
+    if (cards.length === 0) return;
+
+    const scanPromises = Array.from(cards).map(async (card) => {
+      const videoId = card.getAttribute('data-video-id');
+      if (!videoId) return;
+
+      const thumbWrap = card.querySelector('.yt-video-thumbnail-wrap');
+      if (!thumbWrap) return;
+
+      if (thumbWrap.querySelector('.yt-lie-badge')) return;
+
+      const scanningBadge = document.createElement('div');
+      scanningBadge.className = 'yt-lie-badge scanning';
+      scanningBadge.innerHTML = '⏳ 스캔 중';
+      thumbWrap.appendChild(scanningBadge);
+
+      try {
+        const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
+        const data = await resp.json();
+        
+        scanningBadge.remove();
+
+        if (data && data.ok) {
+          if (thumbWrap.querySelector('.yt-lie-badge')) return;
+
+          const badge = document.createElement('div');
+          badge.className = `yt-lie-badge ${data.rating}`;
+          const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : '🔴';
+          badge.innerHTML = `${emoji} ${data.badgeText}`;
+          thumbWrap.appendChild(badge);
+        }
+      } catch (e) {
+        console.error(`Failed to auto-scan video ${videoId}:`, e);
+        scanningBadge.remove();
+      }
+    });
+
+    await Promise.all(scanPromises);
   }
 
   function getMockAnalysisFrame(sensitivity) {
@@ -5163,12 +5235,22 @@
         wvLieFill.style.width = `${liePct}%`;
       }
 
-      // 실시간 자막 플로팅
+      // 실시간 자막 플로팅 (웹앱 스타일)
       const wvSub = document.getElementById('wv-float-subtitle');
       if (wvSub) {
         if (currentSubtitle && !result.isSilent && !result.isMusic) {
           wvSub.innerText = currentSubtitle;
           wvSub.classList.add('show');
+          if (smoothScore >= 60) {
+            wvSub.style.borderColor = "var(--accent-red)";
+            wvSub.style.boxShadow = "0 4px 15px rgba(255, 65, 108, 0.45)";
+          } else if (smoothScore >= 40) {
+            wvSub.style.borderColor = "var(--accent-orange)";
+            wvSub.style.boxShadow = "0 4px 15px rgba(247, 151, 30, 0.45)";
+          } else {
+            wvSub.style.borderColor = "var(--accent-green)";
+            wvSub.style.boxShadow = "0 4px 15px rgba(16, 185, 129, 0.45)";
+          }
         } else {
           wvSub.classList.remove('show');
         }

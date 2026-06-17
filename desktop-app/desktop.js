@@ -2041,6 +2041,23 @@
               captionPlaybackSec = data.currentTime;
             }
           } catch(err) {}
+        } else if (msg && msg.startsWith('[THINC-VIDEO-RECT]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-VIDEO-RECT]'.length));
+            const overlay = document.getElementById('wv-float-overlay');
+            if (overlay) {
+              if (data.isVisible && isRunning) {
+                const wvRect = wv.getBoundingClientRect();
+                overlay.style.left = `${wvRect.left + data.left}px`;
+                overlay.style.top = `${wvRect.top + data.top}px`;
+                overlay.style.width = `${data.width}px`;
+                overlay.style.height = `${data.height}px`;
+                overlay.classList.remove('hidden');
+              } else {
+                overlay.classList.add('hidden');
+              }
+            }
+          } catch(err) {}
         }
       });
 
@@ -5530,12 +5547,22 @@
         wvLieFill.style.width = `${liePct}%`;
       }
 
-      // 실시간 자막 플로팅
+      // 실시간 자막 플로팅 (웹앱 스타일)
       const wvSub = document.getElementById('wv-float-subtitle');
       if (wvSub) {
         if (currentSubtitle && !result.isSilent && !result.isMusic) {
           wvSub.innerText = currentSubtitle;
           wvSub.classList.add('show');
+          if (smoothScore >= 60) {
+            wvSub.style.borderColor = "var(--accent-red)";
+            wvSub.style.boxShadow = "0 4px 15px rgba(255, 65, 108, 0.45)";
+          } else if (smoothScore >= 40) {
+            wvSub.style.borderColor = "var(--accent-orange)";
+            wvSub.style.boxShadow = "0 4px 15px rgba(247, 151, 30, 0.45)";
+          } else {
+            wvSub.style.borderColor = "var(--accent-green)";
+            wvSub.style.boxShadow = "0 4px 15px rgba(16, 185, 129, 0.45)";
+          }
         } else {
           wvSub.classList.remove('show');
         }
