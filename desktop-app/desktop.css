@@ -3310,11 +3310,12 @@ input:checked + .toggle-knob:before {
   transition: width 0.3s ease;
 }
 
-/* 우측 상단 분석 시작/중단 버튼 */
+/* 플레이어 중앙 상단 분석 시작/중단 버튼 */
 .wv-float-start-btn {
   position: absolute;
-  top: 80px;
-  right: 15px;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
   color: #000000;
   border: none;
@@ -3329,10 +3330,11 @@ input:checked + .toggle-knob:before {
   gap: 6px;
   box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
   transition: all 0.2s ease;
+  z-index: 100;
 }
 
 .wv-float-start-btn:hover {
-  transform: translateY(-2px);
+  transform: translateX(-50%) translateY(-2px);
   box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5);
 }
 
@@ -3343,6 +3345,7 @@ input:checked + .toggle-knob:before {
 }
 
 .wv-float-start-btn[data-running="true"]:hover {
+  transform: translateX(-50%) translateY(-2px);
   box-shadow: 0 6px 20px rgba(255, 65, 108, 0.5);
 }
 
@@ -3612,7 +3615,9 @@ body.right-panel-collapsed .right-panel-toggle-btn {
 }
 .wv-float-overlay.mini-overlay .wv-float-start-btn {
   top: 48px !important;
-  right: 8px !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
   padding: 4px 8px !important;
   font-size: 8px !important;
   border-radius: 12px !important;

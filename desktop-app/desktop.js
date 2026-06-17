@@ -2101,14 +2101,22 @@
         } else if (msg && msg.startsWith('[THINC-TIMEUPDATE]')) {
           try {
             const data = JSON.parse(msg.substring('[THINC-TIMEUPDATE]'.length));
-            if (data.videoId === activeVideoId) {
+            if (data.videoId) {
+              if (data.videoId !== activeVideoId) {
+                console.log(`[Th!nc-Extension] Auto-aligning activeVideoId on timeupdate: ${activeVideoId} -> ${data.videoId}`);
+                activeVideoId = data.videoId;
+              }
               captionPlaybackSec = data.currentTime;
             }
           } catch(err) {}
         } else if (msg && msg.startsWith('[THINC-CAPTIONS-DATA]')) {
           try {
             const data = JSON.parse(msg.substring('[THINC-CAPTIONS-DATA]'.length));
-            if (data.videoId === activeVideoId && data.captions && data.captions.length > 0) {
+            if (data.captions && data.captions.length > 0) {
+              if (data.videoId && data.videoId !== activeVideoId) {
+                console.log(`[Th!nc-Extension] Auto-aligning activeVideoId on captions: ${activeVideoId} -> ${data.videoId}`);
+                activeVideoId = data.videoId;
+              }
               console.log(`[Th!nc-Extension] Received ${data.captions.length} captions directly from injected webview!`);
               liveCaptions = await translateCaptionsIfRequired(data.captions, currentLang);
               captionLoadStatus = 'loaded';
@@ -5771,7 +5779,12 @@
       const wvTruthFill = document.getElementById('wv-truth-fill');
       const wvLieFill = document.getElementById('wv-lie-fill');
       if (wvTruthPct && wvLiePct && wvTruthFill && wvLieFill) {
-        const liePct = smoothScore;
+        let avgScore = smoothScore;
+        if (sessionData && sessionData.length > 0) {
+          const total = sessionData.reduce((sum, d) => sum + d.score, 0);
+          avgScore = Math.round(total / sessionData.length);
+        }
+        const liePct = avgScore;
         const truthPct = 100 - liePct;
         wvTruthPct.textContent = `${truthPct}%`;
         wvLiePct.textContent = `${liePct}%`;
@@ -8006,7 +8019,7 @@ function analyzeCaptionsLocally(videoId, captions) {
   let textBuffer = '';
   if (normalizedSegs.length > 0) {
     const firstSec = normalizedSegs[0].startSec;
-    const endSec = firstSec + 30;
+    const endSec = firstSec + 15;
     const filtered = normalizedSegs.filter(s => s.startSec >= firstSec && s.startSec <= endSec);
     textBuffer = filtered.map(s => s.text).join(' ');
   }

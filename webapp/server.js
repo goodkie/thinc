@@ -1403,14 +1403,14 @@ async function handleAnalyzeVideoFast(req, res) {
     }).filter(s => s.text.length > 0);
     
     if (normalizedSegs.length > 0) {
-      // 첫 음성 감지 시점(무음·공백 제외 첫 세그먼트)부터 30초
+      // 첫 음성 감지 시점(무음·공백 제외 첫 세그먼트)부터 15초
       const firstSec = normalizedSegs[0].startSec;
-      const endSec = firstSec + 30;
+      const endSec = firstSec + 15;
       
       const filtered = normalizedSegs.filter(s => s.startSec >= firstSec && s.startSec <= endSec);
       textBuffer = filtered.map(s => s.text).join(' ');
       
-      console.log(`[handleAnalyzeVideoFast] 30s sampling: ${firstSec.toFixed(1)}s → ${endSec.toFixed(1)}s | ` +
+      console.log(`[handleAnalyzeVideoFast] 15s sampling: ${firstSec.toFixed(1)}s → ${endSec.toFixed(1)}s | ` +
         `${filtered.length}/${normalizedSegs.length} segs | "${textBuffer.substring(0, 80)}..."`);
     }
   } else {

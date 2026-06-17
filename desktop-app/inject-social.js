@@ -231,13 +231,29 @@
     const badge = document.createElement('span');
     badge.className = 'thinc-badge scanning';
     badge.setAttribute('data-vid', videoId);
-    badge.textContent = '⏳ 스캔 중';
+    badge.textContent = '⏳ 스캔 중 0%';
 
     const pos = window.getComputedStyle(container).position;
     if (pos === 'static' || pos === '') {
       container.style.position = 'relative';
     }
     container.appendChild(badge);
+
+    // 가상 진행률 시뮬레이션 타이머 작동 (서버 응답 대기 동안 점진적 차오름)
+    let pct = 0;
+    const intervalId = setInterval(() => {
+      if (!badge.isConnected) {
+        clearInterval(intervalId);
+        return;
+      }
+      if (pct < 95) {
+        const diff = Math.max(1, Math.round((98 - pct) / 6));
+        pct += diff;
+        badge.textContent = `⏳ 스캔 중 ${pct}%`;
+      } else {
+        clearInterval(intervalId);
+      }
+    }, 400);
   }
 
   // ── 배지 DOM 주입 ────────────────────────────────────────────────────────────
