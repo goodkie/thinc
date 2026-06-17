@@ -12,8 +12,15 @@ async function extractCaptionsAndReturn() {
     const scriptContent = `
       (function() {
         try {
-          if (window.ytInitialPlayerResponse) {
-            document.body.setAttribute('data-thinc-yt-player', JSON.stringify(window.ytInitialPlayerResponse));
+          let resp = window.ytInitialPlayerResponse;
+          if (!resp && window.ytplayer && window.ytplayer.config && window.ytplayer.config.args) {
+            resp = window.ytplayer.config.args.raw_player_response;
+          }
+          if (!resp && window.ytplayer) {
+            resp = window.ytplayer.bootstrapPlayerResponse;
+          }
+          if (resp) {
+            document.body.setAttribute('data-thinc-yt-player', JSON.stringify(resp));
           }
         } catch (e) {}
       })();

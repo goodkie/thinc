@@ -105,6 +105,92 @@
     return null;
   }
 
+  let lastExtractedVideoId = '';
+
+  // ── 유튜브 메인 재생 세션 자막 직접 추출 엔진 ─────────────────────────────────
+  async function extractActiveVideoCaptions(videoId) {
+    try {
+      const scriptContent = `
+        (function() {
+          try {
+            let resp = window.ytInitialPlayerResponse;
+            if (!resp && window.ytplayer && window.ytplayer.config && window.ytplayer.config.args) {
+              resp = window.ytplayer.config.args.raw_player_response;
+            }
+            if (!resp && window.ytplayer) {
+              resp = window.ytplayer.bootstrapPlayerResponse;
+            }
+            if (resp) {
+              document.body.setAttribute('data-thinc-active-player', JSON.stringify(resp));
+            }
+          } catch(e) {}
+        })();
+      `;
+      const scriptEl = document.createElement('script');
+      scriptEl.textContent = scriptContent;
+      document.documentElement.appendChild(scriptEl);
+      scriptEl.remove();
+
+      const dataAttr = document.body.getAttribute('data-thinc-active-player');
+      if (!dataAttr) return null;
+      document.body.removeAttribute('data-thinc-active-player');
+
+      const ytData = JSON.parse(dataAttr);
+      const tracks = ytData?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+      if (tracks.length === 0) return null;
+
+      let targetTrack = tracks.find(t => t.languageCode === 'ko');
+      if (!targetTrack) targetTrack = tracks.find(t => t.languageCode === 'en');
+      if (!targetTrack) targetTrack = tracks[0];
+
+      if (!targetTrack || !targetTrack.baseUrl) return null;
+
+      const res = await fetch(targetTrack.baseUrl + '&fmt=json');
+      if (!res.ok) return null;
+      const json = await res.json();
+
+      const segments = [];
+      if (json && Array.isArray(json.events)) {
+        json.events.forEach(event => {
+          if (!event.segs) return;
+          const text = event.segs.map(s => s.utf8).join('').trim();
+          if (!text) return;
+          const offset = event.tStartMs ? Math.round(event.tStartMs) : 0;
+          const duration = event.dDurationMs ? Math.round(event.dDurationMs) : 1000;
+          segments.push({
+            start: Math.round(offset / 1000),
+            dur: Math.max(1, Math.round(duration / 1000)),
+            text
+          });
+        });
+      }
+      return { lang: targetTrack.languageCode, captions: segments };
+    } catch(e) {
+      console.warn('[SocialInject] Active captions extraction failed:', e.message);
+      return null;
+    }
+  }
+
+  async function triggerCaptionsExtraction(videoId) {
+    if (lastExtractedVideoId === videoId) return;
+    lastExtractedVideoId = videoId;
+    console.log('[Th!nc-Extension] Attempting active captions extraction for:', videoId);
+    
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const extracted = await extractActiveVideoCaptions(videoId);
+      if (extracted && extracted.captions && extracted.captions.length > 0) {
+        console.log('[THINC-CAPTIONS-DATA]' + JSON.stringify({
+          videoId,
+          lang: extracted.lang,
+          captions: extracted.captions
+        }));
+        return;
+      }
+      await new Promise(r => setTimeout(r, 1200));
+    }
+    console.log('[Th!nc-Extension] Active captions extraction failed after retries for:', videoId);
+  }
+
   // ── 백엔드 API 호출 ──────────────────────────────────────────────────────────
   async function fetchRating(videoId) {
     if (ratingCache.has(videoId)) return ratingCache.get(videoId);
@@ -363,6 +449,11 @@
   setInterval(() => {
     const vid = document.querySelector('video');
     if (vid) {
+      const currentVideoId = parseVideoId(location.href);
+      if (currentVideoId && currentVideoId !== lastExtractedVideoId) {
+        triggerCaptionsExtraction(currentVideoId);
+      }
+
       if (!vid.__thincTracked) {
         vid.__thincTracked = true;
         vid.addEventListener('play', () => {
@@ -373,6 +464,7 @@
               videoId,
               platform: location.hostname
             }));
+            triggerCaptionsExtraction(videoId);
           }
         });
       }

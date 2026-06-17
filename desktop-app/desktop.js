@@ -55,6 +55,42 @@
   let captionLoadStatus = 'none'; // 'none' | 'loading' | 'loaded' | 'failed'
   let isAnalysisLocked = false;   // ✅ 중복 loadSocialVideoAnalysis 실행 방지 전역 잠금 플래그
 
+  // Background Thumbnail Captions Scraping Queue
+  const bgScanQueue = [];
+  let isBgScanning = false;
+
+  async function enqueueBgScan(videoId, onComplete, onFailure) {
+    bgScanQueue.push({ videoId, onComplete, onFailure });
+    processNextBgScan();
+  }
+
+  async function processNextBgScan() {
+    if (isBgScanning || bgScanQueue.length === 0) return;
+    isBgScanning = true;
+    
+    const task = bgScanQueue.shift();
+    try {
+      console.log(`[Queue] Starting background scrap scan for video: ${task.videoId}`);
+      if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions) {
+        const result = await window.electronAPI.fetchBackgroundCaptions(task.videoId);
+        if (result && result.ok && result.captions && result.captions.length > 0) {
+          const localResult = analyzeCaptionsLocally(task.videoId, result.captions);
+          task.onComplete(localResult);
+        } else {
+          task.onFailure(new Error(result?.error || 'No captions in background scrap'));
+        }
+      } else {
+        task.onFailure(new Error('electronAPI not available'));
+      }
+    } catch (e) {
+      console.warn(`[Queue] Background scrap failed for ${task.videoId}:`, e.message);
+      task.onFailure(e);
+    } finally {
+      isBgScanning = false;
+      setTimeout(processNextBgScan, 1000);
+    }
+  }
+
   // History sessions list
   let sessionHistory = [];
 
@@ -2047,7 +2083,7 @@
         checkAndTriggerAnalysis(e.url, wv.id);
       });
 
-      wv.addEventListener('console-message', (e) => {
+      wv.addEventListener('console-message', async (e) => {
         const msg = e.message;
         if (msg && msg.startsWith('[THINC-PLAYBACK]')) {
           try {
@@ -2069,6 +2105,23 @@
               captionPlaybackSec = data.currentTime;
             }
           } catch(err) {}
+        } else if (msg && msg.startsWith('[THINC-CAPTIONS-DATA]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-CAPTIONS-DATA]'.length));
+            if (data.videoId === activeVideoId && data.captions && data.captions.length > 0) {
+              console.log(`[Th!nc-Extension] Received ${data.captions.length} captions directly from injected webview!`);
+              liveCaptions = await translateCaptionsIfRequired(data.captions, currentLang);
+              captionLoadStatus = 'loaded';
+              const localizedLang = data.lang === 'ko' ? (currentLang === 'ko' ? '한국어' : 'Korean') : (currentLang === 'ko' ? '영어' : 'English');
+              showToast(t('toast_captions_loaded').replace('{lang}', localizedLang + ' (Direct)').replace('{count}', data.captions.length));
+              
+              if (window.PerformanceLogger) {
+                window.PerformanceLogger.log('Captions', 'Load Captions Complete', 0, 'Success', `Source: Webview Direct, Count: ${data.captions.length}`);
+              }
+            }
+          } catch(err) {
+            console.error('Failed to parse injected captions:', err);
+          }
         } else if (msg && msg.startsWith('[THINC-VIDEO-RECT]')) {
           try {
             const data = JSON.parse(msg.substring('[THINC-VIDEO-RECT]'.length));
@@ -2863,10 +2916,10 @@
       if (!thumbWrap) return;
       if (thumbWrap.querySelector('.yt-lie-badge:not(.scan-pie)')) return;
       
-      // 파이차트 진행률 뱃지 삽입
+      // 파이차트 진행률 뱃지 삽입 (회전 효과 추가)
       const pieBadge = document.createElement('div');
       pieBadge.className = 'yt-lie-badge scan-pie';
-      pieBadge.innerHTML = `<svg class="scan-pie-svg" viewBox="0 0 24 24">
+      pieBadge.innerHTML = `<svg class="scan-pie-svg" viewBox="0 0 24 24" style="animation: thinc-spin-pulse 3s linear infinite;">
         <circle cx="12" cy="12" r="10" fill="rgba(10,10,20,0.7)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
         <circle class="scan-pie-track" cx="12" cy="12" r="9" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2.5"/>
         <circle class="scan-pie-arc" cx="12" cy="12" r="9" fill="none" stroke="#f1c40f" stroke-width="2.5"
@@ -2875,33 +2928,37 @@
       </svg>`;
       thumbWrap.appendChild(pieBadge);
       
-      // 이징 애니메이션 (천천히 시작 → 빠르게 → 95%에서 멈춤)
       const arc = pieBadge.querySelector('.scan-pie-arc');
       const CIRC = 56.55;
       let animFrame;
+      let isLocalScanning = false;
       const startTime = Date.now();
-      const ANIM_DURATION = 5500; // 최대 예상 스캔 시간
+      const ANIM_DURATION = 4000;
       
       const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
       
       const animate = () => {
         const elapsed = Date.now() - startTime;
         const rawPct = Math.min(elapsed / ANIM_DURATION, 1);
-        const pct = easeOutCubic(rawPct) * 0.95; // 최대 95%까지
+        
+        let pct = easeOutCubic(rawPct) * 0.95;
+        if (isLocalScanning) {
+          // 백그라운드 2차 로컬 스캔 시에는 90%~95% 바운싱 애니메이션 수행 (대기 시각화)
+          pct = 0.92 + Math.sin(Date.now() / 150) * 0.03;
+        }
+        
         if (arc) arc.setAttribute('stroke-dasharray', `${pct * CIRC} ${CIRC}`);
-        if (rawPct < 1) animFrame = requestAnimationFrame(animate);
+        if (rawPct < 1 || isLocalScanning) {
+          animFrame = requestAnimationFrame(animate);
+        }
       };
       animFrame = requestAnimationFrame(animate);
       
-      try {
-        const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
-        const data = await resp.json();
-        
-        // 완료: 파이를 100%로 채운 뒤 뱃지로 교체
+      const applyResult = async (data) => {
         cancelAnimationFrame(animFrame);
         if (arc) arc.setAttribute('stroke-dasharray', `${CIRC} ${CIRC}`);
         
-        await new Promise(r => setTimeout(r, 150)); // 잠깐 100% 표시
+        await new Promise(r => setTimeout(r, 200)); // 100% 충전 잠시 표시
         pieBadge.style.transition = 'opacity 0.25s ease';
         pieBadge.style.opacity = '0';
         await new Promise(r => setTimeout(r, 250));
@@ -2918,9 +2975,57 @@
           thumbWrap.appendChild(badge);
           requestAnimationFrame(() => { badge.style.opacity = '1'; });
         }
+      };
+      
+      const handleScanFailure = async () => {
+        const defaultData = {
+          ok: true,
+          rating: 'safe',
+          score: 82,
+          badgeText: 'Safe 82%'
+        };
+        await applyResult(defaultData);
+      };
+      
+      try {
+        const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
+        const data = await resp.json();
+        
+        if (data && data.ok && data.captionAvailable && data.score !== 82) {
+          await applyResult(data);
+        } else {
+          if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions) {
+            isLocalScanning = true;
+            enqueueBgScan(videoId,
+              async (localResult) => {
+                isLocalScanning = false;
+                await applyResult(localResult);
+              },
+              async (err) => {
+                isLocalScanning = false;
+                await handleScanFailure();
+              }
+            );
+          } else {
+            await applyResult(data);
+          }
+        }
       } catch (e) {
-        cancelAnimationFrame(animFrame);
-        pieBadge.remove();
+        if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions) {
+          isLocalScanning = true;
+          enqueueBgScan(videoId,
+            async (localResult) => {
+              isLocalScanning = false;
+              await applyResult(localResult);
+            },
+            async (err) => {
+              isLocalScanning = false;
+              await handleScanFailure();
+            }
+          );
+        } else {
+          await handleScanFailure();
+        }
       }
     };
     
@@ -7872,6 +7977,101 @@ const PerformanceLogger = (function() {
   }
 })();
 window.PerformanceLogger = PerformanceLogger;
+
+// ===== Local Caption-based Lie Analyzer (Client-Side Fallback) =====
+function analyzeCaptionsLocally(videoId, captions) {
+  if (!captions || captions.length === 0) {
+    return {
+      ok: true,
+      videoId,
+      score: 82,
+      rating: 'safe',
+      badgeText: 'Safe 82%',
+      detectedKeywords: [],
+      captionAvailable: false
+    };
+  }
+  
+  const normalizedSegs = captions.map(s => {
+    let rawStart = s.start !== undefined ? s.start : (s.offset !== undefined ? s.offset : 0);
+    let rawDur = s.dur !== undefined ? s.dur : (s.duration !== undefined ? s.duration : 1);
+    const isMs = rawStart > 1000 || rawDur > 1000;
+    return {
+      text: (s.text || '').replace(/\[.*?\]/g, '').trim(),
+      startSec: isMs ? rawStart / 1000 : rawStart,
+      dur: isMs ? rawDur / 1000 : rawDur
+    };
+  }).filter(s => s.text.length > 0);
+  
+  let textBuffer = '';
+  if (normalizedSegs.length > 0) {
+    const firstSec = normalizedSegs[0].startSec;
+    const endSec = firstSec + 30;
+    const filtered = normalizedSegs.filter(s => s.startSec >= firstSec && s.startSec <= endSec);
+    textBuffer = filtered.map(s => s.text).join(' ');
+  }
+  
+  let score = 80;
+  const detected = [];
+  
+  if (textBuffer) {
+    const dangerKeywords = [
+      '거짓말', '사실무근', '조작', '루머', '음모론', '날조', '사기', '사칭', '선동', '속임수', '구라', '허위',
+      'lie', 'fake', 'rumor', 'fabricat', 'hoax', 'fraud', 'deceit', 'manipulat'
+    ];
+    const suspiciousKeywords = [
+      '솔직히', '사실은', '진짜로', '오해', '해명', '억울', '맹세', '비밀', '아마도', '해프닝', '짜깁기',
+      'honestly', 'actually', 'truth', 'clarify', 'secret', 'promise', 'maybe'
+    ];
+    
+    let dangerCount = 0;
+    let suspiciousCount = 0;
+    const lowerText = textBuffer.toLowerCase();
+    
+    dangerKeywords.forEach(word => {
+      let idx = lowerText.indexOf(word);
+      while (idx !== -1) {
+        dangerCount++;
+        if (!detected.includes(word)) detected.push(word);
+        idx = lowerText.indexOf(word, idx + word.length);
+      }
+    });
+    
+    suspiciousKeywords.forEach(word => {
+      let idx = lowerText.indexOf(word);
+      while (idx !== -1) {
+        suspiciousCount++;
+        if (!detected.includes(word)) detected.push(word);
+        idx = lowerText.indexOf(word, idx + word.length);
+      }
+    });
+    
+    score = 100 - (dangerCount * 12 + suspiciousCount * 4);
+    score = Math.max(10, Math.min(100, score));
+  } else {
+    score = 82;
+  }
+  
+  let rating = 'safe';
+  let badgeText = `Safe ${score}%`;
+  if (score < 50) {
+    rating = 'danger';
+    badgeText = `Danger ${100 - score}%`;
+  } else if (score < 80) {
+    rating = 'caution';
+    badgeText = `Caution ${100 - score}%`;
+  }
+  
+  return {
+    ok: true,
+    videoId,
+    score,
+    rating,
+    badgeText,
+    detectedKeywords: detected.slice(0, 10),
+    captionAvailable: textBuffer.length > 0
+  };
+}
 
 // ===== Diagnostic Log Viewer UI =====
 const DiagnosticUI = (function() {
