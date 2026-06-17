@@ -1346,7 +1346,19 @@ async function handleAnalyzeVideoFast(req, res) {
       .catch(() => getYouTubeTranscriptDirect(videoId, 'en'));
 
     if (segments && segments.length > 0) {
-      textBuffer = segments.map(s => s.text).join(' ');
+      // 첫 음성 감지(첫 자막) 시점부터 30초 구간만 샘플링
+      const firstSegment = segments[0];
+      const isMs = segments.some(s => s.offset > 1000) || segments.some(s => s.duration > 1000);
+      const firstTime = firstSegment.offset !== undefined ? firstSegment.offset : (firstSegment.start !== undefined ? firstSegment.start : 0);
+      const limit = isMs ? 30000 : 30;
+      
+      const filteredSegments = segments.filter(s => {
+        const timeVal = s.offset !== undefined ? s.offset : (s.start !== undefined ? s.start : 0);
+        return timeVal >= firstTime && timeVal <= (firstTime + limit);
+      });
+      
+      textBuffer = filteredSegments.map(s => s.text).join(' ');
+      console.log(`[handleAnalyzeVideoFast] 30s active voice sampling: from ${firstTime} to ${firstTime + limit} (isMs=${isMs}). Filtered ${filteredSegments.length}/${segments.length} segments.`);
     }
   } catch (err) {
     console.warn(`[handleAnalyzeVideoFast] Fast caption fetch failed for ${videoId}:`, err.message);

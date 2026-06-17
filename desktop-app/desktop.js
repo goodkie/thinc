@@ -127,9 +127,12 @@
       const startTime = performance.now();
       const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
       try {
-        // Each attempt: 8 s per-host cap, honouring caller signal when provided
+        // Each attempt: 18s for captions/scan, 8s for others, honouring caller signal when provided
+        const isTimeoutHeavy = endpoint.includes('/api/captions') || endpoint.includes('/api/analyze-video-fast');
+        const timeoutDuration = isTimeoutHeavy ? 18000 : 8000;
+        
         const perAttemptController = new AbortController();
-        const perAttemptTimer = setTimeout(() => perAttemptController.abort(), 8000);
+        const perAttemptTimer = setTimeout(() => perAttemptController.abort(), timeoutDuration);
         if (userSignal) {
           userSignal.addEventListener('abort', () => perAttemptController.abort(), { once: true });
         }
@@ -2073,10 +2076,18 @@
             if (overlay) {
               if (data.isVisible && isRunning) {
                 const wvRect = wv.getBoundingClientRect();
+                const width = data.width;
                 overlay.style.left = `${wvRect.left + data.left}px`;
                 overlay.style.top = `${wvRect.top + data.top}px`;
-                overlay.style.width = `${data.width}px`;
+                overlay.style.width = `${width}px`;
                 overlay.style.height = `${data.height}px`;
+                
+                if (width < 540) {
+                  overlay.classList.add('mini-overlay');
+                } else {
+                  overlay.classList.remove('mini-overlay');
+                }
+                
                 overlay.classList.remove('hidden');
               } else {
                 overlay.classList.add('hidden');

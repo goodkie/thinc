@@ -120,8 +120,11 @@
       const startTime = performance.now();
       const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
       try {
+        const isTimeoutHeavy = endpoint.includes('/api/captions') || endpoint.includes('/api/analyze-video-fast');
+        const timeoutDuration = isTimeoutHeavy ? 18000 : 8000;
+        
         const perAttemptController = new AbortController();
-        const perAttemptTimer = setTimeout(() => perAttemptController.abort(), 8000);
+        const perAttemptTimer = setTimeout(() => perAttemptController.abort(), timeoutDuration);
         if (userSignal) {
           userSignal.addEventListener('abort', () => perAttemptController.abort(), { once: true });
         }
@@ -4829,6 +4832,14 @@
       overlay.style.top = '0px';
       overlay.style.width = '100%';
       overlay.style.height = '100%';
+      
+      const width = wrapper.clientWidth;
+      if (width < 540) {
+        overlay.classList.add('mini-overlay');
+      } else {
+        overlay.classList.remove('mini-overlay');
+      }
+      
       overlay.classList.remove('hidden');
     } else {
       overlay.classList.add('hidden');

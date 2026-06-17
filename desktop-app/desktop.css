@@ -3574,3 +3574,55 @@ body.right-panel-collapsed .right-panel-toggle-btn {
   right: 15px;
 }
 
+/* ==========================================================================
+   MINI OVERLAY RESPONSIVE STYLES (For smaller video player sizes)
+   ========================================================================== */
+.wv-float-overlay.mini-overlay .wv-float-truth-bar {
+  top: 8px !important;
+  right: 8px !important;
+  width: 120px !important;
+  padding: 4px 6px !important;
+  gap: 3px !important;
+  border-radius: 4px !important;
+}
+.wv-float-overlay.mini-overlay .wv-truth-labels {
+  font-size: 8px !important;
+}
+.wv-float-overlay.mini-overlay .wv-truth-track {
+  height: 4px !important;
+}
+.wv-float-overlay.mini-overlay .wv-float-start-btn {
+  top: 48px !important;
+  right: 8px !important;
+  padding: 4px 8px !important;
+  font-size: 8px !important;
+  border-radius: 12px !important;
+  gap: 3px !important;
+}
+.wv-float-overlay.mini-overlay .wv-float-gauge {
+  bottom: 8px !important;
+  right: 8px !important;
+  width: 48px !important;
+  height: 48px !important;
+}
+.wv-float-overlay.mini-overlay .wv-gauge-svg {
+  top: 3px !important;
+  left: 3px !important;
+  width: 42px !important;
+  height: 42px !important;
+}
+.wv-float-overlay.mini-overlay .wv-float-pct-text {
+  font-size: 10px !important;
+}
+.wv-float-overlay.mini-overlay .wv-float-label-text {
+  font-size: 6px !important;
+}
+.wv-float-overlay.mini-overlay .wv-float-subtitle {
+  right: 62px !important;
+  bottom: 12px !important;
+  max-width: 140px !important;
+  font-size: 8px !important;
+  padding: 4px 8px !important;
+  border-radius: 8px 3px 3px 8px !important;
+}
+
