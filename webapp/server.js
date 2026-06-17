@@ -1724,10 +1724,19 @@ function calculate_trust_score(meta) {
   const basePercentage = Math.round((finalScore + 250) * 100 / 500);
 
   // 민감도 배수 연산 및 가중 보정 적용
-  const fullText = `${meta.title} ${meta.description} ${meta.tags.join(' ')}`.toLowerCase();
+  const fullText = `${meta.title || ''} ${meta.description || ''} ${meta.uploaderName || ''} ${(meta.tags || []).join(' ')}`.toLowerCase();
   const sensInfo = getSensitivityMultiplier(fullText);
   const penalty = (100 - basePercentage) * sensInfo.multiplier;
-  const percentageScore = Math.max(8, Math.min(99, Math.round(100 - penalty)));
+  let percentageScore = Math.max(8, Math.min(99, Math.round(100 - penalty)));
+
+  // 민감도 등급별 철저한 신뢰 점수 상한 제한 필터 적용
+  if (sensInfo.tier === 'high') {
+    // 상(HIGH) 매칭 시 무조건 70% 미만 (최대 69%)
+    percentageScore = Math.min(69, percentageScore);
+  } else if (sensInfo.tier === 'medium') {
+    // 중(MEDIUM) 매칭 시 무조건 85% 미만 (최대 84%)
+    percentageScore = Math.min(84, percentageScore);
+  }
 
   // 레벨 분류
   let rating = 'safe';
