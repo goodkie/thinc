@@ -2762,7 +2762,7 @@
     gridEl.innerHTML = favorites.map(video => {
       const localized = getLocalizedVideo(video);
       return `
-        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')">
+        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')" data-video-id="${localized.id}">
           <div class="yt-video-thumbnail-wrap">
             <img src="https://img.youtube.com/vi/${localized.id}/hqdefault.jpg" alt="${localized.title}">
             <span class="yt-video-duration">${localized.duration}</span>
@@ -2776,6 +2776,8 @@
         </div>
       `;
     }).join('');
+    
+    autoScanDesktopVideos();
   }
 
   window.handleToggleFavClick = function(btn) {
@@ -2816,7 +2818,7 @@
       const isFav = isVideoFavorite(video.id);
       const localized = getLocalizedVideo(video);
       return `
-        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')">
+        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')" data-video-id="${localized.id}">
           <div class="yt-video-thumbnail-wrap">
             <img src="https://img.youtube.com/vi/${localized.id}/hqdefault.jpg" alt="${localized.title}">
             <span class="yt-video-duration">${localized.duration}</span>
@@ -2839,6 +2841,80 @@
 
     displayedVideoCount += nextChunk.length;
     reattachSentinel();
+    
+    // 새로 렌더된 카드에 백그라운드 사전 스캔 실행
+    autoScanDesktopVideos();
+  }
+
+  async function autoScanDesktopVideos() {
+    const cards = document.querySelectorAll('.yt-video-card:not([data-scanned])');
+    if (cards.length === 0) return;
+    
+    const CONCURRENCY = 3; // 동시 요청 수 제한으로 초고속 처리
+    
+    const scanCard = async (card) => {
+      const videoId = card.getAttribute('data-video-id') || 
+        card.getAttribute('onclick')?.match(/playYouTubeEmbed\('([^']+)'\)/)?.[1];
+      if (!videoId) return;
+      card.setAttribute('data-scanned', '1');
+      
+      const thumbWrap = card.querySelector('.yt-video-thumbnail-wrap');
+      if (!thumbWrap) return;
+      if (thumbWrap.querySelector('.yt-lie-badge:not(.scan-pie)')) return;
+      
+      // 파이차트 진행률 뱃지 삽입
+      const pieBadge = document.createElement('div');
+      pieBadge.className = 'yt-lie-badge scan-pie';
+      pieBadge.innerHTML = `
+        <svg class="scan-pie-svg" viewBox="0 0 20 20">
+          <circle class="scan-pie-bg" cx="10" cy="10" r="9" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+          <circle class="scan-pie-arc" cx="10" cy="10" r="9" fill="none" stroke="#f1c40f" stroke-width="2"
+            stroke-dasharray="0 56.55" stroke-linecap="round" transform="rotate(-90 10 10)"/>
+        </svg>
+      `;
+      thumbWrap.appendChild(pieBadge);
+      
+      // 파이 애니메이션 진행
+      const arc = pieBadge.querySelector('.scan-pie-arc');
+      const CIRC = 56.55;
+      let animFrame;
+      let startTime = Date.now();
+      const animDuration = 4000; // 예상 스캔 시간
+      const animate = () => {
+        const elapsed = Date.now() - startTime;
+        const pct = Math.min(elapsed / animDuration, 0.95);
+        if (arc) arc.setAttribute('stroke-dasharray', `${pct * CIRC} ${CIRC}`);
+        if (elapsed < animDuration) animFrame = requestAnimationFrame(animate);
+      };
+      animFrame = requestAnimationFrame(animate);
+      
+      try {
+        const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
+        const data = await resp.json();
+        
+        cancelAnimationFrame(animFrame);
+        pieBadge.remove();
+        
+        if (data && data.ok) {
+          if (thumbWrap.querySelector('.yt-lie-badge:not(.scan-pie)')) return;
+          const badge = document.createElement('div');
+          badge.className = `yt-lie-badge ${data.rating}`;
+          const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : '🔴';
+          badge.innerHTML = `${emoji} ${data.badgeText || data.score + '%'}`;
+          thumbWrap.appendChild(badge);
+        }
+      } catch (e) {
+        cancelAnimationFrame(animFrame);
+        pieBadge.remove();
+      }
+    };
+    
+    // CONCURRENCY 개씩 나누어 초고속 처리
+    const cardArray = Array.from(cards);
+    for (let i = 0; i < cardArray.length; i += CONCURRENCY) {
+      const batch = cardArray.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(scanCard));
+    }
   }
 
   // Sentinel element for IntersectionObserver-based infinite scroll
