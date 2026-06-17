@@ -1117,7 +1117,38 @@
         }
       }
 
+      async function loadConfigFromServer() {
+        try {
+          const backendUrl = localStorage.getItem('thinc_backend_url') || '';
+          const serverBase = backendUrl || (location.origin.includes('localhost') || location.origin.includes('127.0.0.1') ? location.origin : '');
+          if (serverBase) {
+            const r = await fetch(serverBase + '/api/admin-settings', { cache: 'no-store' });
+            const data = await r.json();
+            if (data.ok && data.settings) {
+              const settings = data.settings;
+              
+              localStorage.setItem('thinc_admin_settings', JSON.stringify(settings));
+              
+              if (settings.sensitivity_dict_ko) {
+                localStorage.setItem('thinc_keyword_db_ko', JSON.stringify(settings.sensitivity_dict_ko));
+                localStorage.setItem('thinc_keyword_db', JSON.stringify(settings.sensitivity_dict_ko));
+              }
+              if (settings.sensitivity_dict_en) {
+                localStorage.setItem('thinc_keyword_db_en', JSON.stringify(settings.sensitivity_dict_en));
+              }
+              
+              console.log("[Th!nc-Admin] Settings successfully synced from online server");
+              loadConfig();
+              loadKeywordDB(currentEditLang);
+            }
+          }
+        } catch(e) {
+          console.warn("[Th!nc-Admin] Initial settings fetch failed:", e.message);
+        }
+      }
+
       loadConfig();
+      loadConfigFromServer();
 
       // Save Action
       const saveBtn = document.getElementById('btn-save');
@@ -1147,7 +1178,13 @@
           const serverBase = backendUrl || (location.origin.includes('localhost') || location.origin.includes('127.0.0.1') ? location.origin : '');
           if (serverBase) {
             const adminToken = localStorage.getItem('thinc_admin_token') || '';
-            const payload = { ...settings };
+            const sensitivity_dict_ko = JSON.parse(localStorage.getItem('thinc_keyword_db_ko')) || DEFAULT_KEYWORD_DB_KO;
+            const sensitivity_dict_en = JSON.parse(localStorage.getItem('thinc_keyword_db_en')) || DEFAULT_KEYWORD_DB_EN;
+            const payload = { 
+              ...settings,
+              sensitivity_dict_ko,
+              sensitivity_dict_en
+            };
             if (adminToken) payload.adminToken = adminToken;
             const r = await fetch(serverBase + '/api/admin-settings', {
               method: 'POST',
@@ -1249,7 +1286,7 @@
         if (el) el.addEventListener('input', updateKeywordCounts);
       });
 
-      function saveKeywordDB(lang = 'ko', quiet = false) {
+      async function saveKeywordDB(lang = 'ko', quiet = false) {
         const db = {
           high:   parseKeywords(document.getElementById('kw-high').value),
           medium: parseKeywords(document.getElementById('kw-medium').value),
@@ -1261,9 +1298,39 @@
           localStorage.setItem('thinc_keyword_db', JSON.stringify(db));
         }
 
+        // ── 서버로 동동 동기화 전송 ──────────────────
+        try {
+          const backendUrl = localStorage.getItem('thinc_backend_url') || '';
+          const serverBase = backendUrl || (location.origin.includes('localhost') || location.origin.includes('127.0.0.1') ? location.origin : '');
+          if (serverBase) {
+            const adminToken = localStorage.getItem('thinc_admin_token') || '';
+            let settings = {};
+            try { settings = JSON.parse(localStorage.getItem('thinc_admin_settings')) || {}; } catch(e) {}
+            
+            const sensitivity_dict_ko = JSON.parse(localStorage.getItem('thinc_keyword_db_ko')) || DEFAULT_KEYWORD_DB_KO;
+            const sensitivity_dict_en = JSON.parse(localStorage.getItem('thinc_keyword_db_en')) || DEFAULT_KEYWORD_DB_EN;
+
+            const payload = { 
+              ...settings, 
+              sensitivity_dict_ko,
+              sensitivity_dict_en
+            };
+            if (adminToken) payload.adminToken = adminToken;
+            
+            await fetch(serverBase + '/api/admin-settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+              body: JSON.stringify(payload)
+            });
+            console.log(`[Th!nc-Admin] Successfully synchronized sensitivity_dict_${lang} with online server.`);
+          }
+        } catch(syncErr) {
+          console.warn("[Th!nc-Admin] Sensitivity DB Server sync failed:", syncErr.message);
+        }
+
         if (!quiet) {
           const t = document.getElementById('toast-success');
-          t.innerHTML = `🗝️ [${lang.toUpperCase()}] 키워드 DB 저장 완료! 앱에서 [${lang.toUpperCase()}] 언어로 재생 시 자동 적용됩니다.`;
+          t.innerHTML = `🗝️ [${lang.toUpperCase()}] 키워드 DB 저장 및 서버 동기화 완료!`;
           t.classList.add('visible');
           setTimeout(() => {
             t.classList.remove('visible');

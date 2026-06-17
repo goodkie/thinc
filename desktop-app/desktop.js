@@ -2157,6 +2157,11 @@
 
               const currentLieScore = isSilentOrMusicOrPaused ? 0 : Math.min(99, Math.max(0, Math.round(finalScore)));
               updateSentenceFeed(data.text, currentLieScore, false);
+              
+              // 실시간 자막 감지에 따라 민감도 실시간 갱신 실행
+              if (activeVideoId) {
+                checkKeywordSensitivity(activeVideoId);
+              }
             }
           } catch(err) {}
         } else if (msg && msg.startsWith('[THINC-VIDEO-RECT]')) {
@@ -3891,7 +3896,23 @@
       // 1. Load keyword DB based on current language setting
       const targetLang = (currentLang === 'ko') ? 'ko' : 'en';
       let db = null;
-      try { db = JSON.parse(localStorage.getItem(`thinc_keyword_db_${targetLang}`)); } catch(e) {}
+      
+      // 1순위: 어드민 설정 캐시에서 동적 민감도 사전 로드
+      try {
+        const adminSettings = JSON.parse(localStorage.getItem('thinc_admin_settings'));
+        if (adminSettings) {
+          if (targetLang === 'ko' && adminSettings.sensitivity_dict_ko) {
+            db = adminSettings.sensitivity_dict_ko;
+          } else if (targetLang === 'en' && adminSettings.sensitivity_dict_en) {
+            db = adminSettings.sensitivity_dict_en;
+          }
+        }
+      } catch(e) {}
+
+      // 2순위: 개별 로컬 스토리지 키 로드
+      if (!db) {
+        try { db = JSON.parse(localStorage.getItem(`thinc_keyword_db_${targetLang}`)); } catch(e) {}
+      }
       
       // Fallback to legacy or defaults if not customized
       if (!db) {

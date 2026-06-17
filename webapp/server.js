@@ -65,16 +65,19 @@ function handleAdminSettings(req, res) {
         }
         // adminToken 필드는 저장하지 않음
         delete payload.adminToken;
-        payload._updatedAt = new Date().toISOString();
-        _adminSettingsCache = payload;
+        
+        // 기존 속성과 유연하게 병합 (설정 및 키워드 사전 상호 유실 방지)
+        _adminSettingsCache = { ...(_adminSettingsCache || {}), ...payload };
+        _adminSettingsCache._updatedAt = new Date().toISOString();
+
         // 디스크에 영속 저장
-        fs.writeFile(ADMIN_SETTINGS_FILE, JSON.stringify(payload, null, 2), e => {
+        fs.writeFile(ADMIN_SETTINGS_FILE, JSON.stringify(_adminSettingsCache, null, 2), e => {
           if (e) console.warn('[AdminSettings] Disk save failed:', e.message);
-          else console.log('[AdminSettings] Saved to disk at', payload._updatedAt);
+          else console.log('[AdminSettings] Saved to disk at', _adminSettingsCache._updatedAt);
         });
-        console.log('[AdminSettings] Updated by admin at', payload._updatedAt);
+        console.log('[AdminSettings] Updated by admin at', _adminSettingsCache._updatedAt);
         res.writeHead(200, CORS);
-        res.end(JSON.stringify({ ok: true, updatedAt: payload._updatedAt }));
+        res.end(JSON.stringify({ ok: true, updatedAt: _adminSettingsCache._updatedAt }));
       } catch (e) {
         res.writeHead(400, CORS);
         res.end(JSON.stringify({ ok: false, error: 'Invalid JSON: ' + e.message }));
@@ -1490,8 +1493,13 @@ async function handleAnalyzeVideoFast(req, res) {
       }
     });
 
-    score = 100 - (dangerCount * 12 + suspiciousCount * 4);
-    score = Math.max(10, Math.min(100, score));
+    const baseScore = 100 - (dangerCount * 12 + suspiciousCount * 4);
+    let metaForSens = null;
+    try { metaForSens = await fetchVideoMetaInternal(videoId); } catch(e) {}
+    const textToMatch = `${metaForSens ? (metaForSens.title + ' ' + metaForSens.description + ' ' + metaForSens.tags.join(' ')) : ''} ${textBuffer}`.toLowerCase();
+    const sensInfo = getSensitivityMultiplier(textToMatch);
+    const penalty = (100 - baseScore) * sensInfo.multiplier;
+    score = Math.max(10, Math.min(100, Math.round(100 - penalty)));
   } else {
     try {
       const meta = await fetchVideoMetaInternal(videoId);
@@ -1597,6 +1605,62 @@ async function fetchVideoMetaInternal(videoId) {
   return null;
 }
 
+function getSensitivityMultiplier(text, reqLang = 'ko') {
+  const DEFAULT_KO = {
+    high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장'],
+    medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
+    low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
+  };
+
+  const DEFAULT_EN = {
+    high:   ['scam', 'fraud', 'lie', 'fake', 'manipulation', 'expose', 'conspiracy', 'crime', 'blackmail', 'corruption', 'hoax', 'propaganda'],
+    medium: ['controversy', 'rumor', 'suspicion', 'dispute', 'conflict', 'criticism', 'rebuttal', 'explanation', 'debate', 'claim'],
+    low:    ['education', 'science', 'research', 'official', 'announcement', 'lecture', 'documentary', 'learning', 'analysis', 'report', 'thesis', 'study']
+  };
+
+  let dbKo = DEFAULT_KO;
+  let dbEn = DEFAULT_EN;
+
+  if (_adminSettingsCache) {
+    if (_adminSettingsCache.sensitivity_dict_ko) dbKo = _adminSettingsCache.sensitivity_dict_ko;
+    if (_adminSettingsCache.sensitivity_dict_en) dbEn = _adminSettingsCache.sensitivity_dict_en;
+  }
+
+  const lowerText = (text || '').toLowerCase();
+  
+  let highCount = 0;
+  let mediumCount = 0;
+  let lowCount = 0;
+
+  const highWords = [...(dbKo.high || []), ...(dbEn.high || [])];
+  highWords.forEach(w => {
+    let idx = lowerText.indexOf(w.toLowerCase());
+    while (idx !== -1) { highCount++; idx = lowerText.indexOf(w.toLowerCase(), idx + w.length); }
+  });
+
+  const medWords = [...(dbKo.medium || []), ...(dbEn.medium || [])];
+  medWords.forEach(w => {
+    let idx = lowerText.indexOf(w.toLowerCase());
+    while (idx !== -1) { mediumCount++; idx = lowerText.indexOf(w.toLowerCase(), idx + w.length); }
+  });
+
+  const lowWords = [...(dbKo.low || []), ...(dbEn.low || [])];
+  lowWords.forEach(w => {
+    let idx = lowerText.indexOf(w.toLowerCase());
+    while (idx !== -1) { lowCount++; idx = lowerText.indexOf(w.toLowerCase(), idx + w.length); }
+  });
+
+  if (highCount > 0) {
+    return { multiplier: 2.5, tier: 'high', count: highCount };
+  } else if (mediumCount > 0) {
+    return { multiplier: 1.2, tier: 'medium', count: mediumCount };
+  } else if (lowCount > 0) {
+    return { multiplier: 0.4, tier: 'low', count: lowCount };
+  }
+
+  return { multiplier: 1.0, tier: 'none', count: 0 };
+}
+
 function calculate_trust_score(meta) {
   if (!meta) return { score: 82, rating: 'safe', badgeText: 'Safe 82%' };
 
@@ -1657,22 +1721,28 @@ function calculate_trust_score(meta) {
   const finalScore = Math.max(-100, Math.min(100, totalRaw));
 
   // 0~100 스케일 백분율 변환
-  const percentageScore = Math.round((finalScore + 100) / 2);
+  const basePercentage = Math.round((finalScore + 100) / 2);
+
+  // 민감도 배수 연산 및 가중 보정 적용
+  const fullText = `${meta.title} ${meta.description} ${meta.tags.join(' ')}`.toLowerCase();
+  const sensInfo = getSensitivityMultiplier(fullText);
+  const penalty = (100 - basePercentage) * sensInfo.multiplier;
+  const percentageScore = Math.max(8, Math.min(99, Math.round(100 - penalty)));
 
   // 레벨 분류
   let rating = 'safe';
   let badgeText = '';
 
-  if (finalScore >= 90) {
+  if (percentageScore >= 90) {
     rating = 'safe';
     badgeText = `Very High Trust ${percentageScore}%`;
-  } else if (finalScore >= 60) {
+  } else if (percentageScore >= 60) {
     rating = 'safe';
     badgeText = `High Trust ${percentageScore}%`;
-  } else if (finalScore >= 30) {
+  } else if (percentageScore >= 30) {
     rating = 'caution';
     badgeText = `Medium Trust ${percentageScore}%`;
-  } else if (finalScore >= 0) {
+  } else if (percentageScore >= 10) {
     rating = 'danger';
     badgeText = `Low Trust ${percentageScore}%`;
   } else {
