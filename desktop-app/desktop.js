@@ -3844,16 +3844,26 @@
     const responseMark = 'ytInitialPlayerResponse = ';
     const responseIdx = html.indexOf(responseMark);
     if (responseIdx !== -1) {
-      const endIdx = html.indexOf('};', responseIdx);
-      if (endIdx !== -1) {
-        const rawResponse = html.substring(responseIdx + responseMark.length, endIdx + 1);
-        try {
+      // 안전한 JSON 추출: 브래킷 카운팅으로 정확한 끝 찾기
+      try {
+        let jsonStart = responseIdx + responseMark.length;
+        let depth = 0;
+        let jsonEnd = -1;
+        for (let i = jsonStart; i < html.length; i++) {
+          if (html[i] === '{') depth++;
+          else if (html[i] === '}') {
+            depth--;
+            if (depth === 0) { jsonEnd = i + 1; break; }
+          }
+        }
+        if (jsonEnd !== -1) {
+          const rawResponse = html.substring(jsonStart, jsonEnd);
           const parsed = JSON.parse(rawResponse);
           captionTracks = parsed?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-          console.log(`[Diagnostic] Attempt 1 parsed captionTracks:`, captionTracks);
-        } catch(e) {
-          console.warn("[Diagnostic] Failed parsing ytInitialPlayerResponse:", e);
+          console.log(`[Diagnostic] Attempt 1 parsed captionTracks:`, captionTracks?.length);
         }
+      } catch(e) {
+        console.warn('[Diagnostic] Failed parsing ytInitialPlayerResponse:', e.message);
       }
     } else {
       console.log(`[Diagnostic] Attempt 1 responseMark not found`);
@@ -3948,17 +3958,30 @@
     if (!track) track = captionTracks.find(t => (t.languageCode || '').toLowerCase().startsWith('en'));
     if (!track) track = captionTracks[0];
     
-    if (!track || !track.baseUrl) {
+    if (!track || (!track.baseUrl && !track.languageCode)) {
       console.warn(`[Diagnostic] No valid caption track URL found among ${captionTracks.length} tracks`);
       throw new Error("No valid caption track URL found");
     }
-    console.log(`[Diagnostic] Selected track language: ${track.languageCode}, URL: ${track.baseUrl}`);
     
-    const xmlUrl = track.baseUrl;
+    // baseUrl이 없으면 languageCode로 timedtext URL 직접 구성
+    let xmlUrl = track.baseUrl;
+    if (!xmlUrl && track.languageCode) {
+      xmlUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${track.languageCode}&fmt=json3`;
+      console.log(`[Diagnostic] No baseUrl, constructed timedtext URL for lang ${track.languageCode}`);
+    } else if (xmlUrl) {
+      // JSON3 포맷으로 강제 요청 (더 안정적)
+      if (!xmlUrl.startsWith('http')) xmlUrl = 'https:' + xmlUrl;
+      if (xmlUrl.includes('fmt=')) {
+        xmlUrl = xmlUrl.replace(/fmt=[^&]+/, 'fmt=json3');
+      } else {
+        xmlUrl += (xmlUrl.includes('?') ? '&' : '?') + 'fmt=json3';
+      }
+    }
+    console.log(`[Diagnostic] Selected track language: ${track.languageCode}, URL: ${xmlUrl}`);
     let xmlText = null;
 
     // ✅ Electron 직접 페치 우선 시도 (CORS 우회, 최고 성공률)
-    if (typeof isElectron !== 'undefined' && isElectron) {
+    if (isElectronEnv) {
       try {
         console.log(`[Direct XML] Electron direct fetch for: ${xmlUrl}`);
         const controller = new AbortController();
