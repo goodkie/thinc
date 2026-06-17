@@ -1495,23 +1495,30 @@ async function handleAnalyzeVideoFast(req, res) {
   } else {
     try {
       const meta = await fetchVideoMetaInternal(videoId);
-      score = calculateAIMetadataScore(meta);
-      console.log(`[handleAnalyzeVideoFast] No captions. AI Metadata Score calculated: ${score}%`);
+      const trust = calculate_trust_score(meta);
+      score = trust.score;
+      rating = trust.rating;
+      badgeText = trust.badgeText;
+      console.log(`[handleAnalyzeVideoFast] No captions. AI Trust Score calculated: ${score}% | ${badgeText}`);
     } catch (metaErr) {
       const hash = videoId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
       score = 80 + (hash % 13);
+      rating = 'safe';
+      badgeText = `Safe ${score}%`;
     }
   }
 
-  let rating = 'safe';
-  let badgeText = `Safe ${score}%`;
-
-  if (score < 50) {
-    rating = 'danger';
-    badgeText = `Danger ${100 - score}%`;
-  } else if (score < 80) {
-    rating = 'caution';
-    badgeText = `Caution ${100 - score}%`;
+  // 자막 분석으로 계산된 경우에만 기존 임계치 분류 적용 (메타데이터 분석은 레벨을 직접 결정했으므로 스킵)
+  if (textBuffer) {
+    rating = 'safe';
+    badgeText = `Safe ${score}%`;
+    if (score < 50) {
+      rating = 'danger';
+      badgeText = `Danger ${100 - score}%`;
+    } else if (score < 80) {
+      rating = 'caution';
+      badgeText = `Caution ${100 - score}%`;
+    }
   }
 
   res.writeHead(200, CORS);
@@ -1550,7 +1557,7 @@ async function handleAnalyzeVideoFast(req, res) {
   }
 }
 
-// ─── AI Metadata Scoring Helpers ────────────────────────────────────────────────
+// ─── AI Metadata Scoring Helpers (Trust Algorithm v2.0) ─────────────────────────
 async function fetchVideoMetaInternal(videoId) {
   let instances;
   try { instances = await getPipedInstances(); } catch(e) { instances = []; }
@@ -1575,9 +1582,12 @@ async function fetchVideoMetaInternal(videoId) {
       if (streamData && streamData.title) {
         return {
           title: streamData.title || '',
-          description: (streamData.description || '').substring(0, 300),
+          description: streamData.description || '',
           tags: Array.isArray(streamData.tags) ? streamData.tags : [],
-          uploaderName: streamData.uploaderName || ''
+          uploaderName: streamData.uploaderName || '',
+          category: streamData.category || '',
+          subscriberCount: streamData.uploaderSubscriberCount || 0,
+          views: streamData.views || 0
         };
       }
     } catch(err) {
@@ -1587,50 +1597,206 @@ async function fetchVideoMetaInternal(videoId) {
   return null;
 }
 
-function calculateAIMetadataScore(meta) {
-  if (!meta) return 82;
+function calculate_trust_score(meta) {
+  if (!meta) return { score: 82, rating: 'safe', badgeText: 'Safe 82%' };
 
-  const clickbaitDict = {
-    danger: [
-      '충격', '폭로', '경악', '소름', '유출', '비화', '진실은', '사기', '조작', '루머', '은폐', '음모',
-      '충격적인', '단독', '눈물', '결국', '숨겨진', '이유', '속임수', '날조', '선동', '허위', '가짜뉴스',
-      'shock', 'expose', 'reveal', 'scandal', 'fabricat', 'hoax', 'fraud', 'secret', 'conspiracy'
-    ],
-    suspicious: [
-      '솔직히', '사실은', '해명', '오해', '진짜', '고백', '맹세', '눈물', '분노', '폭발', '의혹',
-      'honestly', 'actually', 'clarify', 'rumor', 'truth', 'angry', 'suspicious'
-    ]
+  // 1. 기본 카테고리 점수 (40%)
+  const catScore = category_base_score(meta.category || '');
+
+  // 2. 키워드 기반 점수
+  const defaultPositiveDict = {
+    "논문": 9, "paper": 9, "research": 8, "study": 8, "실험": 9, "experiment": 8,
+    "peer_review": 10, "arxiv": 9, "pubmed": 9, "정부보고서": 10,
+    "분석": 5, "데이터": 5, "통계": 6, "비교": 4, "검증": 6, "튜토리얼": 4,
+    "강의": 5, "lecture": 5, "guide": 4, "입문": 3, "심화": 4, "알고리즘": 5,
+    "오픈소스": 5, "source_code": 4, "공식": 6, "official": 6,
+    "설명": 2, "정리": 2, "노하우": 3, "케이스": 3, "리뷰": 1,
+    "pytorch": 5, "tensorflow": 5, "github": 4, "documentation": 4, "benchmark": 5, "reproducible": 6
   };
 
-  let dangerCount = 0;
-  let suspiciousCount = 0;
-  
-  const textToScan = `${meta.title} ${meta.description} ${meta.tags.join(' ')}`.toLowerCase();
+  const defaultNegativeDict = {
+    "충격": -4, "대박": -4, "소름": -4, "레전드": -5, "역대급": -5,
+    "실화냐": -5, "미친": -4,
+    "100%": -12, "확정": -10, "보장": -13, "원금": -15, "절대손해": -15,
+    "고수익": -12, "일확천금": -14, "삭제될": -12, "언론이숨긴": -13,
+    "음모": -14, "초자연": -12, "ufo": -13, "예언": -11, "사주": -10,
+    "타로": -9, "루머": -8, "가ossip": -8, "가십": -8,
+    "월 000만원": -10, "누구나": -6, "쉬운": -4, "자동": -4, "수동소득": -8
+  };
 
-  clickbaitDict.danger.forEach(word => {
-    let idx = textToScan.indexOf(word);
-    while (idx !== -1) {
-      dangerCount++;
-      idx = textToScan.indexOf(word, idx + word.length);
-    }
-  });
+  const positiveDict = { ...defaultPositiveDict };
+  const negativeDict = { ...defaultNegativeDict };
 
-  clickbaitDict.suspicious.forEach(word => {
-    let idx = textToScan.indexOf(word);
-    while (idx !== -1) {
-      suspiciousCount++;
-      idx = textToScan.indexOf(word, idx + word.length);
-    }
-  });
-
-  let baseScore = 95 - (dangerCount * 18 + suspiciousCount * 6);
-  
-  if (dangerCount === 0 && suspiciousCount === 0) {
-    const hash = meta.title.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    baseScore = 85 + (hash % 11); // 85% ~ 95% 사이의 비디오별 다양성 부여
+  // 어드민 설정 캐시에서 동적 긍정/부정 단어 병합
+  if (_adminSettingsCache) {
+    if (_adminSettingsCache.positive_dict) Object.assign(positiveDict, _adminSettingsCache.positive_dict);
+    if (_adminSettingsCache.negative_dict) Object.assign(negativeDict, _adminSettingsCache.negative_dict);
+    if (_adminSettingsCache.custom_positive) Object.assign(positiveDict, _adminSettingsCache.custom_positive);
+    if (_adminSettingsCache.custom_negative) Object.assign(negativeDict, _adminSettingsCache.custom_negative);
   }
 
-  return Math.max(12, Math.min(99, baseScore));
+  const titleScore = keyword_score(meta.title, positiveDict, negativeDict);
+  const descScore = keyword_score(meta.description, positiveDict, negativeDict) * 0.7;
+  const tagScore = keyword_score(meta.tags.join(' '), positiveDict, negativeDict) * 0.5;
+
+  const kwTotal = titleScore + descScore + tagScore;
+
+  // 3. 패턴 기반 페널티 (정규식)
+  const patternPenalty = pattern_penalty(`${meta.title} ${meta.description}`);
+
+  // 4. 링크 & 참고자료 보너스
+  const linkBonus = link_bonus(meta.description);
+
+  // 5. 채널 메타 신호 (장기 운영 신뢰도)
+  const metaBonus = meta_signals(meta);
+
+  // 총합 산정
+  const totalRaw = catScore + kwTotal + patternPenalty + linkBonus + metaBonus;
+
+  // 6. 최종 조정
+  const finalScore = Math.max(-100, Math.min(100, totalRaw));
+
+  // 0~100 스케일 백분율 변환
+  const percentageScore = Math.round((finalScore + 100) / 2);
+
+  // 레벨 분류
+  let rating = 'safe';
+  let badgeText = '';
+
+  if (finalScore >= 90) {
+    rating = 'safe';
+    badgeText = `Very High Trust ${percentageScore}%`;
+  } else if (finalScore >= 60) {
+    rating = 'safe';
+    badgeText = `High Trust ${percentageScore}%`;
+  } else if (finalScore >= 30) {
+    rating = 'caution';
+    badgeText = `Medium Trust ${percentageScore}%`;
+  } else if (finalScore >= 0) {
+    rating = 'danger';
+    badgeText = `Low Trust ${percentageScore}%`;
+  } else {
+    rating = 'danger';
+    badgeText = `Dangerous ${percentageScore}%`;
+  }
+
+  return {
+    score: percentageScore,
+    rating,
+    badgeText
+  };
+}
+
+function category_base_score(categoryText) {
+  if (!categoryText) return 0;
+  const cat = categoryText.toLowerCase();
+
+  const HIGH_TRUST = [
+    'science', 'academic', 'math', 'physics', 'chemistry', 'biology', 'astronomy', 'earth science',
+    'technology', 'it', 'programming', 'coding', 'algorithm', 'machine learning', 'deep learning',
+    'data science', 'security', 'cloud', 'devops', 'open source', 'network', 'blockchain', 'ai ethics',
+    'education', 'lecture', 'mooc', 'medicine', 'medical', 'law', 'history', 'philosophy', 'psychology',
+    'industry', 'government', 'museum', 'documentary'
+  ];
+  const UPPER_MED = ['tutorial', 'review', 'comparison', 'investment', 'finance', 'economics', 'business'];
+  const MED = ['news', 'politics', 'current affairs', 'real estate', 'smartphone', 'car', 'camera', 'gaming', 'travel', 'food', 'lifestyle', 'interview', 'talk show', 'career', 'startup'];
+  const LOWER_MED = ['opinion', 'celebrity', 'culture'];
+  const LOW_TRUST = ['gossip', 'rumor', 'scandal', 'conspiracy', 'ufo', 'ghost', 'paranormal', 'psychic', 'tarot', 'astrology', 'fortune', 'prophecy', 'wealth', 'passive income', 'clickbait', 'shock', 'sensational', 'unverified', 'fake health', 'unconfirmed'];
+
+  if (HIGH_TRUST.some(c => cat.includes(c))) return 25;
+  if (UPPER_MED.some(c => cat.includes(c))) return 10;
+  if (MED.some(c => cat.includes(c))) return 2;
+  if (LOWER_MED.some(c => cat.includes(c))) return -5;
+  if (LOW_TRUST.some(c => cat.includes(c))) return -25;
+  return 0;
+}
+
+function keyword_score(text, positiveDict, negativeDict) {
+  if (!text) return 0;
+  let score = 0;
+  const lowerText = text.toLowerCase();
+
+  Object.keys(positiveDict).forEach(word => {
+    let idx = lowerText.indexOf(word.toLowerCase());
+    while (idx !== -1) {
+      score += positiveDict[word];
+      idx = lowerText.indexOf(word.toLowerCase(), idx + word.length);
+    }
+  });
+
+  Object.keys(negativeDict).forEach(word => {
+    let idx = lowerText.indexOf(word.toLowerCase());
+    while (idx !== -1) {
+      score += negativeDict[word];
+      idx = lowerText.indexOf(word.toLowerCase(), idx + word.length);
+    }
+  });
+
+  return score;
+}
+
+function pattern_penalty(text) {
+  if (!text) return 0;
+  let penalty = 0;
+  const riskPatterns = [
+    /(100%|100퍼센트|확정|보장|원금|절대손해)/gi,
+    /(고수익|일확천금|대박수익|하루\s*\d+만원)/gi,
+    /(충격|소름|레전드|역대급|실화|미친)/gi,
+    /(음모|숨긴|은폐|언론이)/gi,
+    /(UFO|외계인|초자연|귀신|사주|타로|예언)/gi,
+    /(클릭베이트|자극적|선정|19금)/gi
+  ];
+
+  riskPatterns.forEach(pat => {
+    const matches = text.match(pat);
+    if (matches) {
+      penalty -= matches.length * 10;
+    }
+  });
+  return penalty;
+}
+
+function link_bonus(description) {
+  if (!description) return -3;
+  
+  let score = 0;
+  const highTrustLinks = /(\.gov|\.go\.kr|\.ac\.kr|\.edu|arxiv\.org|nature\.com|ieee\.org)/gi;
+  const highMatches = description.match(highTrustLinks);
+  if (highMatches) {
+    score += highMatches.length * 10;
+  }
+
+  const medTrustLinks = /(wikipedia\.org|whitepaper|백서)/gi;
+  const medMatches = description.match(medTrustLinks);
+  if (medMatches) {
+    score += medMatches.length * 5;
+  }
+
+  const affiliateLinks = /(affiliate|coupang|쿠팡|amzn\.to|partners|blog\.naver)/gi;
+  const affMatches = description.match(affiliateLinks);
+  if (affMatches) {
+    score -= affMatches.length * 4;
+  }
+
+  const anyLink = /https?:\/\/[^\s]+/gi;
+  if (!anyLink.test(description)) {
+    return -3;
+  }
+
+  return score;
+}
+
+function meta_signals(channelData) {
+  let bonus = 0;
+  const subs = channelData.subscriberCount || 0;
+  if (subs > 100000) {
+    bonus += 7;
+  }
+  const views = channelData.views || 0;
+  if (subs > 0 && (views / subs) >= 0.05) {
+    bonus += 3;
+  }
+  return bonus;
 }
 
 // ─── /api/video-meta ──────────────────────────────────────────────────────────
