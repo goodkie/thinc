@@ -1669,23 +1669,23 @@ function calculate_trust_score(meta) {
 
   // 2. 키워드 기반 점수
   const defaultPositiveDict = {
-    "논문": 9, "paper": 9, "research": 8, "study": 8, "실험": 9, "experiment": 8,
-    "peer_review": 10, "arxiv": 9, "pubmed": 9, "정부보고서": 10,
-    "분석": 5, "데이터": 5, "통계": 6, "비교": 4, "검증": 6, "튜토리얼": 4,
-    "강의": 5, "lecture": 5, "guide": 4, "입문": 3, "심화": 4, "알고리즘": 5,
-    "오픈소스": 5, "source_code": 4, "공식": 6, "official": 6,
-    "설명": 2, "정리": 2, "노하우": 3, "케이스": 3, "리뷰": 1,
-    "pytorch": 5, "tensorflow": 5, "github": 4, "documentation": 4, "benchmark": 5, "reproducible": 6
+    "논문": 18, "paper": 18, "research": 16, "study": 16, "실험": 18, "experiment": 16,
+    "peer_review": 22, "arxiv": 20, "pubmed": 20, "정부보고서": 22,
+    "분석": 10, "데이터": 10, "통계": 12, "비교": 8, "검증": 12, "튜토리얼": 8,
+    "강의": 10, "lecture": 10, "guide": 8, "입문": 6, "심화": 8, "알고리즘": 10,
+    "오픈소스": 10, "source_code": 8, "공식": 12, "official": 12,
+    "설명": 4, "정리": 4, "노하우": 6, "케이스": 6, "리뷰": 2,
+    "pytorch": 10, "tensorflow": 10, "github": 10, "documentation": 8, "benchmark": 10, "reproducible": 15
   };
 
   const defaultNegativeDict = {
-    "충격": -4, "대박": -4, "소름": -4, "레전드": -5, "역대급": -5,
-    "실화냐": -5, "미친": -4,
-    "100%": -12, "확정": -10, "보장": -13, "원금": -15, "절대손해": -15,
-    "고수익": -12, "일확천금": -14, "삭제될": -12, "언론이숨긴": -13,
-    "음모": -14, "초자연": -12, "ufo": -13, "예언": -11, "사주": -10,
-    "타로": -9, "루머": -8, "가ossip": -8, "가십": -8,
-    "월 000만원": -10, "누구나": -6, "쉬운": -4, "자동": -4, "수동소득": -8
+    "충격": -15, "대박": -15, "소름": -15, "레전드": -18, "역대급": -18,
+    "실화냐": -18, "미친": -15,
+    "100%": -35, "확정": -30, "보장": -38, "원금": -45, "절대손해": -45,
+    "고수익": -35, "일확천금": -40, "삭제될": -35, "언론이숨긴": -38,
+    "음모": -40, "초자연": -30, "ufo": -30, "예언": -30, "사주": -25,
+    "타로": -25, "루머": -20, "gossip": -20, "가십": -20,
+    "월 000만원": -25, "누구나": -15, "쉬운": -10, "자동": -10, "수동소득": -20
   };
 
   const positiveDict = { ...defaultPositiveDict };
@@ -1718,10 +1718,10 @@ function calculate_trust_score(meta) {
   const totalRaw = catScore + kwTotal + patternPenalty + linkBonus + metaBonus;
 
   // 6. 최종 조정
-  const finalScore = Math.max(-100, Math.min(100, totalRaw));
+  const finalScore = Math.max(-250, Math.min(250, totalRaw));
 
   // 0~100 스케일 백분율 변환
-  const basePercentage = Math.round((finalScore + 100) / 2);
+  const basePercentage = Math.round((finalScore + 250) * 100 / 500);
 
   // 민감도 배수 연산 및 가중 보정 적용
   const fullText = `${meta.title} ${meta.description} ${meta.tags.join(' ')}`.toLowerCase();
@@ -1773,11 +1773,11 @@ function category_base_score(categoryText) {
   const LOWER_MED = ['opinion', 'celebrity', 'culture'];
   const LOW_TRUST = ['gossip', 'rumor', 'scandal', 'conspiracy', 'ufo', 'ghost', 'paranormal', 'psychic', 'tarot', 'astrology', 'fortune', 'prophecy', 'wealth', 'passive income', 'clickbait', 'shock', 'sensational', 'unverified', 'fake health', 'unconfirmed'];
 
-  if (HIGH_TRUST.some(c => cat.includes(c))) return 25;
-  if (UPPER_MED.some(c => cat.includes(c))) return 10;
-  if (MED.some(c => cat.includes(c))) return 2;
-  if (LOWER_MED.some(c => cat.includes(c))) return -5;
-  if (LOW_TRUST.some(c => cat.includes(c))) return -25;
+  if (HIGH_TRUST.some(c => cat.includes(c))) return 45;
+  if (UPPER_MED.some(c => cat.includes(c))) return 20;
+  if (MED.some(c => cat.includes(c))) return 5;
+  if (LOWER_MED.some(c => cat.includes(c))) return -15;
+  if (LOW_TRUST.some(c => cat.includes(c))) return -60;
   return 0;
 }
 

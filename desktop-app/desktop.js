@@ -2502,14 +2502,13 @@
   }
 
   const PIPED_API_INSTANCES = [
-    'https://api.piped.private.coffee',
-    'https://pipedapi.col1g0.de',
-    'https://piped.mha.fi',
-    'https://piped-api.woodland.cafe',
-    'https://piped-api.lunar.icu',
-    'https://pipedapi.really.click',
-    'https://piped.yt',
-    'https://piped.video'
+    "https://pipedapi.kavin.rocks",
+    "https://api.piped.private.coffee",
+    "https://pipedapi.in.projectsegfau.lt",
+    "https://pipedapi.darkness.services",
+    "https://piped-api.lunar.icu",
+    "https://piped-api.garudalinux.org",
+    "https://pipedapi.tokhmi.xyz"
   ];
 
   let dynamicPipedInstances = [...PIPED_API_INSTANCES];
