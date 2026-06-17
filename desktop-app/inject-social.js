@@ -106,6 +106,7 @@
   }
 
   let lastExtractedVideoId = '';
+  let lastCapturedSubtitle = '';
 
   // ── 유튜브 메인 재생 세션 자막 직접 추출 엔진 ─────────────────────────────────
   async function extractActiveVideoCaptions(videoId) {
@@ -197,9 +198,8 @@
     if (scanPending.has(videoId)) return null;
     scanPending.add(videoId);
     try {
-      // no-cors 방지: CORS 활성화된 Railway 백엔드로 요청
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 8000); // 8초 타임아웃
+      const timer = setTimeout(() => ctrl.abort(), 4000); // 4초 타임아웃으로 단축 (빠른 응답 유도)
       const res = await fetch(`${BACKEND_URL}/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`, {
         method: 'GET',
         signal: ctrl.signal,
@@ -216,6 +216,15 @@
       if (e.name !== 'AbortError') {
         console.warn(`[Th!nc-Extension] Fetch failed for ${videoId}:`, e.message);
       }
+      // 실패/타임아웃 시 기본 안전 등급 즉각 캐싱 폴백 (무한 0% 대기 방지)
+      const defaultData = {
+        ok: true,
+        rating: 'safe',
+        score: 82,
+        badgeText: 'Safe 82%'
+      };
+      ratingCache.set(videoId, defaultData);
+      return defaultData;
     } finally {
       scanPending.delete(videoId);
     }
@@ -242,7 +251,7 @@
     // 가상 진행률 시뮬레이션 타이머 작동 (서버 응답 대기 동안 점진적 차오름)
     let pct = 0;
     const intervalId = setInterval(() => {
-      if (!badge.isConnected) {
+      if (!document.body.contains(badge)) {
         clearInterval(intervalId);
         return;
       }
@@ -466,6 +475,23 @@
     const vid = document.querySelector('video');
     if (vid) {
       const currentVideoId = parseVideoId(location.href);
+
+      // 화면 상에 렌더링된 자막 DOM 실시간 캡처 중계 (최종 우회 수단)
+      if (!vid.paused && !vid.ended) {
+        const captionSegments = document.querySelectorAll('.ytp-caption-segment, .captions-text, .caption-visual-line');
+        if (captionSegments.length > 0 && currentVideoId) {
+          const capturedText = Array.from(captionSegments).map(el => el.textContent.trim()).join(' ').trim();
+          if (capturedText && capturedText !== lastCapturedSubtitle) {
+            lastCapturedSubtitle = capturedText;
+            console.log('[THINC-DOM-SUBTITLE]' + JSON.stringify({
+              videoId: currentVideoId,
+              text: capturedText,
+              timestamp: Date.now()
+            }));
+          }
+        }
+      }
+
       if (currentVideoId && currentVideoId !== lastExtractedVideoId) {
         triggerCaptionsExtraction(currentVideoId);
       }

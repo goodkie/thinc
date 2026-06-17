@@ -55,6 +55,9 @@
   let captionLoadStatus = 'none'; // 'none' | 'loading' | 'loaded' | 'failed'
   let isAnalysisLocked = false;   // ✅ 중복 loadSocialVideoAnalysis 실행 방지 전역 잠금 플래그
 
+  // Cache for fast video analysis ratings
+  const scanCache = {};
+
   // Background Thumbnail Captions Scraping Queue
   const bgScanQueue = [];
   let isBgScanning = false;
@@ -2130,6 +2133,32 @@
           } catch(err) {
             console.error('Failed to parse injected captions:', err);
           }
+        } else if (msg && msg.startsWith('[THINC-DOM-SUBTITLE]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-DOM-SUBTITLE]'.length));
+            if (data.text) {
+              if (data.videoId && data.videoId !== activeVideoId) {
+                console.log(`[Th!nc-Extension] Auto-aligning activeVideoId on DOM subtitles: ${activeVideoId} -> ${data.videoId}`);
+                activeVideoId = data.videoId;
+              }
+              currentSubtitle = data.text;
+              captionLoadStatus = 'loaded';
+
+              // 실시간 DOM 자막 데이터를 liveCaptions에도 안전하게 적재하여 분석 파이프라인 동화
+              const startSec = captionPlaybackSec > 0 ? captionPlaybackSec : 0;
+              const hasDuplicate = liveCaptions.some(c => c.text === data.text && Math.abs(c.start - startSec) < 3);
+              if (!hasDuplicate) {
+                liveCaptions.push({
+                  start: startSec,
+                  dur: 3,
+                  text: data.text
+                });
+              }
+
+              const currentLieScore = isSilentOrMusicOrPaused ? 0 : Math.min(99, Math.max(0, Math.round(finalScore)));
+              updateSentenceFeed(data.text, currentLieScore, false);
+            }
+          } catch(err) {}
         } else if (msg && msg.startsWith('[THINC-VIDEO-RECT]')) {
           try {
             const data = JSON.parse(msg.substring('[THINC-VIDEO-RECT]'.length));
@@ -2923,6 +2952,19 @@
       const thumbWrap = card.querySelector('.yt-video-thumbnail-wrap');
       if (!thumbWrap) return;
       if (thumbWrap.querySelector('.yt-lie-badge:not(.scan-pie)')) return;
+
+      if (scanCache[videoId]) {
+        const data = scanCache[videoId];
+        const badge = document.createElement('div');
+        badge.className = `yt-lie-badge ${data.rating}`;
+        badge.style.opacity = '0';
+        badge.style.transition = 'opacity 0.3s ease';
+        const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : '🔴';
+        badge.innerHTML = `${emoji} ${data.badgeText || data.score + '%'}`;
+        thumbWrap.appendChild(badge);
+        requestAnimationFrame(() => { badge.style.opacity = '1'; });
+        return;
+      }
       
       // 파이차트 진행률 뱃지 삽입 (회전 효과 추가)
       const pieBadge = document.createElement('div');
@@ -2973,6 +3015,7 @@
         pieBadge.remove();
         
         if (data && data.ok) {
+          scanCache[videoId] = data; // 결과 로컬 캐싱 적용
           if (thumbWrap.querySelector('.yt-lie-badge:not(.scan-pie)')) return;
           const badge = document.createElement('div');
           badge.className = `yt-lie-badge ${data.rating}`;
