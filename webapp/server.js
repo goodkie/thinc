@@ -1379,11 +1379,16 @@ async function handleAnalyzeVideoFast(req, res) {
   let textBuffer = '';
   if (rawSegments && rawSegments.length > 0) {
     // 세그먼트 시간 필드 통일 (start/offset 둘 다 지원)
-    const normalizedSegs = rawSegments.map(s => ({
-      text: (s.text || '').replace(/\[.*?\]/g, '').trim(),
-      startSec: s.start !== undefined ? s.start : (s.offset !== undefined ? s.offset / 1000 : 0),
-      dur: s.duration !== undefined ? s.duration : (s.dur !== undefined ? s.dur : 1)
-    })).filter(s => s.text.length > 0);
+    const isMs = rawSegments.some(s => (s.offset && s.offset > 1000) || (s.start && s.start > 1000));
+    const normalizedSegs = rawSegments.map(s => {
+      let rawStart = s.start !== undefined ? s.start : (s.offset !== undefined ? s.offset : 0);
+      let rawDur = s.duration !== undefined ? s.duration : (s.dur !== undefined ? s.dur : 1);
+      return {
+        text: (s.text || '').replace(/\[.*?\]/g, '').trim(),
+        startSec: isMs ? rawStart / 1000 : rawStart,
+        dur: isMs ? rawDur / 1000 : rawDur
+      };
+    }).filter(s => s.text.length > 0);
     
     if (normalizedSegs.length > 0) {
       // 첫 음성 감지 시점(무음·공백 제외 첫 세그먼트)부터 30초

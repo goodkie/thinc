@@ -389,8 +389,9 @@
         }
       }
 
-      // 비디오 엘리먼트의 스크린 좌표 중계
-      const rect = vid.getBoundingClientRect();
+      // 비디오 엘리먼트 대신 부모 플레이어의 스크린 좌표 중계
+      const player = vid.closest('.html5-video-player, #movie_player') || vid;
+      const rect = player.getBoundingClientRect();
       const isVisible = rect.width > 0 && rect.height > 0 && window.getComputedStyle(vid).display !== 'none';
       if (isVisible) {
         console.log('[THINC-VIDEO-RECT]' + JSON.stringify({

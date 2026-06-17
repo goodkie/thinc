@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "The Truth Untold",
+  "version": "1.5.22",
+  "description": "Professional multi-factor voice stress analysis for YouTube and audio files.",
+  "icons": {
+    "128": "icon.png"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icon.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://youtube.com/*"
+      ],
+      "js": ["dictionary.js", "analyzer.js", "content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["analyzer.js", "overlay.css", "icon.png", "dict/*.csv"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
