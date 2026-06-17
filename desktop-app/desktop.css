@@ -225,28 +225,27 @@ body::before {
    SIDEBAR NAVIGATION
    ========================================================================== */
 .sidebar {
-  width: 72px;
+  width: 240px;
   background: rgba(10, 10, 20, 0.95);
   border-right: 1px solid var(--border-glass);
   display: flex;
   flex-direction: column;
-  padding: 30px 10px;
+  padding: 30px 20px;
   z-index: 20;
   flex-shrink: 0;
   backdrop-filter: blur(20px);
-  align-items: center;
+  align-items: flex-start;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.sidebar-brand {
-  justify-content: center;
-  margin-bottom: 25px;
-}
-
-.sidebar .brand-text,
-.sidebar .nav-ai-status,
-.sidebar .menu-label,
-.sidebar .sidebar-footer {
-  display: none !important;
+.sidebar.collapsed {
+  width: 0px;
+  padding-left: 0;
+  padding-right: 0;
+  border-right: none;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .sidebar-brand {
@@ -772,13 +771,21 @@ body::before {
 
 /* RIGHT PANEL (Lie Detector HUD, Report, History, Settings) */
 .right-panel {
-  width: 310px;
+  width: 420px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
   background: rgba(5, 5, 12, 0.85);
   overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.right-panel.collapsed {
+  width: 0px;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .right-panel .tab-content {
@@ -3502,5 +3509,68 @@ input:checked + .toggle-knob:before {
 .bg-scan-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 15px rgba(255, 65, 108, 0.40);
+}
+
+/* ==========================================================================
+   FLOATING SIDEBAR & RIGHT PANEL TOGGLE BUTTONS
+   ========================================================================== */
+.sidebar-toggle-btn {
+  position: fixed;
+  left: 250px;
+  top: 15px;
+  width: 28px;
+  height: 28px;
+  background: rgba(15, 15, 30, 0.85);
+  border: 1px solid var(--border-glass);
+  color: #ffffff;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sidebar-toggle-btn:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #000000;
+}
+body.sidebar-collapsed .sidebar-toggle-btn {
+  left: 15px;
+}
+
+.right-panel-toggle-btn {
+  position: fixed;
+  right: 430px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 48px;
+  background: rgba(15, 15, 30, 0.85);
+  border: 1px solid var(--border-glass);
+  border-right: none;
+  color: #ffffff;
+  border-radius: 8px 0 0 8px;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  box-shadow: -4px 0 10px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.right-panel-toggle-btn:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #000000;
+}
+body.right-panel-collapsed .right-panel-toggle-btn {
+  right: 15px;
 }
 

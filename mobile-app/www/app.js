@@ -82,7 +82,7 @@
     const baseUrls = [];
 
     // 모바일(Capacitor) 환경에서는 Railway 백엔드를 최우선으로 시도
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     if (isCapacitor) {
       // 모바일: Railway 백엔드 → 커스텀 → localhost
       const savedUrl = localStorage.getItem('thinc_backend_url');
@@ -159,7 +159,7 @@
   async function fetchViaCORSProxy(targetUrl) {
     // Electron(데스크톱) 또는 Capacitor(모바일) 환경: CORS 제약 없이 직접 Fetch를 먼저 시도
     const isElectron = window.electronAPI && window.electronAPI.isElectron;
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     if (isElectron || isCapacitor) {
       try {
         console.log(`[Direct] Fetching directly: ${targetUrl}`);
@@ -1909,7 +1909,7 @@
 
   async function fetchViaCORSProxy(targetUrl) {
     // 모바일(Capacitor) 또는 데스크톱(Electron) 환경: CORS 제약 없이 직접 Fetch 먼저 시도
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     const isElectron = typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron;
     if (isCapacitor || isElectron) {
       try {
@@ -3547,7 +3547,7 @@
     
     // Electron/Capacitor 환경인 경우 직접 모바일/크롬 헤더를 싣고 직접 요청
     const isElectron = window.electronAPI && window.electronAPI.isElectron;
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     
     if (isElectron || isCapacitor) {
       try {
@@ -4824,21 +4824,12 @@
     const isWrapperVisible = wrapper && !wrapper.classList.contains('hidden');
 
     if (isWrapperVisible && isRunning) {
-      const altPlayer = document.getElementById('alt-player');
-      const ytPlayer = document.getElementById('yt-player');
-      const activePlayer = (altPlayer && !altPlayer.classList.contains('hidden')) ? altPlayer : ytPlayer;
-
-      if (activePlayer) {
-        const rect = activePlayer.getBoundingClientRect();
-        overlay.style.position = 'absolute';
-        overlay.style.left = `${rect.left}px`;
-        overlay.style.top = `${rect.top}px`;
-        overlay.style.width = `${rect.width}px`;
-        overlay.style.height = `${rect.height}px`;
-        overlay.classList.remove('hidden');
-      } else {
-        overlay.classList.add('hidden');
-      }
+      overlay.style.position = 'absolute';
+      overlay.style.left = '0px';
+      overlay.style.top = '0px';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.classList.remove('hidden');
     } else {
       overlay.classList.add('hidden');
     }

@@ -84,7 +84,7 @@
     const baseUrls = [];
 
     // 모바일(Capacitor) 또는 데스크톱(Electron) 환경에서는 Railway 백엔드를 최우선으로 시도
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     const isElectron = typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron;
     
     if (isCapacitor || isElectron) {
@@ -1545,6 +1545,31 @@
 
   // ===== DOM EVENT BINDINGS =====
   function initBinds() {
+    // 사이드바 & 우측 분석패널 토글 바인딩
+    const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
+    const sidebarEl = document.querySelector('.sidebar');
+    if (btnSidebarToggle && sidebarEl) {
+      btnSidebarToggle.addEventListener('click', () => {
+        sidebarEl.classList.toggle('collapsed');
+        document.body.classList.toggle('sidebar-collapsed');
+        const isCollapsed = sidebarEl.classList.contains('collapsed');
+        btnSidebarToggle.innerText = isCollapsed ? '▶' : '◀';
+        window.dispatchEvent(new Event('resize'));
+      });
+    }
+
+    const btnRightPanelToggle = document.getElementById('btn-right-panel-toggle');
+    const rightPanelEl = document.querySelector('.right-panel');
+    if (btnRightPanelToggle && rightPanelEl) {
+      btnRightPanelToggle.addEventListener('click', () => {
+        rightPanelEl.classList.toggle('collapsed');
+        document.body.classList.toggle('right-panel-collapsed');
+        const isCollapsed = rightPanelEl.classList.contains('collapsed');
+        btnRightPanelToggle.innerText = isCollapsed ? '◀' : '▶';
+        window.dispatchEvent(new Event('resize'));
+      });
+    }
+
     // 웹뷰 오버레이 분석 시작 버튼 바인딩
     const wvFloatStartBtn = document.getElementById('wv-float-start-btn');
     if (wvFloatStartBtn) {
@@ -2254,7 +2279,7 @@
   async function fetchViaCORSProxy(targetUrl) {
     // Electron(데스크톱) 또는 Capacitor(모바일) 환경: CORS 제약 없이 직접 Fetch를 먼저 시도
     const isElectron = window.electronAPI && window.electronAPI.isElectron;
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     if (isElectron || isCapacitor) {
       try {
         console.log(`[Direct] Fetching directly: ${targetUrl}`);
@@ -3705,7 +3730,7 @@
     
     // Electron/Capacitor 환경인 경우 직접 모바일/크롬 헤더를 싣고 직접 요청
     const isElectron = window.electronAPI && window.electronAPI.isElectron;
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     
     if (isElectron || isCapacitor) {
       try {
