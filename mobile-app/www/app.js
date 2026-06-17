@@ -4828,28 +4828,13 @@
 
     if (isWrapperVisible && isRunning) {
       overlay.style.position = 'absolute';
+      overlay.style.left = '0px';
+      overlay.style.top = '0px';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      
       const wrapperWidth = wrapper.clientWidth;
-      const wrapperHeight = wrapper.clientHeight;
-      
-      // Calculate 16:9 video frame dimensions to avoid letterboxing mismatch
-      let videoWidth = wrapperWidth;
-      let videoHeight = wrapperWidth * (9 / 16);
-      let offsetTop = (wrapperHeight - videoHeight) / 2;
-      let offsetLeft = 0;
-
-      if (videoHeight > wrapperHeight) {
-        videoHeight = wrapperHeight;
-        videoWidth = wrapperHeight * (16 / 9);
-        offsetLeft = (wrapperWidth - videoWidth) / 2;
-        offsetTop = 0;
-      }
-
-      overlay.style.left = `${offsetLeft}px`;
-      overlay.style.top = `${offsetTop}px`;
-      overlay.style.width = `${videoWidth}px`;
-      overlay.style.height = `${videoHeight}px`;
-      
-      if (videoWidth < 540) {
+      if (wrapperWidth < 540) {
         overlay.classList.add('mini-overlay');
       } else {
         overlay.classList.remove('mini-overlay');

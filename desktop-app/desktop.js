@@ -2077,8 +2077,9 @@
               if (data.isVisible && isRunning) {
                 const wvRect = wv.getBoundingClientRect();
                 const width = data.width;
-                overlay.style.left = `${wvRect.left + data.left + window.scrollX}px`;
-                overlay.style.top = `${wvRect.top + data.top + window.scrollY}px`;
+                overlay.style.position = 'fixed';
+                overlay.style.left = `${wvRect.left + data.left}px`;
+                overlay.style.top = `${wvRect.top + data.top}px`;
                 overlay.style.width = `${width}px`;
                 overlay.style.height = `${data.height}px`;
                 
