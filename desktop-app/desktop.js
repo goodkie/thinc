@@ -1545,6 +1545,28 @@
 
   // ===== DOM EVENT BINDINGS =====
   function initBinds() {
+    // 웹뷰 오버레이 분석 시작 버튼 바인딩
+    const wvFloatStartBtn = document.getElementById('wv-float-start-btn');
+    if (wvFloatStartBtn) {
+      wvFloatStartBtn.addEventListener('click', () => {
+        toggleSession();
+      });
+    }
+
+    // 백그라운드 거짓 스캔 버튼 바인딩
+    const btnBgScan = document.getElementById('btn-bg-scan');
+    if (btnBgScan) {
+      btnBgScan.addEventListener('click', () => {
+        showToast("백그라운드 거짓 스캔을 실행합니다...");
+        const activeTab = document.querySelector('.platform-tab.active');
+        const platform = activeTab ? activeTab.dataset.platform : 'youtube';
+        const activeWebview = document.getElementById(`wv-${platform}`);
+        if (activeWebview) {
+          activeWebview.executeJavaScript('if (typeof forceScanPage === "function") { forceScanPage(); } else if (typeof scanPage === "function") { scanPage(); }');
+        }
+      });
+    }
+
     // YouTube Loader Binds
     const btnOpenYoutube = document.getElementById('btn-open-youtube');
     if (btnOpenYoutube) {
@@ -4640,6 +4662,16 @@
       btn.dataset.running = "false";
       btn.querySelector('#btn-icon').innerText = "▶";
       btn.querySelector('#btn-text').innerText = t('start');
+
+      // 웹뷰 오버레이 스타트 버튼 상태 업데이트
+      const wvStartBtn = document.getElementById('wv-float-start-btn');
+      if (wvStartBtn) {
+        wvStartBtn.setAttribute('data-running', 'false');
+        const iconSpan = wvStartBtn.querySelector('.wv-start-icon');
+        const labelSpan = wvStartBtn.querySelector('.wv-start-label');
+        if (iconSpan) iconSpan.innerText = '▶';
+        if (labelSpan) labelSpan.innerText = '분석 시작';
+      }
       
       if (window.PerformanceLogger) {
         window.PerformanceLogger.log('Session', 'Stop Analysis Session', 0, 'Info', `VSA session stopped. Total datapoints collected: ${sessionData.length}`);
@@ -4685,6 +4717,16 @@
       btn.dataset.running = "true";
       btn.querySelector('#btn-icon').innerText = "■";
       btn.querySelector('#btn-text').innerText = t('stop');
+
+      // 웹뷰 오버레이 스타트 버튼 상태 업데이트
+      const wvStartBtn = document.getElementById('wv-float-start-btn');
+      if (wvStartBtn) {
+        wvStartBtn.setAttribute('data-running', 'true');
+        const iconSpan = wvStartBtn.querySelector('.wv-start-icon');
+        const labelSpan = wvStartBtn.querySelector('.wv-start-label');
+        if (iconSpan) iconSpan.innerText = '■';
+        if (labelSpan) labelSpan.innerText = '분석 중단';
+      }
       
       if (window.PerformanceLogger) {
         window.PerformanceLogger.log('Session', 'Start Analysis Session', 0, 'Info', `VSA session started. Target video ID: ${activeVideoId || 'None'}`);
@@ -5436,6 +5478,69 @@
 
     // Real-time oscilloscope drawing
     drawOscilloscope(result, smoothScore);
+
+    // ===== 웹뷰 위 플로팅 오버레이 실시간 연동 (데스크톱/모바일 동시 대응) =====
+    const wvOverlay = document.getElementById('wv-float-overlay');
+    if (wvOverlay) {
+      if (isRunning) {
+        wvOverlay.classList.remove('hidden');
+      } else {
+        wvOverlay.classList.add('hidden');
+      }
+
+      // 우측 하단 원형 게이지 strokeDasharray 업데이트 (Radius=24, 둘레=151)
+      const wvArc = document.getElementById('wv-gauge-arc');
+      const wvPct = document.getElementById('wv-float-pct');
+      const wvGauge = document.getElementById('wv-float-gauge');
+      if (wvArc && wvPct) {
+        const circumference = 151;
+        const strokeVal = (smoothScore / 100) * circumference;
+        wvArc.style.strokeDasharray = `${strokeVal} ${circumference}`;
+        wvPct.textContent = `${smoothScore}%`;
+
+        // 원형 게이지 테두리 색상 및 맥박 애니메이션 연동
+        if (wvGauge) {
+          wvGauge.classList.remove('truth', 'doubt', 'lie', 'analyzing');
+          if (isRunning) wvGauge.classList.add('analyzing');
+
+          if (smoothScore >= 60) {
+            wvGauge.classList.add('lie');
+            wvArc.style.stroke = "var(--accent-red)";
+          } else if (smoothScore >= 40) {
+            wvGauge.classList.add('doubt');
+            wvArc.style.stroke = "var(--accent-orange)";
+          } else {
+            wvGauge.classList.add('truth');
+            wvArc.style.stroke = "var(--accent-green)";
+          }
+        }
+      }
+
+      // 우측 상단 진실/거짓 누적 바 업데이트
+      const wvTruthPct = document.getElementById('wv-truth-pct');
+      const wvLiePct = document.getElementById('wv-lie-pct');
+      const wvTruthFill = document.getElementById('wv-truth-fill');
+      const wvLieFill = document.getElementById('wv-lie-fill');
+      if (wvTruthPct && wvLiePct && wvTruthFill && wvLieFill) {
+        const liePct = smoothScore;
+        const truthPct = 100 - liePct;
+        wvTruthPct.textContent = `${truthPct}%`;
+        wvLiePct.textContent = `${liePct}%`;
+        wvTruthFill.style.width = `${truthPct}%`;
+        wvLieFill.style.width = `${liePct}%`;
+      }
+
+      // 실시간 자막 플로팅
+      const wvSub = document.getElementById('wv-float-subtitle');
+      if (wvSub) {
+        if (currentSubtitle && !result.isSilent && !result.isMusic) {
+          wvSub.innerText = currentSubtitle;
+          wvSub.classList.add('show');
+        } else {
+          wvSub.classList.remove('show');
+        }
+      }
+    }
   }
 
   function updateSentenceFeed(text, score, isUpdate = false) {

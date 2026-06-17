@@ -225,15 +225,28 @@ body::before {
    SIDEBAR NAVIGATION
    ========================================================================== */
 .sidebar {
-  width: 220px;
+  width: 72px;
   background: rgba(10, 10, 20, 0.95);
   border-right: 1px solid var(--border-glass);
   display: flex;
   flex-direction: column;
-  padding: 30px 20px;
+  padding: 30px 10px;
   z-index: 20;
   flex-shrink: 0;
   backdrop-filter: blur(20px);
+  align-items: center;
+}
+
+.sidebar-brand {
+  justify-content: center;
+  margin-bottom: 25px;
+}
+
+.sidebar .brand-text,
+.sidebar .nav-ai-status,
+.sidebar .menu-label,
+.sidebar .sidebar-footer {
+  display: none !important;
 }
 
 .sidebar-brand {
@@ -296,11 +309,12 @@ body::before {
   font-family: var(--font-sans);
   font-weight: 700;
   font-size: 13px;
-  padding: 12px 16px;
+  padding: 12px 0;
   border-radius: 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   transition: var(--transition-smooth);
   width: 100%;
@@ -365,7 +379,7 @@ body::before {
 
 /* LEFT PANEL (YouTube Search & Browser) */
 .left-panel {
-  flex: 1.1;
+  flex: 1;
   border-right: 1px solid var(--border-glass);
   display: flex;
   flex-direction: column;
@@ -612,8 +626,8 @@ body::before {
 
 .yt-video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
   margin-bottom: 40px;
 }
 
@@ -758,7 +772,8 @@ body::before {
 
 /* RIGHT PANEL (Lie Detector HUD, Report, History, Settings) */
 .right-panel {
-  flex: 1;
+  width: 310px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -3218,3 +3233,265 @@ input:checked + .toggle-knob:before {
 .social-webview.active {
   display: flex;
 }
+
+/* ===== 소셜 웹뷰 위 플로팅 오버레이 ===== */
+.wv-float-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.wv-float-overlay.hidden {
+  display: none !important;
+}
+
+/* 우측 상단 진실/거짓 누적 바 */
+.wv-float-truth-bar {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 200px;
+  background: rgba(10, 10, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 12px;
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+}
+
+.wv-truth-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.wv-truth-label-t {
+  color: #00f2fe;
+}
+
+.wv-truth-label-l {
+  color: #ff416c;
+}
+
+.wv-truth-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+}
+
+.wv-truth-fill-t {
+  height: 100%;
+  background: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
+  transition: width 0.3s ease;
+}
+
+.wv-truth-fill-l {
+  height: 100%;
+  background: linear-gradient(90deg, #ff416c 0%, #ff4b2b 100%);
+  transition: width 0.3s ease;
+}
+
+/* 우측 상단 분석 시작/중단 버튼 */
+.wv-float-start-btn {
+  position: absolute;
+  top: 80px;
+  right: 15px;
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+  color: #000000;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
+  transition: all 0.2s ease;
+}
+
+.wv-float-start-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5);
+}
+
+.wv-float-start-btn[data-running="true"] {
+  background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 15px rgba(255, 65, 108, 0.3);
+}
+
+.wv-float-start-btn[data-running="true"]:hover {
+  box-shadow: 0 6px 20px rgba(255, 65, 108, 0.5);
+}
+
+/* 우측 하단 원형 게이지 */
+.wv-float-gauge {
+  position: absolute;
+  bottom: 25px;
+  right: 25px;
+  width: 76px;
+  height: 76px;
+  background: rgba(10, 10, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.wv-float-gauge-pulse {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 2px solid #00f2fe;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wv-float-gauge.analyzing .wv-float-gauge-pulse {
+  animation: gaugePulse 2s infinite;
+}
+
+@keyframes gaugePulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+.wv-gauge-svg {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 66px;
+  height: 66px;
+}
+
+.wv-gauge-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.wv-float-pct-text {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.wv-float-label-text {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: -2px;
+}
+
+/* 자막 오버레이 */
+.wv-float-subtitle {
+  position: absolute;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+  max-width: 80%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 55;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+}
+
+.wv-float-subtitle.show {
+  opacity: 1;
+}
+
+/* 거짓 뱃지 스타일 */
+.yt-lie-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: bold;
+  font-family: var(--font-mono);
+  color: #ffffff;
+  z-index: 10;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.yt-lie-badge.scanning {
+  background: rgba(241, 196, 15, 0.9);
+  animation: pulseScan 1.5s infinite;
+}
+.yt-lie-badge.truth {
+  background: rgba(46, 204, 113, 0.9);
+}
+.yt-lie-badge.lie {
+  background: rgba(231, 76, 60, 0.9);
+}
+
+@keyframes pulseScan {
+  0% { opacity: 0.7; }
+  50% { opacity: 1.0; }
+  100% { opacity: 0.7; }
+}
+
+/* 거짓 백그라운드 스캔 버튼 스타일 */
+.bg-scan-btn {
+  background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+  color: #ffffff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+  margin-left: 8px;
+  box-shadow: 0 4px 10px rgba(255, 65, 108, 0.25);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.bg-scan-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 15px rgba(255, 65, 108, 0.40);
+}
+

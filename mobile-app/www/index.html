@@ -161,7 +161,10 @@
             </div>
           </div>
 
-          <div class="feed-section-title" id="txt-trending-title">🔥 실시간 인기 분석 영상</div>
+          <div class="feed-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div class="feed-section-title" id="txt-trending-title" style="margin-bottom: 0;">🔥 실시간 인기 분석 영상</div>
+            <button id="btn-bg-scan" class="bg-scan-btn">🔍 거짓 스캔</button>
+          </div>
           <div class="yt-video-grid" id="yt-video-grid">
             <!-- Dynamically populated video cards -->
           </div>
@@ -177,6 +180,55 @@
         <div id="yt-player-wrapper" class="yt-player-wrapper hidden">
           <!-- YouTube Player iframe -->
           <div id="yt-player" class="yt-frame"></div>
+
+          <!-- ===== 플레이어 위 플로팅 분석 오버레이 (모바일용) ===== -->
+          <div id="wv-float-overlay" class="wv-float-overlay hidden">
+            <!-- 우측 상단: 진실/거짓 누적 바 -->
+            <div id="wv-float-truth-bar" class="wv-float-truth-bar">
+              <div class="wv-truth-labels">
+                <span class="wv-truth-label-t">T <span id="wv-truth-pct">100%</span></span>
+                <span class="wv-truth-label-l">L <span id="wv-lie-pct">0%</span></span>
+              </div>
+              <div class="wv-truth-track">
+                <div id="wv-truth-fill" class="wv-truth-fill-t" style="width:100%"></div>
+                <div id="wv-lie-fill" class="wv-truth-fill-l" style="width:0%"></div>
+              </div>
+            </div>
+
+            <!-- 우측 상단: 분석 시작/중단 버튼 -->
+            <button id="wv-float-start-btn" class="wv-float-start-btn" data-running="false">
+              <span class="wv-start-icon">▶</span>
+              <span class="wv-start-label">분석 시작</span>
+            </button>
+
+            <!-- 우측 하단: 원형 게이지 (거짓 퍼센트) -->
+            <div id="wv-float-gauge" class="wv-float-gauge truth">
+              <div class="wv-float-gauge-pulse"></div>
+              <svg viewBox="0 0 60 60" class="wv-gauge-svg">
+                <circle cx="30" cy="30" r="24" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="5"/>
+                <circle cx="30" cy="30" r="24" fill="none"
+                        stroke="url(#wvGaugeGrad)" stroke-width="5"
+                        stroke-linecap="round"
+                        stroke-dasharray="0 151"
+                        stroke-dashoffset="37.7"
+                        transform="rotate(-90 30 30)"
+                        id="wv-gauge-arc"/>
+                <defs>
+                  <linearGradient id="wvGaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:#00f2fe"/>
+                    <stop offset="100%" style="stop-color:#4facfe"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div class="wv-gauge-inner">
+                <span id="wv-float-pct" class="wv-float-pct-text">0%</span>
+                <span class="wv-float-label-text">거짓</span>
+              </div>
+            </div>
+
+            <!-- 현재 자막 표시 -->
+            <div id="wv-float-subtitle" class="wv-float-subtitle"></div>
+          </div>
 
           <!-- Alternative HTML5 Video Player -->
           <video id="alt-player" class="yt-frame hidden" controls playsinline crossorigin="anonymous"></video>

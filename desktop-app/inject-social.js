@@ -319,4 +319,16 @@
     }
   }, 500);
 
+  // 외부 강제 호출용 바인딩
+  window.forceScanPage = function() {
+    console.log('[Th!nc-Extension] Force scanning page (clearing cache)...');
+    ratingCache.clear();
+    
+    // 이미 썸네일 컨테이너에 달려 있는 모든 뱃지 DOM 삭제하여 강제 재스캔 유도
+    document.querySelectorAll('.thinc-badge').forEach(b => b.remove());
+    
+    scanPage();
+  };
+  window.scanPage = scanPage;
+
 })();
