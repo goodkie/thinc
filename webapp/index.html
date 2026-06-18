@@ -18,9 +18,20 @@
       const touchSupport = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
       const isMobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) || (touchSupport && window.innerWidth < 1024);
       const targetPage = isMobile ? 'mobile.html' : 'desktop.html';
+      const targetUrl = targetPage + window.location.search;
       
-      // 2. Instant Routing (No UI rendering, no delay)
-      window.location.replace(targetPage + window.location.search);
+      // 2. Handle Iframe / Masked Forwarding Safely
+      try {
+        if (window.self !== window.top) {
+          // If in iframe, try to redirect the top-level page
+          window.top.location.replace(targetUrl);
+        } else {
+          window.location.replace(targetUrl);
+        }
+      } catch (e) {
+        // Fallback inside iframe if cross-origin policy blocks top navigation
+        window.location.replace(targetUrl);
+      }
     })();
   </script>
 </head>

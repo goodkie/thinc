@@ -4383,8 +4383,8 @@
         }
       }
 
-      // Tier 2: Microphone fallback — only attempt if mediaDevices is available
-      if (!audioConnected && hasMediaDevices && audioCtx) {
+      // Tier 2: Microphone fallback — disabled to prevent capturing external sounds
+      if (false && !audioConnected && hasMediaDevices && audioCtx) {
         try {
           const micStream = await navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: true, noiseSuppression: true }
@@ -6731,7 +6731,15 @@
       brandBtn.addEventListener('click', () => {
         const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
         const landingPage = browserLang.startsWith('ko') ? 'landing_ko.html' : 'landing_en.html';
-        window.location.href = landingPage;
+        try {
+          if (window.self !== window.top) {
+            window.top.location.href = landingPage;
+          } else {
+            window.location.href = landingPage;
+          }
+        } catch(e) {
+          window.location.href = landingPage;
+        }
       });
     }
 

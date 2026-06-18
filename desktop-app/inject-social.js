@@ -311,6 +311,45 @@
   function scanYouTube() {
     const hostname = location.hostname; // m.youtube.com or www.youtube.com
 
+    function extractChannelName(element) {
+      if (!element) return '';
+      try {
+        const chEl =
+          element.querySelector('ytd-channel-name a') ||
+          element.querySelector('#channel-name a') ||
+          element.querySelector('#byline-container a') ||
+          element.querySelector('a[href*="/@"]') ||
+          element.querySelector('a[href*="/channel/"]') ||
+          element.querySelector('.ytm-channel-name') ||
+          element.querySelector('ytm-channel-name') ||
+          element.querySelector('.ytm-badge-and-byline-renderer') ||
+          element.querySelector('.yt-media-item-byline') ||
+          element.querySelector('[class*="byline"]') ||
+          element.querySelector('[class*="channel"]');
+        if (chEl) {
+          const rawText = chEl.textContent.trim();
+          if (rawText) {
+            let channel = rawText.split(/[•·\n]/)[0].trim();
+            if (channel.startsWith('@')) channel = channel.substring(1);
+            return channel;
+          }
+        }
+        // 폴백: title 또는 aria-label 확인
+        const channelLinks = element.querySelectorAll('a[href*="/@"], a[href*="/channel/"]');
+        for (const link of channelLinks) {
+          let text = link.textContent || link.getAttribute('title') || link.getAttribute('aria-label') || '';
+          text = text.trim().split(/[•·\n]/)[0].trim();
+          if (text) {
+            if (text.startsWith('@')) text = text.substring(1);
+            return text;
+          }
+        }
+      } catch (err) {
+        console.warn('[Th!nc-Extension] extractChannelName error:', err.message);
+      }
+      return '';
+    }
+
     // ─ 모바일 YouTube (m.youtube.com) 카드 선택자 ─
     const mobileSelectors = [
       'ytm-compact-video-renderer',
@@ -347,35 +386,7 @@
       // 이미 배지가 있으면 무시
       if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
 
-      let channelName = '';
-      try {
-        const chEl =
-          card.querySelector('a[href*="/@"]') ||
-          card.querySelector('a[href*="/channel/"]') ||
-          card.querySelector('ytd-channel-name a') ||
-          card.querySelector('#channel-name a') ||
-          card.querySelector('#byline-container a') ||
-          card.querySelector('.ytm-channel-name') ||
-          card.querySelector('ytm-channel-name') ||
-          card.querySelector('.ytm-badge-and-byline-renderer') ||
-          card.querySelector('.yt-media-item-byline') ||
-          card.querySelector('[class*="byline"]') ||
-          card.querySelector('[class*="channel"]');
-        if (chEl) {
-          const rawText = chEl.textContent.trim().replace(/\s+/g, ' ');
-          channelName = rawText.split(/[•·\n]/)[0].trim();
-        }
-        
-        if (!channelName) {
-          const chLink = card.querySelector('a[href*="/@"], a[href*="/channel/"], a[href*="/user/"]');
-          if (chLink) {
-            const txt = chLink.textContent.trim().replace(/\s+/g, ' ');
-            if (txt && !txt.includes('views') && !txt.includes('조회수')) {
-              channelName = txt.split(/[•·\n]/)[0].trim();
-            }
-          }
-        }
-      } catch (err) {}
+      const channelName = extractChannelName(card);
 
       injectScanningBadge(container, videoId);
       fetchRating(videoId, channelName).then(data => {
@@ -397,37 +408,7 @@
         if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
 
         const cardParent = a.closest('ytd-rich-grid-media, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytm-compact-video-renderer, ytm-video-with-context-renderer, ytm-rich-item-renderer, ytm-media-item');
-        let channelName = '';
-        if (cardParent) {
-          try {
-            const chEl =
-              cardParent.querySelector('a[href*="/@"]') ||
-              cardParent.querySelector('a[href*="/channel/"]') ||
-              cardParent.querySelector('ytd-channel-name a') ||
-              cardParent.querySelector('#channel-name a') ||
-              cardParent.querySelector('#byline-container a') ||
-              cardParent.querySelector('.ytm-channel-name') ||
-              cardParent.querySelector('ytm-channel-name') ||
-              cardParent.querySelector('.ytm-badge-and-byline-renderer') ||
-              cardParent.querySelector('.yt-media-item-byline') ||
-              cardParent.querySelector('[class*="byline"]') ||
-              cardParent.querySelector('[class*="channel"]');
-            if (chEl) {
-              const rawText = chEl.textContent.trim().replace(/\s+/g, ' ');
-              channelName = rawText.split(/[•·\n]/)[0].trim();
-            }
-            
-            if (!channelName) {
-              const chLink = cardParent.querySelector('a[href*="/@"], a[href*="/channel/"], a[href*="/user/"]');
-              if (chLink) {
-                const txt = chLink.textContent.trim().replace(/\s+/g, ' ');
-                if (txt && !txt.includes('views') && !txt.includes('조회수')) {
-                  channelName = txt.split(/[•·\n]/)[0].trim();
-                }
-              }
-            }
-          } catch(err) {}
-        }
+        const channelName = extractChannelName(cardParent);
 
         injectScanningBadge(container, videoId);
         fetchRating(videoId, channelName).then(data => {

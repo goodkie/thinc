@@ -7087,7 +7087,15 @@
       brandBtn.addEventListener('click', () => {
         const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
         const landingPage = browserLang.startsWith('ko') ? 'landing_ko.html' : 'landing_en.html';
-        window.location.href = landingPage;
+        try {
+          if (window.self !== window.top) {
+            window.top.location.href = landingPage;
+          } else {
+            window.location.href = landingPage;
+          }
+        } catch(e) {
+          window.location.href = landingPage;
+        }
       });
     }
 

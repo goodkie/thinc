@@ -4018,15 +4018,10 @@ body::before {
   height: 30px;
   display: block;
 }
-.yt-lie-badge.truth,
-.yt-lie-badge.safe {
+.yt-lie-badge.truth {
   background: rgba(46, 204, 113, 0.9);
 }
-.yt-lie-badge.caution {
-  background: rgba(241, 196, 15, 0.9);
-}
-.yt-lie-badge.lie,
-.yt-lie-badge.danger {
+.yt-lie-badge.lie {
   background: rgba(231, 76, 60, 0.9);
 }
 
