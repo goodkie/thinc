@@ -350,11 +350,11 @@
       let channelName = '';
       try {
         const chEl =
+          card.querySelector('a[href*="/@"]') ||
+          card.querySelector('a[href*="/channel/"]') ||
           card.querySelector('ytd-channel-name a') ||
           card.querySelector('#channel-name a') ||
           card.querySelector('#byline-container a') ||
-          card.querySelector('a[href*="/@"]') ||
-          card.querySelector('a[href*="/channel/"]') ||
           card.querySelector('.ytm-channel-name') ||
           card.querySelector('ytm-channel-name') ||
           card.querySelector('.ytm-badge-and-byline-renderer') ||
@@ -362,8 +362,18 @@
           card.querySelector('[class*="byline"]') ||
           card.querySelector('[class*="channel"]');
         if (chEl) {
-          const rawText = chEl.textContent.trim();
+          const rawText = chEl.textContent.trim().replace(/\s+/g, ' ');
           channelName = rawText.split(/[•·\n]/)[0].trim();
+        }
+        
+        if (!channelName) {
+          const chLink = card.querySelector('a[href*="/@"], a[href*="/channel/"], a[href*="/user/"]');
+          if (chLink) {
+            const txt = chLink.textContent.trim().replace(/\s+/g, ' ');
+            if (txt && !txt.includes('views') && !txt.includes('조회수')) {
+              channelName = txt.split(/[•·\n]/)[0].trim();
+            }
+          }
         }
       } catch (err) {}
 
@@ -391,11 +401,11 @@
         if (cardParent) {
           try {
             const chEl =
+              cardParent.querySelector('a[href*="/@"]') ||
+              cardParent.querySelector('a[href*="/channel/"]') ||
               cardParent.querySelector('ytd-channel-name a') ||
               cardParent.querySelector('#channel-name a') ||
               cardParent.querySelector('#byline-container a') ||
-              cardParent.querySelector('a[href*="/@"]') ||
-              cardParent.querySelector('a[href*="/channel/"]') ||
               cardParent.querySelector('.ytm-channel-name') ||
               cardParent.querySelector('ytm-channel-name') ||
               cardParent.querySelector('.ytm-badge-and-byline-renderer') ||
@@ -403,8 +413,18 @@
               cardParent.querySelector('[class*="byline"]') ||
               cardParent.querySelector('[class*="channel"]');
             if (chEl) {
-              const rawText = chEl.textContent.trim();
+              const rawText = chEl.textContent.trim().replace(/\s+/g, ' ');
               channelName = rawText.split(/[•·\n]/)[0].trim();
+            }
+            
+            if (!channelName) {
+              const chLink = cardParent.querySelector('a[href*="/@"], a[href*="/channel/"], a[href*="/user/"]');
+              if (chLink) {
+                const txt = chLink.textContent.trim().replace(/\s+/g, ' ');
+                if (txt && !txt.includes('views') && !txt.includes('조회수')) {
+                  channelName = txt.split(/[•·\n]/)[0].trim();
+                }
+              }
             }
           } catch(err) {}
         }

@@ -5206,34 +5206,8 @@
         }
       }
 
-      // Tier 2: Microphone fallback — only attempt if mediaDevices is available
-      if (!audioConnected && hasMediaDevices && audioCtx) {
-        try {
-          if (window.PerformanceLogger) {
-            window.PerformanceLogger.log('Audio', 'Microphone Capture Request', 0, 'Info', 'Attempting getUserMedia fallback.');
-          }
-          const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true }
-          });
-          mediaStream = micStream;
-          analyzer = new VoiceStressAnalyzer(audioCtx);
-          sourceNode = audioCtx.createMediaStreamSource(mediaStream);
-          sourceNode.connect(analyzer.gainNode);
-          analyzer.gainNode.connect(analyzer.analyser);
-          audioConnected = true;
-          showToast(t('toast_mic_captured'));
-          if (window.PerformanceLogger) {
-            window.PerformanceLogger.log('Audio', 'Microphone Capture Success', 0, 'Success', 'Microphone stream successfully bound to VSA.');
-          }
-        } catch (micErr) {
-          console.info('[Th!nc] Microphone not available:', micErr.message);
-          if (window.PerformanceLogger) {
-            window.PerformanceLogger.log('Audio', 'Microphone Capture Failed', 0, 'Failed', micErr.message);
-          }
-        }
-      }
-
       // Tier 3: Premium Caption-Based Context Model
+
       // No error message — this is a premium feature, not a fallback failure
       if (!audioConnected) {
         analyzer = null;
