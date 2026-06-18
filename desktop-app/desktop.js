@@ -3892,7 +3892,7 @@
 
   async function checkKeywordSensitivity(videoId) {
     try {
-      // 1. Load keyword DB based on current language setting
+      // 1. Load keyword DB (now channel DB) based on current language setting
       const targetLang = (currentLang === 'ko') ? 'ko' : 'en';
       let db = null;
       
@@ -3919,7 +3919,7 @@
           try { db = JSON.parse(localStorage.getItem('thinc_keyword_db')); } catch(e) {}
           if (!db) {
             db = {
-              high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장'],
+              high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장', '한국찐반응'],
               medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
               low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
             };
@@ -3961,41 +3961,36 @@
         }
       }
 
-      // 3. Build combined corpus (title + tags + description + first 150 captions)
-      const captionText = (liveCaptions || []).slice(0, 150).map(c => (c.text || '')).join(' ');
-      const corpus = [
-        meta.title || '',
-        (meta.tags || []).join(' '),
-        (meta.description || '').substring(0, 800),
-        captionText
-      ].join(' ').toLowerCase();
+      const cleanUploader = (meta.uploaderName || '').trim().toLowerCase();
+      if (!cleanUploader) {
+        localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
+        return;
+      }
 
-      // 4. Match tiers in priority order (highest first)
+      // 3. Match tiers by channel name
       const TIERS = [
-        { key: 'high',   keywords: db.high   || [], multiplier: 2.5, label: '🔴 상 (HIGH)' },
-        { key: 'medium', keywords: db.medium || [], multiplier: 1.2, label: '🟡 중 (MEDIUM)' },
+        { key: 'high',   keywords: db.high   || [], multiplier: 7.5, label: '🔴 상 (HIGH)' },
+        { key: 'medium', keywords: db.medium || [], multiplier: 2.4, label: '🟡 중 (MEDIUM)' },
         { key: 'low',    keywords: db.low    || [], multiplier: 0.4, label: '🟢 하 (LOW)' }
       ];
 
       for (const tier of TIERS) {
         const matched = tier.keywords.filter(kw => {
           const k = (kw || '').toLowerCase().trim();
-          return k.length > 0 && corpus.includes(k);
+          return k.length > 0 && cleanUploader.includes(k);
         });
         if (matched.length > 0) {
           const result = {
             tier: tier.key,
             multiplier: tier.multiplier,
-            matchedKeywords: matched.slice(0, 5),
+            matchedKeywords: [matched[0]],
             label: tier.label,
             videoId,
             lang: targetLang
           };
           localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify(result));
-          const kw0 = matched[0];
-          const extra = matched.length > 1 ? ` 외 ${matched.length - 1}개` : '';
-          showToast(`🔍 키워드 매칭 ${tier.label}: "${kw0}"${extra} → 민감도 ×${tier.multiplier}`);
-          console.log('[Th!nc Keywords] Match:', result);
+          showToast(`🔍 채널명 매칭 ${tier.label}: "${matched[0]}" → ×${tier.multiplier}`);
+          console.log('[Th!nc Keywords] Channel Match:', result);
           return;
         }
       }
