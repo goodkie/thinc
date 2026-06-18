@@ -4430,8 +4430,8 @@
         }
       }
 
-      // Tier 2: Microphone fallback — only attempt if mediaDevices is available
-      if (!audioConnected && hasMediaDevices && audioCtx) {
+      // Tier 2: Microphone fallback — disabled to prevent capturing external sounds
+      if (false && !audioConnected && hasMediaDevices && audioCtx) {
         try {
           const micStream = await navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: true, noiseSuppression: true }

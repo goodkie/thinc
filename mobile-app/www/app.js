@@ -1545,6 +1545,16 @@
 
         updateTabIcons();
 
+        if (tab !== 'detector') {
+          const overlay = document.getElementById('wv-float-overlay');
+          if (overlay) {
+            overlay.classList.add('hidden');
+          }
+          if (isRunning) {
+            toggleSession();
+          }
+        }
+
         // Re-initialize mini charts when detector tab becomes visible
         if (tab === 'detector') {
           setTimeout(initMiniCharts, 100);
