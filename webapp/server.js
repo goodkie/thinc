@@ -1539,11 +1539,10 @@ async function handleAnalyzeVideoFast(req, res) {
     score = 65 + Math.floor(Math.random() * 31);
     if (score < 80) {
       rating = 'caution';
-      badgeText = `Caution ${100 - score}%`;
     } else {
       rating = 'safe';
-      badgeText = `Safe ${score}%`;
     }
+    badgeText = '스캔중';
   }
 
   res.writeHead(200, CORS);
@@ -1563,11 +1562,10 @@ async function handleAnalyzeVideoFast(req, res) {
       const hash = videoId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
       const fallbackScore = 80 + (hash % 13);
       let fallbackRating = 'safe';
-      let fallbackBadge = `Safe ${fallbackScore}%`;
       if (fallbackScore < 80) {
         fallbackRating = 'caution';
-        fallbackBadge = `Caution ${100 - fallbackScore}%`;
       }
+      let fallbackBadge = '스캔중';
       res.writeHead(200, CORS);
       res.end(JSON.stringify({
         ok: true,

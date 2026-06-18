@@ -2062,7 +2062,7 @@
         console.log(`[Th!nc-Extension] Auto-triggered analysis from navigation: ${videoId}`);
         loadSocialVideoAnalysis(videoId, webviewId);
       } else {
-        console.log(`[Th!nc-Extension] Navigation away from video. Hiding VSA overlay.`);
+        console.log(`[Th!nc-Extension] Navigation away from video. Hiding overlay.`);
         const overlay = document.getElementById('wv-float-overlay');
         if (overlay) {
           overlay.classList.add('hidden');
@@ -2073,7 +2073,6 @@
       }
     }
 
-
     // 5. 웹뷰 로딩 이벤트 감지 및 주소창 동기화 + 인젝션
     const injectScriptText = (window.electronAPI && window.electronAPI.readSocialInjectScript) ? window.electronAPI.readSocialInjectScript() : '';
 
@@ -2081,20 +2080,20 @@
       wv.addEventListener('did-navigate', (e) => {
         if (wv === activeWebview) {
           urlInput.value = e.url;
+          checkAndTriggerAnalysis(e.url, wv.id);
         }
         if (window.PerformanceLogger) {
           window.PerformanceLogger.log('Webview', `Webview Navigated (${wv.id})`, 0, 'Info', `URL: ${e.url}`);
         }
-        checkAndTriggerAnalysis(e.url, wv.id);
       });
       wv.addEventListener('did-navigate-in-page', (e) => {
         if (wv === activeWebview) {
           urlInput.value = e.url;
+          checkAndTriggerAnalysis(e.url, wv.id);
         }
         if (window.PerformanceLogger) {
           window.PerformanceLogger.log('Webview', `Webview In-Page Navigated (${wv.id})`, 0, 'Info', `URL: ${e.url}`);
         }
-        checkAndTriggerAnalysis(e.url, wv.id);
       });
 
       wv.addEventListener('console-message', async (e) => {
