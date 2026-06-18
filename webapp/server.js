@@ -1435,20 +1435,6 @@ async function handleAnalyzeVideoFast(req, res) {
         captionAvailable: true
       }));
       return;
-    } else {
-      // DB에 없는 채널은 "스캔중"으로 빠른 반환
-      console.log(`[handleAnalyzeVideoFast] Fast early return for unknown channel (스캔중): ${queryChannel}`);
-      res.writeHead(200, CORS);
-      res.end(JSON.stringify({
-        ok: true,
-        videoId,
-        score: 80,
-        rating: 'safe',
-        badgeText: '스캔중',
-        detectedKeywords: [],
-        captionAvailable: true
-      }));
-      return;
     }
   }
 
@@ -1598,8 +1584,18 @@ async function handleAnalyzeVideoFast(req, res) {
   } else {
     // 없는 채널: 65% ~ 95% 의 임의의 값 (65 ~ 95)
     score = 65 + Math.floor(Math.random() * 31);
-    rating = 'caution';
-    badgeText = '스캔중';
+    if (textBuffer.length > 0) {
+      if (score < 80) {
+        rating = 'caution';
+        badgeText = `Caution ${100 - score}%`;
+      } else {
+        rating = 'safe';
+        badgeText = `Safe ${score}%`;
+      }
+    } else {
+      rating = 'caution';
+      badgeText = '스캔중';
+    }
   }
 
   res.writeHead(200, CORS);
