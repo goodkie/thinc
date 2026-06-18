@@ -1494,15 +1494,19 @@ async function handleAnalyzeVideoFast(req, res) {
     });
   }
 
-  // 항상 비디오 메타데이터를 조회하여 채널명 획득 시도
-  let meta = null;
-  try {
-    meta = await fetchVideoMetaInternal(videoId);
-  } catch (metaErr) {
-    console.warn(`[handleAnalyzeVideoFast] Failed to fetch meta for ${videoId}: ${metaErr.message}`);
+  const queryChannel = (parsedUrl.query.channel || '').trim();
+  let uploaderName = queryChannel;
+
+  if (!uploaderName) {
+    let meta = null;
+    try {
+      meta = await fetchVideoMetaInternal(videoId);
+    } catch (metaErr) {
+      console.warn(`[handleAnalyzeVideoFast] Failed to fetch meta for ${videoId}: ${metaErr.message}`);
+    }
+    uploaderName = meta ? (meta.uploaderName || '') : '';
   }
 
-  const uploaderName = meta ? (meta.uploaderName || '') : '';
   const sensInfo = getSensitivityMultiplier(uploaderName);
 
   if (sensInfo.tier === 'high') {

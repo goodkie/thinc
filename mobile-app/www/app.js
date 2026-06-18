@@ -22,6 +22,7 @@
   let sourceNode = null;
   let animationId = null;
   let activeVideoId = null;
+  let currentUploaderName = '';
   let videoMetadata = {
     title: "일반 유튜브 비디오",
     channel: "YouTube Creator",
@@ -1585,6 +1586,7 @@
         cards.forEach(async (card) => {
           const videoId = card.getAttribute('data-video-id');
           if (!videoId) return;
+          const channelName = decodeURIComponent(card.getAttribute('data-channel-name') || '');
 
           const thumbWrap = card.querySelector('.yt-video-thumbnail-wrap');
           if (!thumbWrap) return;
@@ -1600,7 +1602,7 @@
           thumbWrap.appendChild(scanningBadge);
 
           try {
-            const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
+            const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}&channel=${encodeURIComponent(channelName)}`);
             const data = await resp.json();
             
             scanningBadge.remove();
@@ -2378,7 +2380,7 @@
     gridEl.innerHTML = favorites.map(video => {
       const localized = getLocalizedVideo(video);
       return `
-        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')" data-video-id="${localized.id}">
+        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')" data-video-id="${localized.id}" data-channel-name="${encodeURIComponent(localized.channel || '')}">
           <div class="yt-video-thumbnail-wrap">
             <img src="https://img.youtube.com/vi/${localized.id}/hqdefault.jpg" alt="${localized.title}">
             <span class="yt-video-duration">${localized.duration}</span>
@@ -2433,7 +2435,7 @@
       const isFav = isVideoFavorite(video.id);
       const localized = getLocalizedVideo(video);
       return `
-        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')" data-video-id="${localized.id}">
+        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')" data-video-id="${localized.id}" data-channel-name="${encodeURIComponent(localized.channel || '')}">
           <div class="yt-video-thumbnail-wrap">
             <img src="https://img.youtube.com/vi/${localized.id}/hqdefault.jpg" alt="${localized.title}">
             <span class="yt-video-duration">${localized.duration}</span>
@@ -3383,6 +3385,7 @@
         }
       }
 
+      currentUploaderName = meta.uploaderName || '';
       const cleanUploader = (meta.uploaderName || '').trim().toLowerCase();
       if (!cleanUploader) {
         localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
@@ -3391,8 +3394,8 @@
 
       // 3. Match tiers by channel name
       const TIERS = [
-        { key: 'high',   keywords: db.high   || [], multiplier: 7.5, label: '🔴 상 (HIGH)' },
-        { key: 'medium', keywords: db.medium || [], multiplier: 2.4, label: '🟡 중 (MEDIUM)' },
+        { key: 'high',   keywords: db.high   || [], multiplier: 22.5, label: '🔴 상 (HIGH)' },
+        { key: 'medium', keywords: db.medium || [], multiplier: 4.8, label: '🟡 중 (MEDIUM)' },
         { key: 'low',    keywords: db.low    || [], multiplier: 0.4, label: '🟢 하 (LOW)' }
       ];
 
@@ -4104,7 +4107,7 @@
     
     // 백엔드 초고속 스캔 레이팅 시도
     try {
-      const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
+      const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}&channel=${encodeURIComponent(currentUploaderName || '')}`);
       const data = await resp.json();
       if (data && data.ok) {
         console.log(`[Mobile Fallback] Fast rating score: ${data.score}%`);
@@ -4869,6 +4872,7 @@
       const videoId = card.getAttribute('data-video-id');
       if (!videoId) return;
       card.setAttribute('data-scanned', '1');
+      const channelName = decodeURIComponent(card.getAttribute('data-channel-name') || '');
 
       const thumbWrap = card.querySelector('.yt-video-thumbnail-wrap');
       if (!thumbWrap) return;
@@ -4905,7 +4909,7 @@
       animFrame = requestAnimationFrame(animate);
 
       try {
-        const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
+        const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}&channel=${encodeURIComponent(channelName)}`);
         const data = await resp.json();
 
         // ── 완료: 파이를 100%로 채운 뒤 페이드 아웃 → 결과 뱃지 페이드 인 ──

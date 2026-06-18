@@ -6,6 +6,7 @@
 (function () {
   // ===== STATE VARIABLES =====
   let isRunning = false;
+  let currentUploaderName = '';
   let currentTab = 'youtube';
   let viewMode = 'expert'; // visual, expert, mini
   let currentLang = 'en';
@@ -2332,7 +2333,7 @@
       if (window.PerformanceLogger) {
         window.PerformanceLogger.log('Network', 'Fetch Fast Rating Score', 0, 'Info', `Requesting fast analyze API for ${videoId}`);
       }
-      const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${videoId}`);
+      const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${videoId}&channel=${encodeURIComponent(currentUploaderName || '')}`);
       const data = await resp.json();
       if (data && data.ok) {
         console.log(`[Th!nc-Extension] Fast rating score obtained: ${data.score}%`);
@@ -2968,6 +2969,9 @@
       if (!videoId) return;
       card.setAttribute('data-scanned', '1');
       
+      const channelEl = card.querySelector('.yt-video-channel');
+      const channelName = channelEl ? channelEl.innerText.trim() : '';
+      
       const thumbWrap = card.querySelector('.yt-video-thumbnail-wrap');
       if (!thumbWrap) return;
       if (thumbWrap.querySelector('.yt-lie-badge:not(.scan-pie)')) return;
@@ -3062,7 +3066,7 @@
       };
       
       try {
-        const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`);
+        const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}&channel=${encodeURIComponent(channelName)}`);
         const data = await resp.json();
         
         if (data && data.ok) {
@@ -3961,6 +3965,7 @@
         }
       }
 
+      currentUploaderName = meta.uploaderName || '';
       const cleanUploader = (meta.uploaderName || '').trim().toLowerCase();
       if (!cleanUploader) {
         localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
@@ -3969,8 +3974,8 @@
 
       // 3. Match tiers by channel name
       const TIERS = [
-        { key: 'high',   keywords: db.high   || [], multiplier: 7.5, label: '🔴 상 (HIGH)' },
-        { key: 'medium', keywords: db.medium || [], multiplier: 2.4, label: '🟡 중 (MEDIUM)' },
+        { key: 'high',   keywords: db.high   || [], multiplier: 22.5, label: '🔴 상 (HIGH)' },
+        { key: 'medium', keywords: db.medium || [], multiplier: 4.8, label: '🟡 중 (MEDIUM)' },
         { key: 'low',    keywords: db.low    || [], multiplier: 0.4, label: '🟢 하 (LOW)' }
       ];
 
