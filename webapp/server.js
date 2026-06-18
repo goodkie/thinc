@@ -1435,6 +1435,19 @@ async function handleAnalyzeVideoFast(req, res) {
         captionAvailable: true
       }));
       return;
+    } else {
+      console.log(`[handleAnalyzeVideoFast] Fast early return for unknown channel (스캔중): ${queryChannel}`);
+      res.writeHead(200, CORS);
+      res.end(JSON.stringify({
+        ok: true,
+        videoId,
+        score: 80,
+        rating: 'caution',
+        badgeText: '스캔중',
+        detectedKeywords: [],
+        captionAvailable: true
+      }));
+      return;
     }
   }
 
@@ -1584,18 +1597,8 @@ async function handleAnalyzeVideoFast(req, res) {
   } else {
     // 없는 채널: 65% ~ 95% 의 임의의 값 (65 ~ 95)
     score = 65 + Math.floor(Math.random() * 31);
-    if (textBuffer.length > 0) {
-      if (score < 80) {
-        rating = 'caution';
-        badgeText = `Caution ${100 - score}%`;
-      } else {
-        rating = 'safe';
-        badgeText = `Safe ${score}%`;
-      }
-    } else {
-      rating = 'caution';
-      badgeText = '스캔중';
-    }
+    rating = 'caution';
+    badgeText = '스캔중';
   }
 
   res.writeHead(200, CORS);
@@ -1672,6 +1675,51 @@ async function fetchVideoMetaInternal(videoId) {
   return null;
 }
 
+// Levenshtein Distance & Similarity Helpers for Channel Name Matching
+function getLevenshteinDistance(a, b) {
+  const tmp = [];
+  for (let i = 0; i <= a.length; i++) tmp[i] = [i];
+  for (let j = 0; j <= b.length; j++) tmp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      tmp[i][j] = Math.min(
+        tmp[i - 1][j] + 1,
+        tmp[i][j - 1] + 1,
+        tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+  return tmp[a.length][b.length];
+}
+
+function cleanChannelNameForMatching(name) {
+  return (name || '').replace(/[\s\-_\[\]\(\)\{\}\.\,\!\?\@\#\$\%\^\&\*\+\=\:\;\'\"\/\\\|`~]/g, '').toLowerCase();
+}
+
+function isSimilarChannelName(uploader, dictItem) {
+  const uClean = cleanChannelNameForMatching(uploader);
+  const dClean = cleanChannelNameForMatching(dictItem);
+
+  if (!uClean || !dClean) return false;
+
+  // 1. Inclusion check
+  if (uClean.includes(dClean) || dClean.includes(uClean)) {
+    return true;
+  }
+
+  // 2. Levenshtein similarity check (min 3 chars to prevent false positives)
+  if (uClean.length >= 3 && dClean.length >= 3) {
+    const maxLen = Math.max(uClean.length, dClean.length);
+    const dist = getLevenshteinDistance(uClean, dClean);
+    const similarity = 1.0 - (dist / maxLen);
+    if (similarity >= 0.7) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function getSensitivityMultiplier(uploaderName, reqLang = 'ko') {
   const DEFAULT_KO = {
     high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장', '한국찐반응'],
@@ -1699,30 +1747,21 @@ function getSensitivityMultiplier(uploaderName, reqLang = 'ko') {
   }
 
   const highChannels = [...(dbKo.high || []), ...(dbEn.high || [])];
-  const isHigh = highChannels.some(ch => {
-    const c = ch.trim().toLowerCase();
-    return c.length > 0 && cleanUploader.includes(c);
-  });
+  const isHigh = highChannels.some(ch => isSimilarChannelName(cleanUploader, ch));
 
   if (isHigh) {
     return { multiplier: 7.5, tier: 'high', count: 1 };
   }
 
   const medChannels = [...(dbKo.medium || []), ...(dbEn.medium || [])];
-  const isMed = medChannels.some(ch => {
-    const c = ch.trim().toLowerCase();
-    return c.length > 0 && cleanUploader.includes(c);
-  });
+  const isMed = medChannels.some(ch => isSimilarChannelName(cleanUploader, ch));
 
   if (isMed) {
     return { multiplier: 2.4, tier: 'medium', count: 1 };
   }
 
   const lowChannels = [...(dbKo.low || []), ...(dbEn.low || [])];
-  const isLow = lowChannels.some(ch => {
-    const c = ch.trim().toLowerCase();
-    return c.length > 0 && cleanUploader.includes(c);
-  });
+  const isLow = lowChannels.some(ch => isSimilarChannelName(cleanUploader, ch));
 
   if (isLow) {
     return { multiplier: 0.4, tier: 'low', count: 1 };
