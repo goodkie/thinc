@@ -4404,8 +4404,7 @@
       if (truthBarContainer) {
         truthBarContainer.classList.add('hidden');
       }
-
-      // 즉시 플레이어 영역의 분석 오버레이를 감춤
+      
       fitOverlayToPlayer();
       
     } else {

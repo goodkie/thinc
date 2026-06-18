@@ -2080,20 +2080,20 @@
       wv.addEventListener('did-navigate', (e) => {
         if (wv === activeWebview) {
           urlInput.value = e.url;
-          checkAndTriggerAnalysis(e.url, wv.id);
         }
         if (window.PerformanceLogger) {
           window.PerformanceLogger.log('Webview', `Webview Navigated (${wv.id})`, 0, 'Info', `URL: ${e.url}`);
         }
+        checkAndTriggerAnalysis(e.url, wv.id);
       });
       wv.addEventListener('did-navigate-in-page', (e) => {
         if (wv === activeWebview) {
           urlInput.value = e.url;
-          checkAndTriggerAnalysis(e.url, wv.id);
         }
         if (window.PerformanceLogger) {
           window.PerformanceLogger.log('Webview', `Webview In-Page Navigated (${wv.id})`, 0, 'Info', `URL: ${e.url}`);
         }
+        checkAndTriggerAnalysis(e.url, wv.id);
       });
 
       wv.addEventListener('console-message', async (e) => {
