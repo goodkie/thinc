@@ -3012,6 +3012,7 @@
     if (isRunning) {
       toggleSession();
     }
+    fitOverlayToPlayer();
   }
 
   async function searchYouTubeVideos(query) {
@@ -4403,6 +4404,7 @@
       if (truthBarContainer) {
         truthBarContainer.classList.add('hidden');
       }
+      fitOverlayToPlayer();
       
     } else {
       // Start session

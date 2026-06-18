@@ -2061,8 +2061,18 @@
       if (videoId) {
         console.log(`[Th!nc-Extension] Auto-triggered analysis from navigation: ${videoId}`);
         loadSocialVideoAnalysis(videoId, webviewId);
+      } else {
+        console.log(`[Th!nc-Extension] Navigation away from video. Hiding VSA overlay.`);
+        const overlay = document.getElementById('wv-float-overlay');
+        if (overlay) {
+          overlay.classList.add('hidden');
+        }
+        if (isRunning) {
+          toggleSession();
+        }
       }
     }
+
 
     // 5. 웹뷰 로딩 이벤트 감지 및 주소창 동기화 + 인젝션
     const injectScriptText = (window.electronAPI && window.electronAPI.readSocialInjectScript) ? window.electronAPI.readSocialInjectScript() : '';
@@ -3945,13 +3955,34 @@
       // 2. Fetch meta from server proxy, fallback to direct Piped API
       let meta = { title: '', tags: [], description: '', uploaderName: '' };
       let metaFetched = false;
-      try {
-        const resp = await fetchWithBackendFallback(`/api/video-meta?id=${encodeURIComponent(videoId)}`);
-        if (resp.ok) {
-          meta = await resp.json();
-          metaFetched = true;
+
+      // ── 최우선 순위: 데스크톱(Electron) 환경의 유튜브 webview DOM에서 직접 채널명 추출 (Piped API 차단 대응) ──
+      const isElectron = typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron;
+      if (isElectron && typeof activePlatform !== 'undefined' && activePlatform === 'youtube') {
+        try {
+          const wv = document.getElementById('wv-youtube');
+          if (wv && typeof wv.executeJavaScript === 'function') {
+            const author = await wv.executeJavaScript('window.ytInitialPlayerResponse?.videoDetails?.author || ""');
+            if (author) {
+              meta.uploaderName = author;
+              metaFetched = true;
+              console.log('[Th!nc Keywords] Successfully retrieved uploaderName directly from webview context:', author);
+            }
+          }
+        } catch(wvErr) {
+          console.warn('[Th!nc Keywords] Failed to fetch uploaderName from webview context:', wvErr);
         }
-      } catch(e) {}
+      }
+
+      if (!metaFetched) {
+        try {
+          const resp = await fetchWithBackendFallback(`/api/video-meta?id=${encodeURIComponent(videoId)}`);
+          if (resp.ok) {
+            meta = await resp.json();
+            metaFetched = true;
+          }
+        } catch(e) {}
+      }
 
       if (!metaFetched) {
         try {
