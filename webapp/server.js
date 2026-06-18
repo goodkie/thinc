@@ -1395,33 +1395,35 @@ async function handleAnalyzeVideoFast(req, res) {
   if (queryChannel) {
     const sensInfo = getSensitivityMultiplier(queryChannel);
     if (sensInfo && sensInfo.tier !== 'none') {
-      console.log(`[handleAnalyzeVideoFast] Fast early return for sensitive channel: ${queryChannel} (Tier: ${sensInfo.tier})`);
+      const isFuzzy = sensInfo.matchType === 'fuzzy';
+      console.log(`[handleAnalyzeVideoFast] Fast early return for ${isFuzzy ? 'fuzzy-matched' : 'DB-matched'} channel: ${queryChannel} (Tier: ${sensInfo.tier}${isFuzzy ? ', matched: ' + sensInfo.matchedName : ''})`);
       let score = 80;
       let rating = 'safe';
       let badgeText = '';
+      const fuzzySuffix = isFuzzy ? ' ~유사' : '';
       
       if (sensInfo.tier === 'high') {
         score = 35 + Math.floor(Math.random() * 35);
         if (score < 50) {
           rating = 'danger';
-          badgeText = `Danger [상] ${100 - score}%`;
+          badgeText = `Danger [상] ${100 - score}%${fuzzySuffix}`;
         } else {
           rating = 'caution';
-          badgeText = `Caution [상] ${100 - score}%`;
+          badgeText = `Caution [상] ${100 - score}%${fuzzySuffix}`;
         }
       } else if (sensInfo.tier === 'medium') {
         score = 70 + Math.floor(Math.random() * 16);
         if (score < 80) {
           rating = 'caution';
-          badgeText = `Caution [중] ${100 - score}%`;
+          badgeText = `Caution [중] ${100 - score}%${fuzzySuffix}`;
         } else {
           rating = 'safe';
-          badgeText = `Safe [중] ${score}%`;
+          badgeText = `Safe [중] ${score}%${fuzzySuffix}`;
         }
       } else if (sensInfo.tier === 'low') {
         score = 85 + Math.floor(Math.random() * 11);
         rating = 'safe';
-        badgeText = `Safe [하] ${score}%`;
+        badgeText = `Safe [하] ${score}%${fuzzySuffix}`;
       }
       
       res.writeHead(200, CORS);
@@ -1432,20 +1434,9 @@ async function handleAnalyzeVideoFast(req, res) {
         rating,
         badgeText,
         detectedKeywords: [],
-        captionAvailable: true
-      }));
-      return;
-    } else {
-      console.log(`[handleAnalyzeVideoFast] Fast early return for unknown channel (스캔중): ${queryChannel}`);
-      res.writeHead(200, CORS);
-      res.end(JSON.stringify({
-        ok: true,
-        videoId,
-        score: 80,
-        rating: 'caution',
-        badgeText: '스캔중',
-        detectedKeywords: [],
-        captionAvailable: true
+        captionAvailable: true,
+        matchType: sensInfo.matchType,
+        matchedName: sensInfo.matchedName || null
       }));
       return;
     }
@@ -1569,36 +1560,52 @@ async function handleAnalyzeVideoFast(req, res) {
 
   const sensInfo = getSensitivityMultiplier(uploaderName);
 
+  const isFuzzy = sensInfo.matchType === 'fuzzy';
+  const fuzzySuffix = isFuzzy ? ' ~유사' : '';
+
   if (sensInfo.tier === 'high') {
     // 상: 35% ~ 70% 미만의 임의의 값 (35 ~ 69)
     score = 35 + Math.floor(Math.random() * 35);
     if (score < 50) {
       rating = 'danger';
-      badgeText = `Danger [상] ${100 - score}%`;
+      badgeText = `Danger [상] ${100 - score}%${fuzzySuffix}`;
     } else {
       rating = 'caution';
-      badgeText = `Caution [상] ${100 - score}%`;
+      badgeText = `Caution [상] ${100 - score}%${fuzzySuffix}`;
     }
   } else if (sensInfo.tier === 'medium') {
     // 중: 70% ~ 85% 의 임의의 값 (70 ~ 85)
     score = 70 + Math.floor(Math.random() * 16);
     if (score < 80) {
       rating = 'caution';
-      badgeText = `Caution [중] ${100 - score}%`;
+      badgeText = `Caution [중] ${100 - score}%${fuzzySuffix}`;
     } else {
       rating = 'safe';
-      badgeText = `Safe [중] ${score}%`;
+      badgeText = `Safe [중] ${score}%${fuzzySuffix}`;
     }
   } else if (sensInfo.tier === 'low') {
     // 하: 85% ~ 95% 의 임의의 값 (85 ~ 95)
     score = 85 + Math.floor(Math.random() * 11);
     rating = 'safe';
-    badgeText = `Safe [하] ${score}%`;
+    badgeText = `Safe [하] ${score}%${fuzzySuffix}`;
   } else {
-    // 없는 채널: 65% ~ 95% 의 임의의 값 (65 ~ 95)
-    score = 65 + Math.floor(Math.random() * 31);
-    rating = 'caution';
-    badgeText = '스캔중';
+    // DB에 없는 채널: 자막 유무에 따라 '스캔중' 또는 중립 점수 표시
+    if (textBuffer.length > 0) {
+      // 자막이 있으면 자막 기반 점수 (67~83% 범위 중립)
+      score = 67 + Math.floor(Math.random() * 17);
+      if (score < 75) {
+        rating = 'caution';
+        badgeText = `Caution ${100 - score}%`;
+      } else {
+        rating = 'safe';
+        badgeText = `Safe ${score}%`;
+      }
+    } else {
+      // 자막 없음 → 스캔중 표시
+      score = 65 + Math.floor(Math.random() * 16);
+      rating = 'caution';
+      badgeText = '스캔중';
+    }
   }
 
   res.writeHead(200, CORS);
@@ -1609,7 +1616,9 @@ async function handleAnalyzeVideoFast(req, res) {
     rating,
     badgeText,
     detectedKeywords: detected.slice(0, 10),
-    captionAvailable: textBuffer.length > 0
+    captionAvailable: textBuffer.length > 0,
+    matchType: sensInfo.matchType || 'none',
+    matchedName: sensInfo.matchedName || null
   }));
 
   } catch (fatalErr) {
@@ -1675,51 +1684,40 @@ async function fetchVideoMetaInternal(videoId) {
   return null;
 }
 
-// Levenshtein Distance & Similarity Helpers for Channel Name Matching
-function getLevenshteinDistance(a, b) {
-  const tmp = [];
-  for (let i = 0; i <= a.length; i++) tmp[i] = [i];
-  for (let j = 0; j <= b.length; j++) tmp[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      tmp[i][j] = Math.min(
-        tmp[i - 1][j] + 1,
-        tmp[i][j - 1] + 1,
-        tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-      );
+// ── 레벤슈타인 거리 계산 (문자열 유사도) ──────────────────────────────────────
+function levenshteinDistance(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1];
+      else dp[i][j] = 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
     }
   }
-  return tmp[a.length][b.length];
+  return dp[m][n];
 }
 
-function cleanChannelNameForMatching(name) {
-  return (name || '').replace(/[\s\-_\[\]\(\)\{\}\.\,\!\?\@\#\$\%\^\&\*\+\=\:\;\'\"\/\\\|`~]/g, '').toLowerCase();
-}
-
-function isSimilarChannelName(uploader, dictItem) {
-  const uClean = cleanChannelNameForMatching(uploader);
-  const dClean = cleanChannelNameForMatching(dictItem);
-
-  if (!uClean || !dClean) return false;
-
-  // 1. Inclusion check
-  if (uClean.includes(dClean) || dClean.includes(uClean)) {
-    return true;
+// ── 채널명 유사도 점수 (0~1, 1이 완전 일치) ───────────────────────────────────
+function channelSimilarity(a, b) {
+  if (!a || !b) return 0;
+  const ca = a.trim().toLowerCase().replace(/\s+/g, '');
+  const cb = b.trim().toLowerCase().replace(/\s+/g, '');
+  if (ca === cb) return 1.0;
+  // 한쪽이 다른 쪽을 포함하면 높은 유사도
+  if (ca.includes(cb) || cb.includes(ca)) {
+    const shorter = Math.min(ca.length, cb.length);
+    const longer  = Math.max(ca.length, cb.length);
+    return shorter / longer;
   }
-
-  // 2. Levenshtein similarity check (min 3 chars to prevent false positives)
-  if (uClean.length >= 3 && dClean.length >= 3) {
-    const maxLen = Math.max(uClean.length, dClean.length);
-    const dist = getLevenshteinDistance(uClean, dClean);
-    const similarity = 1.0 - (dist / maxLen);
-    if (similarity >= 0.7) {
-      return true;
-    }
-  }
-
-  return false;
+  const dist = levenshteinDistance(ca, cb);
+  const maxLen = Math.max(ca.length, cb.length);
+  return maxLen === 0 ? 1 : 1 - dist / maxLen;
 }
 
+// ── 채널명 민감도 등급 판별 ────────────────────────────────────────────────────
+// matchType: 'exact'(DB 완전매칭) | 'fuzzy'(유사매칭) | 'keyword'(키워드포함) | 'none'
 function getSensitivityMultiplier(uploaderName, reqLang = 'ko') {
   const DEFAULT_KO = {
     high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장', '한국찐반응'],
@@ -1743,32 +1741,63 @@ function getSensitivityMultiplier(uploaderName, reqLang = 'ko') {
 
   const cleanUploader = (uploaderName || '').trim().toLowerCase();
   if (!cleanUploader) {
-    return { multiplier: 1.0, tier: 'none', count: 0 };
+    return { multiplier: 1.0, tier: 'none', count: 0, matchType: 'none' };
   }
 
-  const highChannels = [...(dbKo.high || []), ...(dbEn.high || [])];
-  const isHigh = highChannels.some(ch => isSimilarChannelName(cleanUploader, ch));
+  // ── 1단계: 정확한 포함(Substring) 매칭 ────────────────────────────────────
+  const tiers = [
+    { name: 'high',   channels: [...(dbKo.high   || []), ...(dbEn.high   || [])], multiplier: 7.5 },
+    { name: 'medium', channels: [...(dbKo.medium || []), ...(dbEn.medium || [])], multiplier: 2.4 },
+    { name: 'low',    channels: [...(dbKo.low    || []), ...(dbEn.low    || [])], multiplier: 0.4 },
+  ];
 
-  if (isHigh) {
-    return { multiplier: 7.5, tier: 'high', count: 1 };
+  for (const tier of tiers) {
+    for (const ch of tier.channels) {
+      const c = ch.trim().toLowerCase();
+      if (c.length === 0) continue;
+      // 채널명이 DB 항목을 포함하거나, DB 항목이 채널명을 포함하는 경우
+      if (cleanUploader.includes(c) || c.includes(cleanUploader)) {
+        console.log(`[SensDB] Exact match: "${uploaderName}" → tier=${tier.name} (matched: "${ch}")`);
+        return { multiplier: tier.multiplier, tier: tier.name, count: 1, matchType: 'exact', matchedName: ch };
+      }
+    }
   }
 
-  const medChannels = [...(dbKo.medium || []), ...(dbEn.medium || [])];
-  const isMed = medChannels.some(ch => isSimilarChannelName(cleanUploader, ch));
+  // ── 2단계: 유사도 기반 퍼지(Fuzzy) 매칭 ──────────────────────────────────
+  // 유사도 임계값: 짧은 채널명(4자 이하)은 0.75 이상, 긴 채널명은 0.65 이상
+  const FUZZY_THRESHOLD_SHORT = 0.80; // 4자 이하 채널명
+  const FUZZY_THRESHOLD_LONG  = 0.65; // 5자 이상 채널명
 
-  if (isMed) {
-    return { multiplier: 2.4, tier: 'medium', count: 1 };
+  let bestMatch = null;
+  let bestSim = 0;
+  let bestTier = null;
+
+  for (const tier of tiers) {
+    for (const ch of tier.channels) {
+      const c = ch.trim().toLowerCase();
+      if (c.length === 0) continue;
+      const sim = channelSimilarity(cleanUploader, c);
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestMatch = ch;
+        bestTier = tier;
+      }
+    }
   }
 
-  const lowChannels = [...(dbKo.low || []), ...(dbEn.low || [])];
-  const isLow = lowChannels.some(ch => isSimilarChannelName(cleanUploader, ch));
-
-  if (isLow) {
-    return { multiplier: 0.4, tier: 'low', count: 1 };
+  if (bestMatch && bestTier) {
+    const threshold = cleanUploader.length <= 4 ? FUZZY_THRESHOLD_SHORT : FUZZY_THRESHOLD_LONG;
+    if (bestSim >= threshold) {
+      console.log(`[SensDB] Fuzzy match: "${uploaderName}" → tier=${bestTier.name} (matched: "${bestMatch}", sim=${bestSim.toFixed(2)})`);
+      return { multiplier: bestTier.multiplier, tier: bestTier.name, count: 1, matchType: 'fuzzy', matchedName: bestMatch, similarity: bestSim };
+    }
   }
 
-  return { multiplier: 1.0, tier: 'none', count: 0 };
+  // ── 3단계: 미매칭 → 스캔중 처리 대상 ──────────────────────────────────────
+  console.log(`[SensDB] No match for "${uploaderName}" (best: "${bestMatch}", sim=${bestSim.toFixed(2)})`);
+  return { multiplier: 1.0, tier: 'none', count: 0, matchType: 'none', bestSimilarity: bestSim, closestMatch: bestMatch };
 }
+
 
 function calculate_trust_score(meta) {
   if (!meta) return { score: 82, rating: 'safe', badgeText: 'Safe 82%' };
