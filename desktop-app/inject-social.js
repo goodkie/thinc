@@ -193,14 +193,16 @@
   }
 
   // ── 백엔드 API 호출 ──────────────────────────────────────────────────────────
-  async function fetchRating(videoId) {
+  async function fetchRating(videoId, channelName = '') {
     if (ratingCache.has(videoId)) return ratingCache.get(videoId);
     if (scanPending.has(videoId)) return null;
     scanPending.add(videoId);
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 4000); // 4초 타임아웃으로 단축 (빠른 응답 유도)
-      const res = await fetch(`${BACKEND_URL}/api/analyze-video-fast?id=${encodeURIComponent(videoId)}`, {
+      const encodedChannel = encodeURIComponent((channelName || '').trim());
+      const url = `${BACKEND_URL}/api/analyze-video-fast?id=${encodeURIComponent(videoId)}${encodedChannel ? `&channel=${encodedChannel}` : ''}`;
+      const res = await fetch(url, {
         method: 'GET',
         signal: ctrl.signal,
         cache: 'no-store'
@@ -345,8 +347,28 @@
       // 이미 배지가 있으면 무시
       if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
 
+      let channelName = '';
+      try {
+        const chEl =
+          card.querySelector('ytd-channel-name a') ||
+          card.querySelector('#channel-name a') ||
+          card.querySelector('#byline-container a') ||
+          card.querySelector('a[href*="/@"]') ||
+          card.querySelector('a[href*="/channel/"]') ||
+          card.querySelector('.ytm-channel-name') ||
+          card.querySelector('ytm-channel-name') ||
+          card.querySelector('.ytm-badge-and-byline-renderer') ||
+          card.querySelector('.yt-media-item-byline') ||
+          card.querySelector('[class*="byline"]') ||
+          card.querySelector('[class*="channel"]');
+        if (chEl) {
+          const rawText = chEl.textContent.trim();
+          channelName = rawText.split(/[•·\n]/)[0].trim();
+        }
+      } catch (err) {}
+
       injectScanningBadge(container, videoId);
-      fetchRating(videoId).then(data => {
+      fetchRating(videoId, channelName).then(data => {
         if (data) {
           injectBadge(container, videoId, data);
         } else {
@@ -364,8 +386,31 @@
         const container = a.closest('figure, li, div[class*="item"], div[class*="card"]') || a;
         if (container.querySelector(`.thinc-badge[data-vid="${videoId}"]`)) return;
 
+        const cardParent = a.closest('ytd-rich-grid-media, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytm-compact-video-renderer, ytm-video-with-context-renderer, ytm-rich-item-renderer, ytm-media-item');
+        let channelName = '';
+        if (cardParent) {
+          try {
+            const chEl =
+              cardParent.querySelector('ytd-channel-name a') ||
+              cardParent.querySelector('#channel-name a') ||
+              cardParent.querySelector('#byline-container a') ||
+              cardParent.querySelector('a[href*="/@"]') ||
+              cardParent.querySelector('a[href*="/channel/"]') ||
+              cardParent.querySelector('.ytm-channel-name') ||
+              cardParent.querySelector('ytm-channel-name') ||
+              cardParent.querySelector('.ytm-badge-and-byline-renderer') ||
+              cardParent.querySelector('.yt-media-item-byline') ||
+              cardParent.querySelector('[class*="byline"]') ||
+              cardParent.querySelector('[class*="channel"]');
+            if (chEl) {
+              const rawText = chEl.textContent.trim();
+              channelName = rawText.split(/[•·\n]/)[0].trim();
+            }
+          } catch(err) {}
+        }
+
         injectScanningBadge(container, videoId);
-        fetchRating(videoId).then(data => {
+        fetchRating(videoId, channelName).then(data => {
           if (data) {
             injectBadge(container, videoId, data);
           } else {
