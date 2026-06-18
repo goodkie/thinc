@@ -3240,7 +3240,7 @@
 
   async function checkKeywordSensitivity(videoId) {
     try {
-      // 1. Load keyword DB based on current language setting
+      // 1. Load keyword DB (now channel DB) based on current language setting
       const targetLang = (currentLang === 'ko') ? 'ko' : 'en';
       let db = null;
       try { db = JSON.parse(localStorage.getItem(`thinc_keyword_db_${targetLang}`)); } catch(e) {}
@@ -3271,7 +3271,7 @@
       }
 
       // 2. Fetch meta from server proxy, fallback to direct Piped API
-      let meta = { title: '', tags: [], description: '' };
+      let meta = { title: '', tags: [], description: '', uploaderName: '' };
       let metaFetched = false;
       try {
         const resp = await fetchWithBackendFallback(`/api/video-meta?id=${encodeURIComponent(videoId)}`);
@@ -3293,40 +3293,36 @@
         }
       }
 
-      // 3. Build combined corpus
-      const captionText = (liveCaptions || []).slice(0, 150).map(c => (c.text || '')).join(' ');
-      const corpus = [
-        meta.title || '',
-        (meta.tags || []).join(' '),
-        (meta.description || '').substring(0, 800),
-        captionText
-      ].join(' ').toLowerCase();
+      const cleanUploader = (meta.uploaderName || '').trim().toLowerCase();
+      if (!cleanUploader) {
+        localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
+        return;
+      }
 
-      // 4. Match tiers
+      // 3. Match tiers by channel name
       const TIERS = [
-        { key: 'high',   keywords: db.high   || [], multiplier: 2.5, label: '🔴 상 (HIGH)' },
-        { key: 'medium', keywords: db.medium || [], multiplier: 1.2, label: '🟡 중 (MEDIUM)' },
+        { key: 'high',   keywords: db.high   || [], multiplier: 7.5, label: '🔴 상 (HIGH)' },
+        { key: 'medium', keywords: db.medium || [], multiplier: 2.4, label: '🟡 중 (MEDIUM)' },
         { key: 'low',    keywords: db.low    || [], multiplier: 0.4, label: '🟢 하 (LOW)' }
       ];
 
       for (const tier of TIERS) {
         const matched = tier.keywords.filter(kw => {
           const k = (kw || '').toLowerCase().trim();
-          return k.length > 0 && corpus.includes(k);
+          return k.length > 0 && cleanUploader.includes(k);
         });
         if (matched.length > 0) {
           const result = {
             tier: tier.key,
             multiplier: tier.multiplier,
-            matchedKeywords: matched.slice(0, 5),
+            matchedKeywords: [matched[0]],
             label: tier.label,
             videoId,
             lang: targetLang
           };
           localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify(result));
-          const extra = matched.length > 1 ? ` 외 ${matched.length-1}개` : '';
-          showToast(`🔍 키워드 매칭 ${tier.label}: "${matched[0]}"${extra} → ×${tier.multiplier}`);
-          console.log('[Th!nc Keywords] Match:', result);
+          showToast(`🔍 채널명 매칭 ${tier.label}: "${matched[0]}" → ×${tier.multiplier}`);
+          console.log('[Th!nc Keywords] Channel Match:', result);
           return;
         }
       }

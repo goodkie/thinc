@@ -2938,6 +2938,103 @@
     }
   }
 
+  async function checkKeywordSensitivity(videoId) {
+    try {
+      // 1. Load keyword DB (now channel DB) based on current language setting
+      const targetLang = (currentLang === 'ko') ? 'ko' : 'en';
+      let db = null;
+      try { db = JSON.parse(localStorage.getItem(`thinc_keyword_db_${targetLang}`)); } catch(e) {}
+      
+      // Fallback to legacy or defaults if not customized
+      if (!db) {
+        if (targetLang === 'ko') {
+          try { db = JSON.parse(localStorage.getItem('thinc_keyword_db')); } catch(e) {}
+          if (!db) {
+            db = {
+              high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장'],
+              medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
+              low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
+            };
+          }
+        } else {
+          db = {
+            high:   ['scam', 'fraud', 'lie', 'fake', 'manipulation', 'expose', 'conspiracy', 'crime', 'blackmail', 'corruption', 'hoax', 'propaganda'],
+            medium: ['controversy', 'rumor', 'suspicion', 'dispute', 'conflict', 'criticism', 'rebuttal', 'explanation', 'debate', 'claim'],
+            low:    ['education', 'science', 'research', 'official', 'announcement', 'lecture', 'documentary', 'learning', 'analysis', 'report', 'thesis', 'study']
+          };
+        }
+      }
+
+      if (!db || (!db.high?.length && !db.medium?.length && !db.low?.length)) {
+        localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], lang: targetLang }));
+        return;
+      }
+
+      // 2. Fetch meta from server proxy, fallback to direct Piped API
+      let meta = { title: '', tags: [], description: '', uploaderName: '' };
+      let metaFetched = false;
+      try {
+        const resp = await fetchWithBackendFallback(`/api/video-meta?id=${encodeURIComponent(videoId)}`);
+        if (resp.ok) {
+          meta = await resp.json();
+          metaFetched = true;
+        }
+      } catch(e) {}
+
+      if (!metaFetched) {
+        try {
+          const directMeta = await fetchVideoMetaDirect(videoId);
+          if (directMeta) {
+            meta = directMeta;
+            metaFetched = true;
+          }
+        } catch(e) {
+          console.warn('[Th!nc Keywords] Direct fallback fetch failed:', e);
+        }
+      }
+
+      const cleanUploader = (meta.uploaderName || '').trim().toLowerCase();
+      if (!cleanUploader) {
+        localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
+        return;
+      }
+
+      // 3. Match tiers by channel name
+      const TIERS = [
+        { key: 'high',   keywords: db.high   || [], multiplier: 7.5, label: '🔴 상 (HIGH)' },
+        { key: 'medium', keywords: db.medium || [], multiplier: 2.4, label: '🟡 중 (MEDIUM)' },
+        { key: 'low',    keywords: db.low    || [], multiplier: 0.4, label: '🟢 하 (LOW)' }
+      ];
+
+      for (const tier of TIERS) {
+        const matched = tier.keywords.filter(kw => {
+          const k = (kw || '').toLowerCase().trim();
+          return k.length > 0 && cleanUploader.includes(k);
+        });
+        if (matched.length > 0) {
+          const result = {
+            tier: tier.key,
+            multiplier: tier.multiplier,
+            matchedKeywords: [matched[0]],
+            label: tier.label,
+            videoId,
+            lang: targetLang
+          };
+          localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify(result));
+          showToast(`🔍 채널명 매칭 ${tier.label}: "${matched[0]}" → ×${tier.multiplier}`);
+          console.log('[Th!nc Keywords] Channel Match:', result);
+          return;
+        }
+      }
+
+      // No match in any tier → default multiplier
+      localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
+      console.log('[Th!nc Keywords] No channel match for video', videoId);
+    } catch(err) {
+      console.warn('[Th!nc Keywords] Error during sensitivity check:', err);
+    }
+  }
+
   function loop(timestamp) {
     if (!isRunning) return;
     performCapture();
@@ -3315,107 +3412,7 @@
     return null;
   }
 
-  async function checkKeywordSensitivity(videoId) {
-    try {
-      // 1. Load keyword DB based on current language setting
-      const targetLang = (currentLang === 'ko') ? 'ko' : 'en';
-      let db = null;
-      try { db = JSON.parse(localStorage.getItem(`thinc_keyword_db_${targetLang}`)); } catch(e) {}
-      
-      // Fallback to legacy or defaults if not customized
-      if (!db) {
-        if (targetLang === 'ko') {
-          try { db = JSON.parse(localStorage.getItem('thinc_keyword_db')); } catch(e) {}
-          if (!db) {
-            db = {
-              high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장'],
-              medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
-              low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
-            };
-          }
-        } else {
-          db = {
-            high:   ['scam', 'fraud', 'lie', 'fake', 'manipulation', 'expose', 'conspiracy', 'crime', 'blackmail', 'corruption', 'hoax', 'propaganda'],
-            medium: ['controversy', 'rumor', 'suspicion', 'dispute', 'conflict', 'criticism', 'rebuttal', 'explanation', 'debate', 'claim'],
-            low:    ['education', 'science', 'research', 'official', 'announcement', 'lecture', 'documentary', 'learning', 'analysis', 'report', 'thesis', 'study']
-          };
-        }
-      }
-
-      if (!db || (!db.high?.length && !db.medium?.length && !db.low?.length)) {
-        localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], lang: targetLang }));
-        return;
-      }
-
-      // 2. Fetch meta from server proxy, fallback to direct Piped API
-      let meta = { title: '', tags: [], description: '', uploaderName: '' };
-      let metaFetched = false;
-      try {
-        const resp = await fetchWithBackendFallback(`/api/video-meta?id=${encodeURIComponent(videoId)}`);
-        if (resp.ok) {
-          meta = await resp.json();
-          metaFetched = true;
-        }
-      } catch(e) {}
-
-      if (!metaFetched) {
-        try {
-          const directMeta = await fetchVideoMetaDirect(videoId);
-          if (directMeta) {
-            meta = directMeta;
-            metaFetched = true;
-          }
-        } catch(e) {
-          console.warn('[Th!nc Keywords] Direct fallback fetch failed:', e);
-        }
-      }
-
-      // 3. Build combined corpus (title + tags + description + first 150 captions)
-      const captionText = (liveCaptions || []).slice(0, 150).map(c => (c.text || '')).join(' ');
-      const corpus = [
-        meta.title || '',
-        (meta.tags || []).join(' '),
-        (meta.description || '').substring(0, 800),
-        captionText
-      ].join(' ').toLowerCase();
-
-      // 4. Match tiers in priority order (highest first)
-      const TIERS = [
-        { key: 'high',   keywords: db.high   || [], multiplier: 2.5, label: '🔴 상 (HIGH)' },
-        { key: 'medium', keywords: db.medium || [], multiplier: 1.2, label: '🟡 중 (MEDIUM)' },
-        { key: 'low',    keywords: db.low    || [], multiplier: 0.4, label: '🟢 하 (LOW)' }
-      ];
-
-      for (const tier of TIERS) {
-        const matched = tier.keywords.filter(kw => {
-          const k = (kw || '').toLowerCase().trim();
-          return k.length > 0 && corpus.includes(k);
-        });
-        if (matched.length > 0) {
-          const result = {
-            tier: tier.key,
-            multiplier: tier.multiplier,
-            matchedKeywords: matched.slice(0, 5),
-            label: tier.label,
-            videoId,
-            lang: targetLang
-          };
-          localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify(result));
-          const kw0 = matched[0];
-          const extra = matched.length > 1 ? ` 외 ${matched.length - 1}개` : '';
-          showToast(`🔍 키워드 매칭 ${tier.label}: "${kw0}"${extra} → 민감도 ×${tier.multiplier}`);
-          console.log('[Th!nc Keywords] Match:', result);
-          return;
-        }
-      }
-
-      // No match in any tier → default multiplier
-      localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
-      console.log('[Th!nc Keywords] No keyword match for video', videoId);
-    } catch(err) {
-      console.warn('[Th!nc Keywords] Error during sensitivity check:', err);
-    }
-  }
+  // checkKeywordSensitivity duplicated function removed to use the channel-matching one at L2941
 
   // Also re-run keyword check after captions finish loading (captions text improves matching)
   function reCheckKeywordAfterCaptions(videoId) {

@@ -1458,9 +1458,13 @@ async function handleAnalyzeVideoFast(req, res) {
   }
 
   // ── 거짓 감지 로직 ────────────────────────────────────────────────────────────
+  // ── 거짓 감지 로직 (채널명 민감도 전적 적용) ──────────────────────────────────
   let score = 80;
+  let rating = 'safe';
+  let badgeText = '';
   const detected = [];
 
+  // 자막이 있을 경우 검출된 키워드 정보만 추출 (점수에는 미반영)
   if (textBuffer) {
     const dangerKeywords = [
       '거짓말', '사실무근', '조작', '루머', '음모론', '날조', '사기', '사칭', '선동', '속임수', '구라', '허위',
@@ -1471,14 +1475,11 @@ async function handleAnalyzeVideoFast(req, res) {
       'honestly', 'actually', 'truth', 'clarify', 'secret', 'promise', 'maybe'
     ];
 
-    let dangerCount = 0;
-    let suspiciousCount = 0;
     const lowerText = textBuffer.toLowerCase();
 
     dangerKeywords.forEach(word => {
       let idx = lowerText.indexOf(word);
       while (idx !== -1) {
-        dangerCount++;
         if (!detected.includes(word)) detected.push(word);
         idx = lowerText.indexOf(word, idx + word.length);
       }
@@ -1487,45 +1488,57 @@ async function handleAnalyzeVideoFast(req, res) {
     suspiciousKeywords.forEach(word => {
       let idx = lowerText.indexOf(word);
       while (idx !== -1) {
-        suspiciousCount++;
         if (!detected.includes(word)) detected.push(word);
         idx = lowerText.indexOf(word, idx + word.length);
       }
     });
-
-    const baseScore = 100 - (dangerCount * 12 + suspiciousCount * 4);
-    let metaForSens = null;
-    try { metaForSens = await fetchVideoMetaInternal(videoId); } catch(e) {}
-    const textToMatch = `${metaForSens ? (metaForSens.title + ' ' + metaForSens.description + ' ' + metaForSens.tags.join(' ')) : ''} ${textBuffer}`.toLowerCase();
-    const sensInfo = getSensitivityMultiplier(textToMatch);
-    const penalty = (100 - baseScore) * sensInfo.multiplier;
-    score = Math.max(10, Math.min(100, Math.round(100 - penalty)));
-  } else {
-    try {
-      const meta = await fetchVideoMetaInternal(videoId);
-      const trust = calculate_trust_score(meta);
-      score = trust.score;
-      rating = trust.rating;
-      badgeText = trust.badgeText;
-      console.log(`[handleAnalyzeVideoFast] No captions. AI Trust Score calculated: ${score}% | ${badgeText}`);
-    } catch (metaErr) {
-      const hash = videoId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      score = 80 + (hash % 13);
-      rating = 'safe';
-      badgeText = `Safe ${score}%`;
-    }
   }
 
-  // 자막 분석으로 계산된 경우에만 기존 임계치 분류 적용 (메타데이터 분석은 레벨을 직접 결정했으므로 스킵)
-  if (textBuffer) {
-    rating = 'safe';
-    badgeText = `Safe ${score}%`;
+  // 항상 비디오 메타데이터를 조회하여 채널명 획득 시도
+  let meta = null;
+  try {
+    meta = await fetchVideoMetaInternal(videoId);
+  } catch (metaErr) {
+    console.warn(`[handleAnalyzeVideoFast] Failed to fetch meta for ${videoId}: ${metaErr.message}`);
+  }
+
+  const uploaderName = meta ? (meta.uploaderName || '') : '';
+  const sensInfo = getSensitivityMultiplier(uploaderName);
+
+  if (sensInfo.tier === 'high') {
+    // 상: 35% ~ 70% 미만의 임의의 값 (35 ~ 69)
+    score = 35 + Math.floor(Math.random() * 35);
     if (score < 50) {
       rating = 'danger';
-      badgeText = `Danger ${100 - score}%`;
-    } else if (score < 80) {
+      badgeText = `Danger [상] ${100 - score}%`;
+    } else {
+      rating = 'caution';
+      badgeText = `Caution [상] ${100 - score}%`;
+    }
+  } else if (sensInfo.tier === 'medium') {
+    // 중: 70% ~ 85% 의 임의의 값 (70 ~ 85)
+    score = 70 + Math.floor(Math.random() * 16);
+    if (score < 80) {
+      rating = 'caution';
+      badgeText = `Caution [중] ${100 - score}%`;
+    } else {
+      rating = 'safe';
+      badgeText = `Safe [중] ${score}%`;
+    }
+  } else if (sensInfo.tier === 'low') {
+    // 하: 85% ~ 95% 의 임의의 값 (85 ~ 95)
+    score = 85 + Math.floor(Math.random() * 11);
+    rating = 'safe';
+    badgeText = `Safe [하] ${score}%`;
+  } else {
+    // 없는 채널: 65% ~ 95% 의 임의의 값 (65 ~ 95)
+    score = 65 + Math.floor(Math.random() * 31);
+    if (score < 80) {
       rating = 'caution';
       badgeText = `Caution ${100 - score}%`;
+    } else {
+      rating = 'safe';
+      badgeText = `Safe ${score}%`;
     }
   }
 
@@ -1605,7 +1618,7 @@ async function fetchVideoMetaInternal(videoId) {
   return null;
 }
 
-function getSensitivityMultiplier(text, reqLang = 'ko') {
+function getSensitivityMultiplier(uploaderName, reqLang = 'ko') {
   const DEFAULT_KO = {
     high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장'],
     medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
@@ -1626,36 +1639,39 @@ function getSensitivityMultiplier(text, reqLang = 'ko') {
     if (_adminSettingsCache.sensitivity_dict_en) dbEn = _adminSettingsCache.sensitivity_dict_en;
   }
 
-  const lowerText = (text || '').toLowerCase();
-  
-  let highCount = 0;
-  let mediumCount = 0;
-  let lowCount = 0;
+  const cleanUploader = (uploaderName || '').trim().toLowerCase();
+  if (!cleanUploader) {
+    return { multiplier: 1.0, tier: 'none', count: 0 };
+  }
 
-  const highWords = [...(dbKo.high || []), ...(dbEn.high || [])];
-  highWords.forEach(w => {
-    let idx = lowerText.indexOf(w.toLowerCase());
-    while (idx !== -1) { highCount++; idx = lowerText.indexOf(w.toLowerCase(), idx + w.length); }
+  const highChannels = [...(dbKo.high || []), ...(dbEn.high || [])];
+  const isHigh = highChannels.some(ch => {
+    const c = ch.trim().toLowerCase();
+    return c.length > 0 && cleanUploader.includes(c);
   });
 
-  const medWords = [...(dbKo.medium || []), ...(dbEn.medium || [])];
-  medWords.forEach(w => {
-    let idx = lowerText.indexOf(w.toLowerCase());
-    while (idx !== -1) { mediumCount++; idx = lowerText.indexOf(w.toLowerCase(), idx + w.length); }
+  if (isHigh) {
+    return { multiplier: 7.5, tier: 'high', count: 1 };
+  }
+
+  const medChannels = [...(dbKo.medium || []), ...(dbEn.medium || [])];
+  const isMed = medChannels.some(ch => {
+    const c = ch.trim().toLowerCase();
+    return c.length > 0 && cleanUploader.includes(c);
   });
 
-  const lowWords = [...(dbKo.low || []), ...(dbEn.low || [])];
-  lowWords.forEach(w => {
-    let idx = lowerText.indexOf(w.toLowerCase());
-    while (idx !== -1) { lowCount++; idx = lowerText.indexOf(w.toLowerCase(), idx + w.length); }
+  if (isMed) {
+    return { multiplier: 2.4, tier: 'medium', count: 1 };
+  }
+
+  const lowChannels = [...(dbKo.low || []), ...(dbEn.low || [])];
+  const isLow = lowChannels.some(ch => {
+    const c = ch.trim().toLowerCase();
+    return c.length > 0 && cleanUploader.includes(c);
   });
 
-  if (highCount > 0) {
-    return { multiplier: 2.5, tier: 'high', count: highCount };
-  } else if (mediumCount > 0) {
-    return { multiplier: 1.2, tier: 'medium', count: mediumCount };
-  } else if (lowCount > 0) {
-    return { multiplier: 0.4, tier: 'low', count: lowCount };
+  if (isLow) {
+    return { multiplier: 0.4, tier: 'low', count: 1 };
   }
 
   return { multiplier: 1.0, tier: 'none', count: 0 };
@@ -1723,9 +1739,8 @@ function calculate_trust_score(meta) {
   // 0~100 스케일 백분율 변환
   const basePercentage = Math.round((finalScore + 250) * 100 / 500);
 
-  // 민감도 배수 연산 및 가중 보정 적용
-  const fullText = `${meta.title || ''} ${meta.description || ''} ${meta.uploaderName || ''} ${(meta.tags || []).join(' ')}`.toLowerCase();
-  const sensInfo = getSensitivityMultiplier(fullText);
+  // 민감도 배수 연산 및 가중 보정 적용 (채널명 기준 최우선 판정)
+  const sensInfo = getSensitivityMultiplier(meta.uploaderName || '');
   const penalty = (100 - basePercentage) * sensInfo.multiplier;
   let percentageScore = Math.max(8, Math.min(99, Math.round(100 - penalty)));
 

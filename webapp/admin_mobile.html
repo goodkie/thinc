@@ -795,10 +795,10 @@
         </div>
       </div>
 
-      <!-- 3. Keyward Database Panel -->
+      <!-- 3. Channel Name Database Panel -->
       <div class="panel keyword-db-panel">
         <div class="keyword-db-header">
-          <h3>3. 키워드 민감도 DB (모바일)</h3>
+          <h3>3. 채널명 민감도 DB (모바일)</h3>
           <div class="keyword-actions">
             <label class="btn-csv btn-csv-import" title="CSV 파일 불러오기">
               📂 불러오기
@@ -808,7 +808,7 @@
           </div>
         </div>
         <p class="keyword-db-desc">
-          영상 메타데이터 감지 시 거짓말 센서 민감도가 자동 조절됩니다.
+          등록된 채널명이 감지되면 사전스캔 신뢰도가 제어되고 거짓말 센서 민감도가 조절됩니다.
         </p>
 
         <!-- 언어 선택 탭 -->
@@ -822,22 +822,22 @@
           <div class="keyword-tier tier-high">
             <div class="tier-title-row">
               <span class="tier-badge">🔴 상 (HIGH)</span>
-              <span class="tier-mult">× 2.5</span>
+              <span class="tier-mult">× 7.5</span>
             </div>
-            <div class="tier-desc">고위험 주제: 사기·폭로·범죄·허위 등</div>
-            <textarea class="keyword-input" id="kw-high" placeholder="사기, 거짓말, 폭로..."></textarea>
-            <div class="tier-count" id="count-high">0개 키워드</div>
+            <div class="tier-desc">고위험 채널: 민감도 7.5배 증가, 사전스캔 35% ~ 70% 미만</div>
+            <textarea class="keyword-input" id="kw-high" placeholder="한국찐반응, 민감채널1..."></textarea>
+            <div class="tier-count" id="count-high">0개 채널명</div>
           </div>
 
           <!-- 중 MEDIUM -->
           <div class="keyword-tier tier-medium">
             <div class="tier-title-row">
               <span class="tier-badge">🟡 중 (MEDIUM)</span>
-              <span class="tier-mult">× 1.2</span>
+              <span class="tier-mult">× 2.4</span>
             </div>
-            <div class="tier-desc">중간위험 주제: 논란·의혹·주장·논쟁 등</div>
-            <textarea class="keyword-input" id="kw-medium" placeholder="논란, 의혹, 주장..."></textarea>
-            <div class="tier-count" id="count-medium">0개 키워드</div>
+            <div class="tier-desc">중간위험 채널: 민감도 2.4배 증가, 사전스캔 70% ~ 85%</div>
+            <textarea class="keyword-input" id="kw-medium" placeholder="의혹제기채널, 이슈채널..."></textarea>
+            <div class="tier-count" id="count-medium">0개 채널명</div>
           </div>
 
           <!-- 하 LOW -->
@@ -846,16 +846,16 @@
               <span class="tier-badge">🟢 하 (LOW)</span>
               <span class="tier-mult">× 0.4</span>
             </div>
-            <div class="tier-desc">저위험 주제: 교육·과학·공식 발표 등</div>
-            <textarea class="keyword-input" id="kw-low" placeholder="교육, 과학, 연구..."></textarea>
-            <div class="tier-count" id="count-low">0개 키워드</div>
+            <div class="tier-desc">저위험 채널: 민감도 0.4배 감소, 사전스캔 85% ~ 95%</div>
+            <textarea class="keyword-input" id="kw-low" placeholder="공식뉴스채널, 교육채널..."></textarea>
+            <div class="tier-count" id="count-low">0개 채널명</div>
           </div>
         </div>
 
         <div class="keyword-footer">
-          <button class="btn-save-keywords" id="btn-save-keywords">✅ 키워드 DB 저장 &amp; 적용</button>
+          <button class="btn-save-keywords" id="btn-save-keywords">✅ 채널명 DB 저장 &amp; 적용</button>
           <div class="keyword-match-status" id="keyword-match-status">
-            <span class="status-idle">● 대기 중 — 실시간 키워드 감지 상태</span>
+            <span class="status-idle">● 대기 중 — 실시간 채널명 감지 상태</span>
           </div>
         </div>
       </div>
@@ -1130,7 +1130,7 @@
         ['high', 'medium', 'low'].forEach(tier => {
           const el = document.getElementById(`kw-${tier}`);
           const cnt = document.getElementById(`count-${tier}`);
-          if (el && cnt) cnt.textContent = `${parseKeywords(el.value).length}개 키워드`;
+          if (el && cnt) cnt.textContent = `${parseKeywords(el.value).length}개 채널명`;
         });
       }
 
@@ -1271,9 +1271,9 @@
             const labels = { high: '🔴 상 (HIGH)', medium: '🟡 중 (MEDIUM)', low: '🟢 하 (LOW)' };
             const classes = { high: 'status-high', medium: 'status-medium', low: 'status-low' };
             const kws = (sens.matchedKeywords || []).slice(0, 3).join(', ');
-            el.innerHTML = `<span class="${classes[sens.tier] || 'status-none'}">⚡ 매칭: ${labels[sens.tier] || sens.tier} (${sens.multiplier}배)<br>키워드: "${kws}"</span>`;
+            el.innerHTML = `<span class="${classes[sens.tier] || 'status-none'}">⚡ 매칭: ${labels[sens.tier] || sens.tier} (${sens.multiplier}배)<br>채널명: "${kws}"</span>`;
           } else {
-            el.innerHTML = '<span class="status-idle">● 대기 중 — 실시간 키워드 감지 상태</span>';
+            el.innerHTML = '<span class="status-idle">● 대기 중 — 실시간 채널명 감지 상태</span>';
           }
         } catch(e) {}
       }
