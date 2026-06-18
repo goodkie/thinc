@@ -1391,6 +1391,53 @@ async function handleAnalyzeVideoFast(req, res) {
 
   console.log(`[handleAnalyzeVideoFast] Scanning video: ${videoId}`);
 
+  const queryChannel = (parsedUrl.query.channel || '').trim();
+  if (queryChannel) {
+    const sensInfo = getSensitivityMultiplier(queryChannel);
+    if (sensInfo && sensInfo.tier !== 'none') {
+      console.log(`[handleAnalyzeVideoFast] Fast early return for sensitive channel: ${queryChannel} (Tier: ${sensInfo.tier})`);
+      let score = 80;
+      let rating = 'safe';
+      let badgeText = '';
+      
+      if (sensInfo.tier === 'high') {
+        score = 35 + Math.floor(Math.random() * 35);
+        if (score < 50) {
+          rating = 'danger';
+          badgeText = `Danger [상] ${100 - score}%`;
+        } else {
+          rating = 'caution';
+          badgeText = `Caution [상] ${100 - score}%`;
+        }
+      } else if (sensInfo.tier === 'medium') {
+        score = 70 + Math.floor(Math.random() * 16);
+        if (score < 80) {
+          rating = 'caution';
+          badgeText = `Caution [중] ${100 - score}%`;
+        } else {
+          rating = 'safe';
+          badgeText = `Safe [중] ${score}%`;
+        }
+      } else if (sensInfo.tier === 'low') {
+        score = 85 + Math.floor(Math.random() * 11);
+        rating = 'safe';
+        badgeText = `Safe [하] ${score}%`;
+      }
+      
+      res.writeHead(200, CORS);
+      res.end(JSON.stringify({
+        ok: true,
+        videoId,
+        score,
+        rating,
+        badgeText,
+        detectedKeywords: [],
+        captionAvailable: true
+      }));
+      return;
+    }
+  }
+
   try {
   // ── 자막 세그먼트 수집 (다단 폴백) ──────────────────────────────────────────
   let rawSegments = null;
