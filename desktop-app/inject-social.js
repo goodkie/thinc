@@ -111,6 +111,7 @@
   // ── 유튜브 메인 재생 세션 자막 직접 추출 엔진 ─────────────────────────────────
   async function extractActiveVideoCaptions(videoId) {
     try {
+      let ytData = null;
       const scriptContent = `
         (function() {
           try {
@@ -133,11 +134,31 @@
       scriptEl.remove();
 
       const dataAttr = document.body.getAttribute('data-thinc-active-player');
-      if (!dataAttr) return null;
-      document.body.removeAttribute('data-thinc-active-player');
+      if (dataAttr) {
+        try {
+          ytData = JSON.parse(dataAttr);
+        } catch(e) {}
+        document.body.removeAttribute('data-thinc-active-player');
+      }
 
-      const ytData = JSON.parse(dataAttr);
-      const tracks = ytData?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+      // Regex backup extraction from raw HTML
+      if (!ytData || !ytData.captions) {
+        const html = document.documentElement.innerHTML;
+        const matches = html.match(/ytInitialPlayerResponse\s*=\s*({.+?});/);
+        if (matches) {
+          try { ytData = JSON.parse(matches[1]); } catch(e) {}
+        }
+        if (!ytData || !ytData.captions) {
+          const matches2 = html.match(/ytInitialPlayerResponse\s*=\s*({.+?})\s*</);
+          if (matches2) {
+            try { ytData = JSON.parse(matches2[1]); } catch(e) {}
+          }
+        }
+      }
+
+      if (!ytData || !ytData.captions || !ytData.captions.playerCaptionsTracklistRenderer) return null;
+      const tracklist = ytData.captions.playerCaptionsTracklistRenderer;
+      const tracks = tracklist.captionTracks || [];
       if (tracks.length === 0) return null;
 
       let targetTrack = tracks.find(t => t.languageCode === 'ko');
@@ -177,6 +198,7 @@
     lastExtractedVideoId = videoId;
     console.log('[Th!nc-Extension] Attempting active captions extraction for:', videoId);
     
+    // 1. Local Scrape Attempts
     for (let attempt = 1; attempt <= 4; attempt++) {
       const extracted = await extractActiveVideoCaptions(videoId);
       if (extracted && extracted.captions && extracted.captions.length > 0) {
@@ -189,7 +211,41 @@
       }
       await new Promise(r => setTimeout(r, 1200));
     }
-    console.log('[Th!nc-Extension] Active captions extraction failed after retries for:', videoId);
+
+    // 2. Fallback to Official Backend API
+    console.log('[Th!nc-Extension] Local extraction failed. Querying backend fallback for:', videoId);
+    try {
+      const backendUrl = `${BACKEND_URL}/api/captions?id=${videoId}`;
+      const res = await fetch(backendUrl);
+      if (res.ok) {
+        const data = await res.json();
+        let segments = [];
+        let lang = 'ko';
+        if (data) {
+          if (Array.isArray(data.captions)) {
+            segments = data.captions;
+            lang = data.lang || 'ko';
+          } else if (Array.isArray(data)) {
+            segments = data.map(item => ({
+              start: item.start || 0,
+              dur: item.duration || 1,
+              text: item.text || ''
+            }));
+          }
+        }
+        if (segments.length > 0) {
+          console.log('[THINC-CAPTIONS-DATA]' + JSON.stringify({
+            videoId,
+            lang,
+            captions: segments
+          }));
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[Th!nc-Extension] Backend captions fallback failed:', err.message);
+    }
+    console.log('[Th!nc-Extension] Active captions extraction failed after retries and fallback for:', videoId);
   }
 
   // ── 백엔드 API 호출 ──────────────────────────────────────────────────────────

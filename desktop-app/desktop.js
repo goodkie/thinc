@@ -5205,7 +5205,7 @@
       const hasMediaDevices = !!(navigator.mediaDevices);
       const hasGetDisplayMedia = hasMediaDevices && !!(navigator.mediaDevices.getDisplayMedia);
 
-      if (false && hasGetDisplayMedia && audioCtx) {
+      if (hasGetDisplayMedia && audioCtx) {
         try {
           if (window.PerformanceLogger) {
             window.PerformanceLogger.log('Audio', 'Tab Audio Capture Request', 0, 'Info', 'Requesting getDisplayMedia for tab audio.');

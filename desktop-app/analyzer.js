@@ -549,21 +549,40 @@ class VoiceStressAnalyzer {
     const smoothAIScore = this.aiHistory.reduce((a, b) => a + b, 0) / this.aiHistory.length;
 
     // Multidimensional music and effect detector
-    // Guard: only flag as music when there's significant audio energy (rms > 0.02)
-    // Thresholds raised to prevent normal speech from being misclassified as music
-    const isMusicOrEffect = rms > 0.02 && (
-      (hnr > 0.97) ||
-      (hnr > 0.94 && jitter < 0.015 && pdr < 0.08) ||
-      (hnr > 0.91 && fi < 0.03 && pdr < 0.05 && jitter < 0.012) ||
-      (normEntropy < 0.25 && hnr > 0.93)
+    // Guard: only flag as music when there's significant audio energy (rms > 0.005)
+    // Thresholds lowered to make music and effect detection more sensitive per user request
+    const isMusicOrEffect = rms > 0.005 && (
+      (hnr > 0.93) ||
+      (hnr > 0.90 && jitter < 0.02 && pdr < 0.10) ||
+      (hnr > 0.88 && fi < 0.04 && pdr < 0.08 && jitter < 0.015) ||
+      (normEntropy < 0.30 && hnr > 0.88)
     );
 
-    // Speaker ID Logic
-    if (!isMusicOrEffect) {
-      this.identifySpeaker(jitter, shimmer, pdr);
+    if (isMusicOrEffect) {
+      return {
+        stressScore: 0,
+        aiProbability: smoothAIScore,
+        isSilent: false,
+        isMusic: true,
+        gainStatus,
+        internalGain: parseFloat(this.fakeGainValue.toFixed(2)),
+        currentSpeakerId: this.currentSpeaker ? `Speaker ${this.currentSpeaker.id}` : 'Scanning...',
+        metrics: {
+          jitter: "0.0000",
+          shimmer: "0.0000",
+          hnr: "0.00",
+          entropy: 0,
+          mti: 0,
+          fi: 0,
+          pdr: 0
+        }
+      };
     }
 
-    let finalScore = isMusicOrEffect ? 0 : score;
+    // Speaker ID Logic
+    this.identifySpeaker(jitter, shimmer, pdr);
+
+    let finalScore = score;
     
     // Apply 10% bias if speaker is deemed unreliable early on
     if (this.currentSpeaker && this.currentSpeaker.isUnreliable) {
@@ -574,7 +593,7 @@ class VoiceStressAnalyzer {
       stressScore: finalScore,
       aiProbability: smoothAIScore,
       isSilent: false,
-      isMusic: isMusicOrEffect,
+      isMusic: false,
       gainStatus,
       internalGain: parseFloat(this.fakeGainValue.toFixed(2)),
       currentSpeakerId: this.currentSpeaker ? `Speaker ${this.currentSpeaker.id}` : 'Scanning...',
