@@ -14,6 +14,133 @@ const BLACKLIST_DURATION = 1 * 60 * 60 * 1000; // 1 Hour
 const ADMIN_SETTINGS_FILE = path.join(__dirname, 'admin_settings.json');
 let _adminSettingsCache = null;
 
+// --- SQLite 3 Database & In-Memory Dictionary Cache ---
+const sqlite3 = require('sqlite3').verbose();
+const dbPath = path.join(__dirname, 'thinc_database.db');
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('[DB] SQLite connection error:', err);
+  } else {
+    console.log('[DB] SQLite database connected at:', dbPath);
+    initializeDatabase();
+  }
+});
+
+let _inMemoryDict = {
+  ko: { high: new Set(), medium: new Set(), low: new Set() },
+  en: { high: new Set(), medium: new Set(), low: new Set() }
+};
+
+function initializeDatabase() {
+  db.serialize(() => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS sensitivity_channels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lang TEXT NOT NULL,
+        tier TEXT NOT NULL,
+        channel_name TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    db.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_lang_name 
+      ON sensitivity_channels (lang, channel_name)
+    `);
+
+    triggerInitialMigration();
+  });
+}
+
+function triggerInitialMigration() {
+  if (!_adminSettingsCache) return;
+  
+  const koDict = _adminSettingsCache.sensitivity_dict_ko;
+  const enDict = _adminSettingsCache.sensitivity_dict_en;
+  
+  let migrated = false;
+  
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+    const stmt = db.prepare(`
+      INSERT OR IGNORE INTO sensitivity_channels (lang, tier, channel_name)
+      VALUES (?, ?, ?)
+    `);
+
+    if (koDict) {
+      ['high', 'medium', 'low'].forEach(tier => {
+        if (Array.isArray(koDict[tier])) {
+          koDict[tier].forEach(ch => {
+            if (ch && ch.trim()) {
+              stmt.run('ko', tier, ch.trim());
+              migrated = true;
+            }
+          });
+        }
+      });
+    }
+
+    if (enDict) {
+      ['high', 'medium', 'low'].forEach(tier => {
+        if (Array.isArray(enDict[tier])) {
+          enDict[tier].forEach(ch => {
+            if (ch && ch.trim()) {
+              stmt.run('en', tier, ch.trim());
+              migrated = true;
+            }
+          });
+        }
+      });
+    }
+
+    stmt.finalize(() => {
+      db.run('COMMIT', (err) => {
+        if (err) {
+          console.error('[DB] Initial migration transaction commit failed:', err);
+          loadInMemoryCache();
+          return;
+        }
+        if (migrated) {
+          console.log('[DB] Migration from admin_settings.json completed.');
+          delete _adminSettingsCache.sensitivity_dict_ko;
+          delete _adminSettingsCache.sensitivity_dict_en;
+          fs.writeFile(ADMIN_SETTINGS_FILE, JSON.stringify(_adminSettingsCache, null, 2), (err) => {
+            if (err) console.error('[DB] Failed to update admin_settings.json after migration:', err);
+            else console.log('[DB] admin_settings.json updated, channel lists removed to save space.');
+          });
+        }
+        loadInMemoryCache();
+      });
+    });
+  });
+}
+
+function loadInMemoryCache() {
+  const newDict = {
+    ko: { high: new Set(), medium: new Set(), low: new Set() },
+    en: { high: new Set(), medium: new Set(), low: new Set() }
+  };
+  
+  db.all(`SELECT lang, tier, channel_name FROM sensitivity_channels`, (err, rows) => {
+    if (err) {
+      console.error('[DB] Failed to load channels to memory cache:', err);
+      return;
+    }
+    
+    rows.forEach(row => {
+      const l = row.lang === 'ko' ? 'ko' : 'en';
+      const t = row.tier;
+      if (newDict[l] && newDict[l][t]) {
+        newDict[l][t].add(row.channel_name.trim().toLowerCase());
+      }
+    });
+    
+    _inMemoryDict = newDict;
+    const totalCount = rows.length;
+    console.log(`[DB] Loaded ${totalCount} channels into memory cache. (KO high:${newDict.ko.high.size}, EN high:${newDict.en.high.size})`);
+  });
+}
+
 function loadAdminSettingsFromDisk() {
   try {
     if (fs.existsSync(ADMIN_SETTINGS_FILE)) {
@@ -88,6 +215,220 @@ function handleAdminSettings(req, res) {
 
   res.writeHead(405, CORS);
   res.end(JSON.stringify({ ok: false, error: 'Method Not Allowed' }));
+}
+
+function handleAdminChannels(req, res) {
+  const CORS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  };
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS); res.end(); return;
+  }
+
+  if (req.method === 'GET') {
+    const parsedUrl = url.parse(req.url, true);
+    const query = parsedUrl.query.query || '';
+    const lang = parsedUrl.query.lang || 'ko';
+    const tier = parsedUrl.query.tier || '';
+    const page = parseInt(parsedUrl.query.page || '1', 10);
+    const limit = parseInt(parsedUrl.query.limit || '50', 10);
+    const offset = (page - 1) * limit;
+
+    let sql = `SELECT * FROM sensitivity_channels WHERE lang = ?`;
+    let countSql = `SELECT COUNT(*) as cnt FROM sensitivity_channels WHERE lang = ?`;
+    const params = [lang];
+    const countParams = [lang];
+
+    if (query) {
+      sql += ` AND channel_name LIKE ?`;
+      countSql += ` AND channel_name LIKE ?`;
+      params.push(`%${query}%`);
+      countParams.push(`%${query}%`);
+    }
+
+    if (tier) {
+      sql += ` AND tier = ?`;
+      countSql += ` AND tier = ?`;
+      params.push(tier);
+      countParams.push(tier);
+    }
+
+    sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
+    db.get(countSql, countParams, (err, countRow) => {
+      if (err) {
+        res.writeHead(500, CORS);
+        res.end(JSON.stringify({ ok: false, error: 'Database error: ' + err.message }));
+        return;
+      }
+      const total = countRow ? countRow.cnt : 0;
+
+      db.all(sql, params, (err, rows) => {
+        if (err) {
+          res.writeHead(500, CORS);
+          res.end(JSON.stringify({ ok: false, error: 'Database error: ' + err.message }));
+          return;
+        }
+        res.writeHead(200, CORS);
+        res.end(JSON.stringify({ ok: true, channels: rows, total, page, limit }));
+      });
+    });
+    return;
+  }
+
+  let body = '';
+  req.on('data', chunk => { body += chunk; });
+  req.on('end', () => {
+    try {
+      const payload = JSON.parse(body);
+      const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+      if (ADMIN_TOKEN) {
+        const provided = req.headers['x-admin-token'] || payload.adminToken || '';
+        if (provided !== ADMIN_TOKEN) {
+          res.writeHead(401, CORS);
+          res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+          return;
+        }
+      }
+
+      if (req.method === 'POST') {
+        const { lang, tier, channel } = payload;
+        if (!lang || !tier || !channel || !channel.trim()) {
+          res.writeHead(400, CORS);
+          res.end(JSON.stringify({ ok: false, error: 'Missing parameters' }));
+          return;
+        }
+        const cleanChan = channel.trim();
+        db.run(
+          `INSERT OR REPLACE INTO sensitivity_channels (lang, tier, channel_name) VALUES (?, ?, ?)`,
+          [lang, tier, cleanChan],
+          (err) => {
+            if (err) {
+              res.writeHead(500, CORS);
+              res.end(JSON.stringify({ ok: false, error: 'DB insert failed: ' + err.message }));
+              return;
+            }
+            loadInMemoryCache();
+            res.writeHead(200, CORS);
+            res.end(JSON.stringify({ ok: true }));
+          }
+        );
+      } else if (req.method === 'DELETE') {
+        const { lang, channel } = payload;
+        if (!lang || !channel || !channel.trim()) {
+          res.writeHead(400, CORS);
+          res.end(JSON.stringify({ ok: false, error: 'Missing parameters' }));
+          return;
+        }
+        db.run(
+          `DELETE FROM sensitivity_channels WHERE lang = ? AND channel_name = ?`,
+          [lang, channel.trim()],
+          (err) => {
+            if (err) {
+              res.writeHead(500, CORS);
+              res.end(JSON.stringify({ ok: false, error: 'DB delete failed: ' + err.message }));
+              return;
+            }
+            loadInMemoryCache();
+            res.writeHead(200, CORS);
+            res.end(JSON.stringify({ ok: true }));
+          }
+        );
+      } else {
+        res.writeHead(405, CORS);
+        res.end(JSON.stringify({ ok: false, error: 'Method Not Allowed' }));
+      }
+    } catch (e) {
+      res.writeHead(400, CORS);
+      res.end(JSON.stringify({ ok: false, error: 'Invalid JSON: ' + e.message }));
+    }
+  });
+}
+
+function handleAdminChannelsImport(req, res) {
+  const CORS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  };
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS); res.end(); return;
+  }
+
+  if (req.method !== 'POST') {
+    res.writeHead(405, CORS);
+    res.end(JSON.stringify({ ok: false, error: 'Method Not Allowed' }));
+    return;
+  }
+
+  let body = '';
+  req.on('data', chunk => { body += chunk; });
+  req.on('end', () => {
+    try {
+      const payload = JSON.parse(body);
+      const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+      if (ADMIN_TOKEN) {
+        const provided = req.headers['x-admin-token'] || payload.adminToken || '';
+        if (provided !== ADMIN_TOKEN) {
+          res.writeHead(401, CORS);
+          res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+          return;
+        }
+      }
+
+      const { lang, tier, csvText } = payload;
+      if (!lang || !tier || typeof csvText !== 'string') {
+        res.writeHead(400, CORS);
+        res.end(JSON.stringify({ ok: false, error: 'Missing parameters' }));
+        return;
+      }
+
+      const lines = csvText
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
+      if (lines.length === 0) {
+        res.writeHead(200, CORS);
+        res.end(JSON.stringify({ ok: true, imported: 0 }));
+        return;
+      }
+
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        const stmt = db.prepare(`INSERT OR REPLACE INTO sensitivity_channels (lang, tier, channel_name) VALUES (?, ?, ?)`);
+        
+        lines.forEach(line => {
+          stmt.run(lang, tier, line);
+        });
+
+        stmt.finalize(() => {
+          db.run('COMMIT', (err) => {
+            if (err) {
+              res.writeHead(500, CORS);
+              res.end(JSON.stringify({ ok: false, error: 'Transaction commit failed: ' + err.message }));
+              return;
+            }
+            loadInMemoryCache();
+            res.writeHead(200, CORS);
+            res.end(JSON.stringify({ ok: true, imported: lines.length }));
+          });
+        });
+      });
+    } catch (e) {
+      res.writeHead(400, CORS);
+      res.end(JSON.stringify({ ok: false, error: 'Invalid JSON: ' + e.message }));
+    }
+  });
 }
 
 function markNodeFailed(nodeUrl) {
@@ -1719,77 +2060,77 @@ function channelSimilarity(a, b) {
 // ── 채널명 민감도 등급 판별 ────────────────────────────────────────────────────
 // matchType: 'exact'(DB 완전매칭) | 'fuzzy'(유사매칭) | 'keyword'(키워드포함) | 'none'
 function getSensitivityMultiplier(uploaderName, reqLang = 'ko') {
-  const DEFAULT_KO = {
-    high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장', '한국찐반응'],
-    medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
-    low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
-  };
-
-  const DEFAULT_EN = {
-    high:   ['scam', 'fraud', 'lie', 'fake', 'manipulation', 'expose', 'conspiracy', 'crime', 'blackmail', 'corruption', 'hoax', 'propaganda'],
-    medium: ['controversy', 'rumor', 'suspicion', 'dispute', 'conflict', 'criticism', 'rebuttal', 'explanation', 'debate', 'claim'],
-    low:    ['education', 'science', 'research', 'official', 'announcement', 'lecture', 'documentary', 'learning', 'analysis', 'report', 'thesis', 'study']
-  };
-
-  let dbKo = DEFAULT_KO;
-  let dbEn = DEFAULT_EN;
-
-  if (_adminSettingsCache) {
-    if (_adminSettingsCache.sensitivity_dict_ko) dbKo = _adminSettingsCache.sensitivity_dict_ko;
-    if (_adminSettingsCache.sensitivity_dict_en) dbEn = _adminSettingsCache.sensitivity_dict_en;
-  }
-
   const cleanUploader = (uploaderName || '').trim().toLowerCase();
   if (!cleanUploader) {
     return { multiplier: 1.0, tier: 'none', count: 0, matchType: 'none' };
   }
 
-  // ── 1단계: 정확한 포함(Substring) 매칭 ────────────────────────────────────
+  // ── 1단계: 인메모리 Set을 활용한 초고속 O(1) 매칭 및 포함 여부 검색 ────────────
+  // KO/EN 언어 통합 검색 진행 (기존 결합 로직 유지)
   const tiers = [
-    { name: 'high',   channels: [...(dbKo.high   || []), ...(dbEn.high   || [])], multiplier: 7.5 },
-    { name: 'medium', channels: [...(dbKo.medium || []), ...(dbEn.medium || [])], multiplier: 2.4 },
-    { name: 'low',    channels: [...(dbKo.low    || []), ...(dbEn.low    || [])], multiplier: 0.4 },
+    { name: 'high', multiplier: 7.5 },
+    { name: 'medium', multiplier: 2.4 },
+    { name: 'low', multiplier: 0.4 }
   ];
 
   for (const tier of tiers) {
-    for (const ch of tier.channels) {
-      const c = ch.trim().toLowerCase();
-      if (c.length === 0) continue;
-      // 채널명이 DB 항목을 포함하거나, DB 항목이 채널명을 포함하는 경우
-      if (cleanUploader.includes(c) || c.includes(cleanUploader)) {
-        console.log(`[SensDB] Exact match: "${uploaderName}" → tier=${tier.name} (matched: "${ch}")`);
+    // 1-1. O(1) 완전 일치 체크
+    if (_inMemoryDict.ko[tier.name].has(cleanUploader) || _inMemoryDict.en[tier.name].has(cleanUploader)) {
+      console.log(`[SensDB] O(1) Exact match: "${uploaderName}" → tier=${tier.name}`);
+      return { multiplier: tier.multiplier, tier: tier.name, count: 1, matchType: 'exact', matchedName: uploaderName };
+    }
+
+    // 1-2. 부분 포함 매칭 (기존 includes 방식의 캐시 루프 탐색)
+    for (const ch of _inMemoryDict.ko[tier.name]) {
+      if (cleanUploader.includes(ch) || ch.includes(cleanUploader)) {
+        console.log(`[SensDB] Exact Substring match (KO): "${uploaderName}" → tier=${tier.name} (matched: "${ch}")`);
+        return { multiplier: tier.multiplier, tier: tier.name, count: 1, matchType: 'exact', matchedName: ch };
+      }
+    }
+    for (const ch of _inMemoryDict.en[tier.name]) {
+      if (cleanUploader.includes(ch) || ch.includes(cleanUploader)) {
+        console.log(`[SensDB] Exact Substring match (EN): "${uploaderName}" → tier=${tier.name} (matched: "${ch}")`);
         return { multiplier: tier.multiplier, tier: tier.name, count: 1, matchType: 'exact', matchedName: ch };
       }
     }
   }
 
   // ── 2단계: 유사도 기반 퍼지(Fuzzy) 매칭 ──────────────────────────────────
-  // 유사도 임계값: 짧은 채널명(4자 이하)은 0.75 이상, 긴 채널명은 0.65 이상
+  // 유사도 임계값: 짧은 채널명(4자 이하)은 0.80 이상, 긴 채널명은 0.65 이상
   const FUZZY_THRESHOLD_SHORT = 0.80; // 4자 이하 채널명
   const FUZZY_THRESHOLD_LONG  = 0.65; // 5자 이상 채널명
 
   let bestMatch = null;
   let bestSim = 0;
-  let bestTier = null;
+  let bestTierName = null;
+  let bestTierMult = 1.0;
 
   for (const tier of tiers) {
-    for (const ch of tier.channels) {
-      const c = ch.trim().toLowerCase();
-      if (c.length === 0) continue;
-      const sim = channelSimilarity(cleanUploader, c);
+    for (const ch of _inMemoryDict.ko[tier.name]) {
+      const sim = channelSimilarity(cleanUploader, ch);
       if (sim > bestSim) {
         bestSim = sim;
         bestMatch = ch;
-        bestTier = tier;
+        bestTierName = tier.name;
+        bestTierMult = tier.multiplier;
+      }
+    }
+    for (const ch of _inMemoryDict.en[tier.name]) {
+      const sim = channelSimilarity(cleanUploader, ch);
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestMatch = ch;
+        bestTierName = tier.name;
+        bestTierMult = tier.multiplier;
       }
     }
   }
 
-  if (bestMatch && bestTier) {
+  if (bestMatch && bestTierName) {
     const threshold = cleanUploader.length <= 4 ? FUZZY_THRESHOLD_SHORT : FUZZY_THRESHOLD_LONG;
     if (bestSim >= threshold) {
-      console.log(`[SensDB] Fuzzy match: "${uploaderName}" → tier=${bestTier.name} (matched: "${bestMatch}", sim=${bestSim.toFixed(2)})`);
-      return { multiplier: bestTier.multiplier, tier: bestTier.name, count: 1, matchType: 'fuzzy', matchedName: bestMatch, similarity: bestSim };
+      console.log(`[SensDB] Fuzzy match: "${uploaderName}" → tier=${bestTierName} (matched: "${bestMatch}", sim=${bestSim.toFixed(2)})`);
+      return { multiplier: bestTierMult, tier: bestTierName, count: 1, matchType: 'fuzzy', matchedName: bestMatch, similarity: bestSim };
     }
   }
 
@@ -2085,6 +2426,10 @@ const server = http.createServer((req, res) => {
     handleAnalyzeVideoFast(req, res);
   } else if (parsedUrl.pathname === '/api/admin-settings') {
     handleAdminSettings(req, res);
+  } else if (parsedUrl.pathname === '/api/admin/channels') {
+    handleAdminChannels(req, res);
+  } else if (parsedUrl.pathname === '/api/admin/channels/import') {
+    handleAdminChannelsImport(req, res);
   } else {
     let safePath = parsedUrl.pathname;
     if (safePath === '/' || safePath === '') {
