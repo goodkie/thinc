@@ -1653,6 +1653,8 @@
             el.innerHTML = `<span class="${classes[sens.tier] || 'status-none'}">⚡ 현재 매칭: ${labels[sens.tier] || sens.tier} &nbsp;|&nbsp; 채널명: "${kws}" &nbsp;|&nbsp; 민감도 ×${sens.multiplier} (${(sens.lang || 'ko').toUpperCase()})</span>`;
           } else {
             el.innerHTML = `<span class="status-idle">● 대기 중 — 앱에서 동영상을 재생하면 자동으로 채널명을 검사합니다</span>`;
+          }
+        } catch(e) {}
       }
 
       setInterval(refreshMatchStatus, 2000);
