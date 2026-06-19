@@ -949,72 +949,104 @@
       <button class="lang-tab" data-lang="en" id="tab-lang-en">🇺🇸 영어 (English)</button>
     </div>
 
-    <div class="keyword-tiers-grid">
-      <!-- 상 HIGH -->
-      <div class="keyword-tier tier-high">
-        <div class="tier-title-row">
-          <span class="tier-badge">🔴 상 (HIGH)</span>
-          <span class="tier-mult">민감도 × 7.5</span>
+    <!-- 1. 단일 채널 실시간 검색 & 추가 컨트롤러 -->
+    <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border-glass); border-radius: 16px; padding: 20px; margin-bottom: 25px;">
+      <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px;">
+        <!-- 실시간 검색 -->
+        <div style="flex: 2; min-width: 250px;">
+          <label style="display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:6px;">채널명 실시간 검색</label>
+          <input type="text" id="channel-search-input" placeholder="🔍 검색어를 입력하세요..." 
+                 style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--border-glass); padding:10px 14px; border-radius:8px; color:#fff; font-size:13px; outline:none; transition:0.3s;"
+                 onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-glass)'">
         </div>
-        <div class="tier-desc">고위험 채널: 해당 채널 분석 시 민감도가 7.5배 증가하며, 사전스캔 신뢰도가 35% ~ 70% 미만으로 결정됩니다.</div>
-        <textarea class="keyword-input" id="kw-high" placeholder="예시 (줄바꿈 또는 쉼표 구분):
-한국찐반응
-민감채널1
-민감채널2"></textarea>
-        <div class="tier-count" id="count-high">0개 채널명</div>
+        <!-- 등급 필터 -->
+        <div style="flex: 1; min-width: 120px;">
+          <label style="display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:6px;">등급(Tier) 필터</label>
+          <select id="tier-filter" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--border-glass); padding:10px 12px; border-radius:8px; color:#fff; font-size:13px; outline:none;">
+            <option value="">전체 등급</option>
+            <option value="high">🔴 상 (HIGH)</option>
+            <option value="medium">🟡 중 (MEDIUM)</option>
+            <option value="low">🟢 하 (LOW)</option>
+          </select>
+        </div>
       </div>
 
-      <!-- 중 MEDIUM -->
-      <div class="keyword-tier tier-medium">
-        <div class="tier-title-row">
-          <span class="tier-badge">🟡 중 (MEDIUM)</span>
-          <span class="tier-mult">민감도 × 2.4</span>
+      <div style="border-top: 1px dashed var(--border-glass); padding-top: 15px; display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+        <!-- 신규 채널 단일 추가 -->
+        <div style="flex: 2; min-width: 250px;">
+          <label style="display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:6px;">신규 채널 단일 등록</label>
+          <input type="text" id="new-channel-name" placeholder="등록할 채널명을 입력하세요..." 
+                 style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--border-glass); padding:10px 14px; border-radius:8px; color:#fff; font-size:13px; outline:none;"
+                 onfocus="this.style.borderColor='var(--accent-green)'" onblur="this.style.borderColor='var(--border-glass)'">
         </div>
-        <div class="tier-desc">중간위험 채널: 해당 채널 분석 시 민감도가 2.4배 증가하며, 사전스캔 신뢰도가 70% ~ 85%로 결정됩니다.</div>
-        <textarea class="keyword-input" id="kw-medium" placeholder="예시:
-의혹제기채널
-이슈채널"></textarea>
-        <div class="tier-count" id="count-medium">0개 채널명</div>
-      </div>
-
-      <!-- 하 LOW -->
-      <div class="keyword-tier tier-low">
-        <div class="tier-title-row">
-          <span class="tier-badge">🟢 하 (LOW)</span>
-          <span class="tier-mult">민감도 × 0.4</span>
+        <div style="flex: 1; min-width: 120px;">
+          <label style="display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:6px;">지정할 등급</label>
+          <select id="new-channel-tier" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--border-glass); padding:10px 12px; border-radius:8px; color:#fff; font-size:13px; outline:none;">
+            <option value="high">🔴 상 (HIGH)</option>
+            <option value="medium" selected>🟡 중 (MEDIUM)</option>
+            <option value="low">🟢 하 (LOW)</option>
+          </select>
         </div>
-        <div class="tier-desc">저위험 채널: 해당 채널 분석 시 민감도가 0.4배로 감소하며, 사전스캔 신뢰도가 85% ~ 95%로 결정됩니다.</div>
-        <textarea class="keyword-input" id="kw-low" placeholder="예시:
-공식뉴스채널
-교육채널"></textarea>
-        <div class="tier-count" id="count-low">0개 채널명</div>
+        <button class="btn-csv btn-csv-import" id="btn-add-single" style="padding:10px 20px; border-radius:8px; font-size:13px; height:38px; border-color:var(--accent-green); color:var(--accent-green); background:rgba(0,255,135,0.06);">➕ 채널 추가</button>
       </div>
     </div>
 
-    <!-- CSV 직접 입력 에디터 -->
+    <!-- 2. 페이징 데이터 테이블 -->
+    <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-glass); border-radius: 16px; overflow: hidden; margin-bottom: 20px;">
+      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+        <thead>
+          <tr style="background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border-glass); color: var(--text-muted);">
+            <th style="padding: 14px 20px; font-weight: 600;">채널명 (Channel Name)</th>
+            <th style="padding: 14px 20px; font-weight: 600; width: 150px;">민감도 등급 (Tier)</th>
+            <th style="padding: 14px 20px; font-weight: 600; width: 180px;">등록 시간</th>
+            <th style="padding: 14px 20px; font-weight: 600; width: 100px; text-align: center;">관리</th>
+          </tr>
+        </thead>
+        <tbody id="channel-list-tbody">
+          <!-- JS dynamic load -->
+        </tbody>
+      </table>
+      
+      <!-- 페이징 컨트롤러 -->
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background: rgba(0,0,0,0.1); border-top: 1px solid var(--border-glass);">
+        <span style="font-size: 12px; color: var(--text-muted);" id="page-indicator">검색된 채널: 0개 (1 / 1 페이지)</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-csv btn-csv-export" id="btn-page-prev" style="padding:6px 12px; font-size:12px; margin:0;">◀ 이전</button>
+          <button class="btn-csv btn-csv-export" id="btn-page-next" style="padding:6px 12px; font-size:12px; margin:0;">다음 ▶</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 벌크 가져오기 텍스트박스 -->
     <div style="margin-top: 10px; margin-bottom: 20px;">
       <button class="csv-editor-toggle-btn" id="btn-toggle-csv-editor">
-        📝 CSV 텍스트 직접 편집 (대량 입력)
+        📝 CSV 텍스트 직접 대량 가져오기 (Import)
       </button>
       
       <div class="csv-direct-editor-container" id="csv-direct-editor-container">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <label style="font-size: 13px; font-weight: 600; color: #ffffff;">CSV 데이터 직접 편집 (형식: Tier,Keywords / 세미콜론 구분)</label>
-          <span style="font-size: 11px; color: var(--text-muted);">예: HIGH,한국찐반응;민감채널1</span>
+          <label style="font-size: 13px; font-weight: 600; color: #ffffff;">CSV 채널 목록 붙여넣기 (한 줄에 하나의 채널명 입력)</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <select id="csv-import-tier" style="background:rgba(0,0,0,0.5); border:1px solid var(--border-glass); padding:4px 8px; border-radius:6px; color:#fff; font-size:11px; outline:none;">
+              <option value="high">🔴 상 (HIGH)</option>
+              <option value="medium" selected>🟡 중 (MEDIUM)</option>
+              <option value="low">🟢 하 (LOW)</option>
+            </select>
+          </div>
         </div>
-        <textarea class="csv-direct-textarea" id="csv-direct-textarea" placeholder="Tier,Keywords
-HIGH,키워드1;키워드2
-MEDIUM,키워드3;키워드4
-LOW,키워드5;키워드6"></textarea>
+        <textarea class="csv-direct-textarea" id="csv-direct-textarea" placeholder="여기에 채널명을 한 줄씩 엔터(줄바꿈)로 구분하여 입력하세요...
+예시:
+채널A
+채널B
+채널C" style="height: 150px;"></textarea>
         <div class="csv-editor-btn-row">
-          <button class="btn-csv-apply" id="btn-csv-apply">⚡ CSV 텍스트 적용</button>
+          <button class="btn-csv-apply" id="btn-csv-apply" style="background: linear-gradient(135deg, var(--accent-green) 0%, #00b0ff 100%); font-weight:800; color:#000;">⚡ 대량 일괄 등록 (Import)</button>
         </div>
       </div>
     </div>
 
     <div class="keyword-footer">
-      <button class="btn-save-keywords" id="btn-save-keywords">✅ 채널명 DB 저장 &amp; 적용</button>
-      <div class="keyword-match-status" id="keyword-match-status">
+      <div class="keyword-match-status" id="keyword-match-status" style="width: 100%;">
         <span class="status-idle">● 대기 중 — 앱에서 동영상을 재생하면 자동으로 채널명을 검사합니다</span>
       </div>
     </div>
@@ -1219,7 +1251,7 @@ LOW,키워드5;키워드6"></textarea>
               
               console.log("[Th!nc-Admin] Settings successfully synced from online server");
               loadConfig();
-              loadKeywordDB(currentEditLang);
+              fetchAdminChannels(1);
             }
           }
         } catch(e) {
@@ -1275,278 +1307,346 @@ LOW,키워드5;키워드6"></textarea>
             if (result.ok) {
               if (syncStatus) syncStatus.textContent = '🌐 서버 동기화 완료 — 모든 앱에 적용됨 ✓';
             } else {
-              if (syncStatus) syncStatus.textContent = '⚠️ 서버 동기화 실패: ' + (result.error || 'Unknown');
-            }
-          } else {
-            if (syncStatus) syncStatus.textContent = '⚠️ 서버 URL 미설정 — 로컬 저장만 완료';
-          }
-        } catch (e) {
-          if (syncStatus) syncStatus.textContent = '⚠️ 서버 미연결 — 로컬 저장만 완료';
+              if (syncStatus) syncStatus.te      // ─── SQLite DB 연동 및 검색식 어드민 구현 ───────────────────────────────
+      let currentEditLang = 'ko';
+      let currentPage = 1;
+      const limitPerPage = 15;
+      let searchTimeout = null;
+
+      const serverBaseUrl = () => {
+        const backendUrl = localStorage.getItem('thinc_backend_url') || '';
+        return backendUrl || (location.origin.includes('localhost') || location.origin.includes('127.0.0.1') ? location.origin : '');
+      };
+
+      async function fetchAdminChannels(page = 1) {
+        currentPage = page;
+        const host = serverBaseUrl();
+        if (!host) {
+          console.warn("[Th!nc-Admin] Server URL is not configured.");
+          return;
         }
 
-        // Show Toast
+        const query = document.getElementById('channel-search-input').value.trim();
+        const tier = document.getElementById('tier-filter').value;
+        
+        try {
+          const url = `${host}/api/admin/channels?lang=${currentEditLang}&query=${encodeURIComponent(query)}&tier=${tier}&page=${page}&limit=${limitPerPage}`;
+          const r = await fetch(url, { cache: 'no-store' });
+          const res = await r.json();
+          
+          if (res.ok) {
+            renderChannelTable(res.channels, res.total);
+          } else {
+            console.error('[Th!nc-Admin] API Error:', res.error);
+          }
+        } catch (e) {
+          console.error('[Th!nc-Admin] Failed to fetch channels:', e);
+        }
+      }
+
+      function renderChannelTable(channels, total) {
+        const tbody = document.getElementById('channel-list-tbody');
+        tbody.innerHTML = '';
+
+        if (!channels || channels.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="4" style="padding: 30px; text-align: center; color: var(--text-muted);">등록된 채널이 없거나 검색 결과가 존재하지 않습니다.</td>
+            </tr>
+          `;
+          document.getElementById('page-indicator').textContent = `검색된 채널: 0개 (1 / 1 페이지)`;
+          return;
+        }
+
+        channels.forEach(ch => {
+          const dateStr = ch.created_at ? new Date(ch.created_at).toLocaleString() : '-';
+          const tierLabels = { high: '🔴 상 (HIGH)', medium: '🟡 중 (MEDIUM)', low: '🟢 하 (LOW)' };
+          const tr = document.createElement('tr');
+          tr.style.borderBottom = '1px solid var(--border-glass)';
+          tr.innerHTML = `
+            <td style="padding: 12px 20px; font-weight: 600; color: #fff;">${escapeHtml(ch.channel_name)}</td>
+            <td style="padding: 12px 20px;">${tierLabels[ch.tier] || ch.tier}</td>
+            <td style="padding: 12px 20px; color: var(--text-muted);">${dateStr}</td>
+            <td style="padding: 12px 20px; text-align: center;">
+              <button class="btn-csv" style="padding: 4px 8px; font-size: 11px; margin: 0; background: rgba(255, 65, 108, 0.1); border: 1px solid rgba(255, 65, 108, 0.2); color: var(--accent-red); cursor: pointer; border-radius: 4px;" onclick="deleteChannelItem('${escapeJs(ch.channel_name)}')">삭제</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        const totalPages = Math.max(1, Math.ceil(total / limitPerPage));
+        document.getElementById('page-indicator').textContent = `검색된 채널: ${total}개 (${currentPage} / ${totalPages} 페이지)`;
+      }
+
+      function escapeHtml(str) {
+        return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      }
+
+      function escapeJs(str) {
+        return (str || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+      }
+
+      window.deleteChannelItem = async function(channelName) {
+        if (!confirm(`"${channelName}" 채널을 데이터베이스에서 삭제하시겠습니까?`)) return;
+        const host = serverBaseUrl();
+        const adminToken = localStorage.getItem('thinc_admin_token') || '';
+        try {
+          const r = await fetch(`${host}/api/admin/channels`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+            body: JSON.stringify({ lang: currentEditLang, channel: channelName, adminToken })
+          });
+          const res = await r.json();
+          if (res.ok) {
+            fetchAdminChannels(currentPage);
+            showSuccessToast('🗑️ 채널 삭제가 완료되었습니다!');
+          } else {
+            alert('삭제 실패: ' + (res.error || 'Unknown'));
+          }
+        } catch (e) {
+          alert('삭제 중 연결 오류 발생: ' + e.message);
+        }
+      };
+
+      // 단일 추가
+      document.getElementById('btn-add-single').addEventListener('click', async () => {
+        const input = document.getElementById('new-channel-name');
+        const name = input.value.trim();
+        const tier = document.getElementById('new-channel-tier').value;
+        if (!name) {
+          alert('등록할 채널명을 입력하세요.');
+          return;
+        }
+
+        const host = serverBaseUrl();
+        const adminToken = localStorage.getItem('thinc_admin_token') || '';
+        try {
+          const r = await fetch(`${host}/api/admin/channels`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+            body: JSON.stringify({ lang: currentEditLang, tier, channel: name, adminToken })
+          });
+          const res = await r.json();
+          if (res.ok) {
+            input.value = '';
+            fetchAdminChannels(1);
+            showSuccessToast('✨ 신규 채널이 정상 등록되었습니다!');
+          } else {
+            alert('등록 실패: ' + (res.error || 'Unknown'));
+          }
+        } catch (e) {
+          alert('등록 중 연결 오류 발생: ' + e.message);
+        }
+      });
+
+      // 대량 임포트
+      document.getElementById('btn-csv-apply').addEventListener('click', async () => {
+        const textarea = document.getElementById('csv-direct-textarea');
+        const csvText = textarea.value.trim();
+        const tier = document.getElementById('csv-import-tier').value;
+        if (!csvText) {
+          alert('가져올 채널 목록을 입력하세요.');
+          return;
+        }
+
+        const host = serverBaseUrl();
+        const adminToken = localStorage.getItem('thinc_admin_token') || '';
+        try {
+          const r = await fetch(`${host}/api/admin/channels/import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+            body: JSON.stringify({ lang: currentEditLang, tier, csvText, adminToken })
+          });
+          const res = await r.json();
+          if (res.ok) {
+            textarea.value = '';
+            document.getElementById('csv-direct-editor-container').style.display = 'none';
+            document.getElementById('btn-toggle-csv-editor').textContent = '📝 CSV 텍스트 직접 대량 가져오기 (Import)';
+            document.getElementById('btn-toggle-csv-editor').style.borderStyle = 'dashed';
+            document.getElementById('btn-toggle-csv-editor').style.borderColor = 'rgba(255,255,255,0.15)';
+            
+            fetchAdminChannels(1);
+            showSuccessToast(`⚡ 일괄 가져오기 완료: 총 ${res.imported}개 채널 등록됨!`);
+          } else {
+            alert('가져오기 실패: ' + (res.error || 'Unknown'));
+          }
+        } catch (e) {
+          alert('가져오기 중 연결 오류 발생: ' + e.message);
+        }
+      });
+
+      function showSuccessToast(message) {
+        const toast = document.getElementById('toast-success');
+        toast.innerHTML = `<span>✅</span> ${message}`;
         toast.classList.add('visible');
         setTimeout(() => {
           toast.classList.remove('visible');
+          setTimeout(() => { toast.innerHTML = '<span>✅</span> Settings Saved & Engine Hot-Swapped Successfully!'; }, 400);
         }, 3000);
-      });
-
-      // Reset Action
-      const resetBtn = document.getElementById('btn-reset');
-      resetBtn.addEventListener('click', () => {
-        if (confirm('모든 어드민 설정값을 기본값으로 초기화하시겠습니까?')) {
-          localStorage.removeItem('thinc_admin_settings');
-          localStorage.removeItem('thinc_backend_url');
-          loadConfig();
-          
-          toast.innerText = '⚙️ Settings Reset to System Defaults!';
-          toast.classList.add('visible');
-          setTimeout(() => {
-            toast.classList.remove('visible');
-            toast.innerHTML = '<span>✅</span> Settings Saved & Engine Hot-Swapped Successfully!';
-          }, 3000);
-        }
-      });
-
-      // Exit Action
-      const exitBtn = document.getElementById('btn-exit');
-      exitBtn.addEventListener('click', () => {
-        const lastPage = document.referrer || 'index.html';
-        window.location.href = lastPage;
-      });
-
-      // ─── Keyword Database Management ────────────────────────────────────────
-      const DEFAULT_KEYWORD_DB_KO = {
-        high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장'],
-        medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
-        low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
-      };
-
-      const DEFAULT_KEYWORD_DB_EN = {
-        high:   ['scam', 'fraud', 'lie', 'fake', 'manipulation', 'expose', 'conspiracy', 'crime', 'blackmail', 'corruption', 'hoax', 'propaganda'],
-        medium: ['controversy', 'rumor', 'suspicion', 'dispute', 'conflict', 'criticism', 'rebuttal', 'explanation', 'debate', 'claim'],
-        low:    ['education', 'science', 'research', 'official', 'announcement', 'lecture', 'documentary', 'learning', 'analysis', 'report', 'thesis', 'study']
-      };
-
-      let currentEditLang = 'ko';
-
-      function parseKeywords(text) {
-        return text.split(/[\n,]+/).map(k => k.trim()).filter(k => k.length > 0);
       }
 
-      function updateKeywordCounts() {
-        ['high', 'medium', 'low'].forEach(tier => {
-          const el = document.getElementById(`kw-${tier}`);
-          const cnt = document.getElementById(`count-${tier}`);
-          if (el && cnt) cnt.textContent = `${parseKeywords(el.value).length}개 채널명`;
-        });
-      }
-
-      function loadKeywordDB(lang = 'ko') {
-        let db = null;
-        try { db = JSON.parse(localStorage.getItem(`thinc_keyword_db_${lang}`)); } catch(e) {}
-        
-        // 하위 호환성
-        if (!db && lang === 'ko') {
-          try { 
-            db = JSON.parse(localStorage.getItem('thinc_keyword_db')); 
-            if (db) localStorage.setItem('thinc_keyword_db_ko', JSON.stringify(db));
-          } catch(e) {}
-        }
-
-        const d = db || (lang === 'ko' ? DEFAULT_KEYWORD_DB_KO : DEFAULT_KEYWORD_DB_EN);
-        document.getElementById('kw-high').value   = (d.high   || []).join('\n');
-        document.getElementById('kw-medium').value = (d.medium || []).join('\n');
-        document.getElementById('kw-low').value    = (d.low    || []).join('\n');
-        updateKeywordCounts();
-        if (typeof syncTextareasToCsvEditor === 'function' && document.getElementById('csv-direct-editor-container') && window.getComputedStyle(document.getElementById('csv-direct-editor-container')).display !== 'none') {
-          syncTextareasToCsvEditor();
-        }
-      }
-
-      ['kw-high', 'kw-medium', 'kw-low'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', updateKeywordCounts);
+      // 검색어 입력 디바운스
+      document.getElementById('channel-search-input').addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+          fetchAdminChannels(1);
+        }, 300);
       });
 
-      async function saveKeywordDB(lang = 'ko', quiet = false) {
-        const db = {
-          high:   parseKeywords(document.getElementById('kw-high').value),
-          medium: parseKeywords(document.getElementById('kw-medium').value),
-          low:    parseKeywords(document.getElementById('kw-low').value)
-        };
-        localStorage.setItem(`thinc_keyword_db_${lang}`, JSON.stringify(db));
+      // 등급 필터 변경 리스너
+      document.getElementById('tier-filter').addEventListener('change', () => {
+        fetchAdminChannels(1);
+      });
 
-        if (lang === 'ko') {
-          localStorage.setItem('thinc_keyword_db', JSON.stringify(db));
-        }
+      // 페이징 이동
+      document.getElementById('btn-page-prev').addEventListener('click', () => {
+        if (currentPage > 1) fetchAdminChannels(currentPage - 1);
+      });
+      document.getElementById('btn-page-next').addEventListener('click', () => {
+        fetchAdminChannels(currentPage + 1);
+      });
 
-        // ── 서버로 동동 동기화 전송 ──────────────────
-        try {
-          const backendUrl = localStorage.getItem('thinc_backend_url') || '';
-          const serverBase = backendUrl || (location.origin.includes('localhost') || location.origin.includes('127.0.0.1') ? location.origin : '');
-          if (serverBase) {
-            const adminToken = localStorage.getItem('thinc_admin_token') || '';
-            let settings = {};
-            try { settings = JSON.parse(localStorage.getItem('thinc_admin_settings')) || {}; } catch(e) {}
-            
-            const sensitivity_dict_ko = JSON.parse(localStorage.getItem('thinc_keyword_db_ko')) || DEFAULT_KEYWORD_DB_KO;
-            const sensitivity_dict_en = JSON.parse(localStorage.getItem('thinc_keyword_db_en')) || DEFAULT_KEYWORD_DB_EN;
-
-            const payload = { 
-              ...settings, 
-              sensitivity_dict_ko,
-              sensitivity_dict_en
-            };
-            if (adminToken) payload.adminToken = adminToken;
-            
-            await fetch(serverBase + '/api/admin-settings', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-              body: JSON.stringify(payload)
-            });
-            console.log(`[Th!nc-Admin] Successfully synchronized sensitivity_dict_${lang} with online server.`);
-          }
-        } catch(syncErr) {
-          console.warn("[Th!nc-Admin] Sensitivity DB Server sync failed:", syncErr.message);
-        }
-
-        if (!quiet) {
-          const t = document.getElementById('toast-success');
-          t.innerHTML = `🗝️ [${lang.toUpperCase()}] 키워드 DB 저장 및 서버 동기화 완료!`;
-          t.classList.add('visible');
-          setTimeout(() => {
-            t.classList.remove('visible');
-            setTimeout(() => { t.innerHTML = '<span>✅</span> Settings Saved & Engine Hot-Swapped Successfully!'; }, 400);
-          }, 3000);
-        }
-      }
-
-      // 언어 탭 전환 바인딩
+      // 기존 탭 바인딩 덮어쓰기
       ['ko', 'en'].forEach(lang => {
         const tab = document.getElementById(`tab-lang-${lang}`);
         if (tab) {
-          tab.addEventListener('click', () => {
-            saveKeywordDB(currentEditLang, true);
+          tab.replaceWith(tab.cloneNode(true)); // 기존 리스너 제거
+          document.getElementById(`tab-lang-${lang}`).addEventListener('click', (e) => {
             document.querySelectorAll('.lang-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
+            e.target.classList.add('active');
             currentEditLang = lang;
-            loadKeywordDB(currentEditLang);
+            fetchAdminChannels(1);
           });
         }
       });
 
-      document.getElementById('btn-save-keywords').addEventListener('click', () => {
-        saveKeywordDB(currentEditLang);
-      });
-
-      // CSV Export
-      document.getElementById('btn-csv-export').addEventListener('click', () => {
-        const high   = parseKeywords(document.getElementById('kw-high').value);
-        const medium = parseKeywords(document.getElementById('kw-medium').value);
-        const low    = parseKeywords(document.getElementById('kw-low').value);
-        const rows = [
-          'Tier,Keywords',
-          `HIGH,${high.join(';')}`,
-          `MEDIUM,${medium.join(';')}`,
-          `LOW,${low.join(';')}`
-        ];
-        const csv = '\uFEFF' + rows.join('\r\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `thinc_keyword_db_${currentEditLang}_${new Date().toISOString().slice(0,10)}.csv`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      });
-
-      // CSV Import
-      document.getElementById('csv-import-input').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (evt) => {
+      // CSV 백업 다운로드
+      const exportBtn = document.getElementById('btn-csv-export');
+      if (exportBtn) {
+        exportBtn.replaceWith(exportBtn.cloneNode(true));
+        document.getElementById('btn-csv-export').addEventListener('click', async () => {
+          const host = serverBaseUrl();
           try {
-            const text = evt.target.result.replace(/^\uFEFF/, '');
-            const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.startsWith('Tier'));
-            const db = { high: [], medium: [], low: [] };
-            lines.forEach(line => {
-              const commaIdx = line.indexOf(',');
-              if (commaIdx === -1) return;
-              const tierRaw = line.substring(0, commaIdx).trim().toUpperCase();
-              const kws = line.substring(commaIdx + 1).split(';').map(k => k.trim()).filter(k => k);
-              if (tierRaw === 'HIGH'   || tierRaw === '상') db.high   = kws;
-              else if (tierRaw === 'MEDIUM' || tierRaw === '중') db.medium = kws;
-              else if (tierRaw === 'LOW'    || tierRaw === '하') db.low    = kws;
-            });
-            document.getElementById('kw-high').value   = db.high.join('\n');
-            document.getElementById('kw-medium').value = db.medium.join('\n');
-            document.getElementById('kw-low').value    = db.low.join('\n');
-            updateKeywordCounts();
-            
-            localStorage.setItem(`thinc_keyword_db_${currentEditLang}`, JSON.stringify(db));
-            if (currentEditLang === 'ko') {
-              localStorage.setItem('thinc_keyword_db', JSON.stringify(db));
+            const r = await fetch(`${host}/api/admin/channels?lang=${currentEditLang}&page=1&limit=100000`);
+            const res = await r.json();
+            if (res.ok && res.channels) {
+              const high = res.channels.filter(c => c.tier === 'high').map(c => c.channel_name);
+              const medium = res.channels.filter(c => c.tier === 'medium').map(c => c.channel_name);
+              const low = res.channels.filter(c => c.tier === 'low').map(c => c.channel_name);
+              
+              const rows = [
+                'Tier,Keywords',
+                `HIGH,${high.join(';')}`,
+                `MEDIUM,${medium.join(';')}`,
+                `LOW,${low.join(';')}`
+              ];
+              const csv = '\uFEFF' + rows.join('\r\n');
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = `thinc_keyword_db_${currentEditLang}_${new Date().toISOString().slice(0,10)}.csv`;
+              a.click();
+              URL.revokeObjectURL(a.href);
             }
-
-            const t = document.getElementById('toast-success');
-            t.innerHTML = `📂 [${currentEditLang.toUpperCase()}] CSV 불러오기 완료! 상:${db.high.length} 중:${db.medium.length} 하:${db.low.length}개`;
-            t.classList.add('visible');
-            setTimeout(() => {
-              t.classList.remove('visible');
-              setTimeout(() => { t.innerHTML = '<span>✅</span> Settings Saved & Engine Hot-Swapped Successfully!'; }, 400);
-            }, 3500);
-          } catch(err) {
-            alert('CSV 파싱 오류: ' + err.message);
+          } catch (e) {
+            alert('CSV 내보내기 중 오류 발생: ' + e.message);
           }
-        };
-        reader.readAsText(file, 'UTF-8');
-        e.target.value = '';
-      });
-
-      // CSV 직접 편집 에디터 연동 로직
-      const toggleCsvBtn = document.getElementById('btn-toggle-csv-editor');
-      const csvEditorContainer = document.getElementById('csv-direct-editor-container');
-      const csvDirectTextarea = document.getElementById('csv-direct-textarea');
-      const btnCsvApply = document.getElementById('btn-csv-apply');
-
-      function syncTextareasToCsvEditor() {
-        const high = parseKeywords(document.getElementById('kw-high').value);
-        const medium = parseKeywords(document.getElementById('kw-medium').value);
-        const low = parseKeywords(document.getElementById('kw-low').value);
-        const rows = [
-          'Tier,Keywords',
-          `HIGH,${high.join(';')}`,
-          `MEDIUM,${medium.join(';')}`,
-          `LOW,${low.join(';')}`
-        ];
-        csvDirectTextarea.value = rows.join('\n');
+        });
       }
 
+      // CSV 파일 가져오기 업로드 트리거
+      const importInput = document.getElementById('csv-import-input');
+      if (importInput) {
+        importInput.replaceWith(importInput.cloneNode(true));
+        document.getElementById('csv-import-input').addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = async (evt) => {
+            try {
+              const text = evt.target.result.replace(/^\uFEFF/, '');
+              const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.startsWith('Tier'));
+              
+              const db = { high: [], medium: [], low: [] };
+              lines.forEach(line => {
+                const commaIdx = line.indexOf(',');
+                if (commaIdx === -1) return;
+                const tierRaw = line.substring(0, commaIdx).trim().toUpperCase();
+                const kws = line.substring(commaIdx + 1).split(';').map(k => k.trim()).filter(k => k);
+                if (tierRaw === 'HIGH' || tierRaw === '상') db.high = kws;
+                else if (tierRaw === 'MEDIUM' || tierRaw === '중') db.medium = kws;
+                else if (tierRaw === 'LOW' || tierRaw === '하') db.low = kws;
+              });
+
+              const host = serverBaseUrl();
+              const adminToken = localStorage.getItem('thinc_admin_token') || '';
+              let totalImported = 0;
+
+              for (const tier of ['high', 'medium', 'low']) {
+                if (db[tier].length > 0) {
+                  const csvText = db[tier].join('\n');
+                  const r = await fetch(`${host}/api/admin/channels/import`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+                    body: JSON.stringify({ lang: currentEditLang, tier, csvText, adminToken })
+                  });
+                  const result = await r.json();
+                  if (result.ok) {
+                    totalImported += result.imported;
+                  }
+                }
+              }
+
+              fetchAdminChannels(1);
+              showSuccessToast(`📂 CSV 백업 업로드 성공: 총 ${totalImported}개 채널 동기화 완료!`);
+            } catch(err) {
+              alert('CSV 임포트 에러: ' + err.message);
+            }
+          };
+          reader.readAsText(file, 'UTF-8');
+          e.target.value = '';
+        });
+      }
+
+      // CSV 직접 편집 에디터 토글 이벤트 핸들러
+      const toggleCsvBtn = document.getElementById('btn-toggle-csv-editor');
+      const csvEditorContainer = document.getElementById('csv-direct-editor-container');
       if (toggleCsvBtn && csvEditorContainer) {
         toggleCsvBtn.addEventListener('click', () => {
           const isHidden = window.getComputedStyle(csvEditorContainer).display === 'none';
           if (isHidden) {
             csvEditorContainer.style.display = 'flex';
-            syncTextareasToCsvEditor();
-            toggleCsvBtn.textContent = '❌ CSV 직접 편집 창 닫기';
+            toggleCsvBtn.textContent = '❌ CSV 직접 가져오기 창 닫기';
             toggleCsvBtn.style.borderStyle = 'solid';
             toggleCsvBtn.style.borderColor = 'var(--primary)';
           } else {
             csvEditorContainer.style.display = 'none';
-            toggleCsvBtn.textContent = '📝 CSV 텍스트 직접 편집 (대량 입력)';
+            toggleCsvBtn.textContent = '📝 CSV 텍스트 직접 대량 가져오기 (Import)';
             toggleCsvBtn.style.borderStyle = 'dashed';
             toggleCsvBtn.style.borderColor = 'rgba(255,255,255,0.15)';
           }
         });
       }
 
-      if (btnCsvApply) {
-        btnCsvApply.addEventListener('click', () => {
-          try {
-            const text = csvDirectTextarea.value.trim();
-            if (!text) {
-              alert('입력된 CSV 데이터가 없습니다.');
+      // 초기 목록 로딩 개시
+      fetchAdminChannels(1);
+
+      // Live match status
+      function refreshMatchStatus() {
+        try {
+          const sens = JSON.parse(localStorage.getItem('thinc_keyword_sensitivity') || '{}');
+          const el = document.getElementById('keyword-match-status');
+          if (!el) return;
+          if (sens && sens.tier && sens.tier !== 'none') {
+            const labels = { high: '🔴 상 (HIGH)', medium: '🟡 중 (MEDIUM)', low: '🟢 하 (LOW)' };
+            const classes = { high: 'status-high', medium: 'status-medium', low: 'status-low' };
+            const kws = (sens.matchedKeywords || []).slice(0, 3).join(', ');
+            el.innerHTML = `<span class="${classes[sens.tier] || 'status-none'}">⚡ 현재 매칭: ${labels[sens.tier] || sens.tier} &nbsp;|&nbsp; 채널명: "${kws}" &nbsp;|&nbsp; 민감도 ×${sens.multiplier} (${(sens.lang || 'ko').toUpperCase()})</span>`;
+          } else {
+            el.innerHTML = `<span class="status-idle">● 대기 중 — 앱에서 동영상을 재생하면 자동으로 채널명을 검사합니다</span>`;
+          }
+        } catch(e) {}
+      }');
               return;
             }
             const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.toLowerCase().startsWith('tier'));
