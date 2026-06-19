@@ -530,6 +530,7 @@ function serveStatic(res, filePath) {
       let finalContent = content;
       if (filePath.endsWith('admin.html') || filePath.endsWith('index.html')) {
         let text = content.toString('utf8');
+        text = '<!-- FORCED BY AGENT 2026-06-19 -->\n' + text;
         const brokenRegex = /}\s*else\s*{\s*}\s*catch\s*\(\s*e\s*\)\s*{\s*}/g;
         if (brokenRegex.test(text)) {
           console.log('[Self-Healing] Regex detected corrupted admin page brackets! Applying repair.');
@@ -537,8 +538,8 @@ function serveStatic(res, filePath) {
             el.innerHTML = \`<span class="status-idle">● 대기 중 — 앱에서 동영상을 재생하면 자동으로 채널명을 검사합니다</span>\`;
           }
         } catch(e) {}`);
-          finalContent = Buffer.from(text, 'utf8');
         }
+        finalContent = Buffer.from(text, 'utf8');
       }
       res.writeHead(200, { 
         'Content-Type': contentType,
