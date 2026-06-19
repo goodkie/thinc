@@ -219,7 +219,7 @@ function handleAdminSettings(req, res) {
       try {
         const payload = JSON.parse(body);
         // 선택적 비밀번호 보호: X-Admin-Token 헤더 또는 payload.adminToken
-        const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+        const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'koko';
         if (ADMIN_TOKEN) {
           const provided = req.headers['x-admin-token'] || payload.adminToken || '';
           if (provided !== ADMIN_TOKEN) {
@@ -325,7 +325,7 @@ function handleAdminChannels(req, res) {
   req.on('end', () => {
     try {
       const payload = JSON.parse(body);
-      const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+      const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'koko';
       if (ADMIN_TOKEN) {
         const provided = req.headers['x-admin-token'] || payload.adminToken || '';
         if (provided !== ADMIN_TOKEN) {
@@ -413,7 +413,7 @@ function handleAdminChannelsImport(req, res) {
   req.on('end', () => {
     try {
       const payload = JSON.parse(body);
-      const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+      const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'koko';
       if (ADMIN_TOKEN) {
         const provided = req.headers['x-admin-token'] || payload.adminToken || '';
         if (provided !== ADMIN_TOKEN) {

@@ -558,6 +558,14 @@
 
   // ── 현재 재생 중인 비디오 감지 및 재생 시간 정보 중계 ───────────────────────
   setInterval(() => {
+    // URL 조기 검증: watch 또는 shorts가 아니면 비디오가 존재하더라도 오버레이는 무조건 숨김
+    const currentHref = location.href;
+    const isWatchOrShorts = currentHref.includes('/watch') || currentHref.includes('/shorts');
+    if (!isWatchOrShorts) {
+      console.log('[THINC-VIDEO-RECT]' + JSON.stringify({ isVisible: false, url: currentHref }));
+      return;
+    }
+
     const vid = document.querySelector('video');
     if (vid) {
       setupSubtitleObserver();
@@ -622,13 +630,14 @@
           height: rect.height,
           windowWidth: window.innerWidth,
           windowHeight: window.innerHeight,
-          isVisible: true
+          isVisible: true,
+          url: location.href
         }));
       } else {
-        console.log('[THINC-VIDEO-RECT]' + JSON.stringify({ isVisible: false }));
+        console.log('[THINC-VIDEO-RECT]' + JSON.stringify({ isVisible: false, url: location.href }));
       }
     } else {
-      console.log('[THINC-VIDEO-RECT]' + JSON.stringify({ isVisible: false }));
+      console.log('[THINC-VIDEO-RECT]' + JSON.stringify({ isVisible: false, url: location.href }));
     }
   }, 200);
 

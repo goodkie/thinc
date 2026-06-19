@@ -2067,6 +2067,24 @@
     }
 
     function checkAndTriggerAnalysis(url, webviewId) {
+      const lowerUrl = (url || '').toLowerCase();
+      const isWatchOrShorts = lowerUrl.includes('watch') || lowerUrl.includes('/shorts/') || 
+                              lowerUrl.includes('/reel/') || lowerUrl.includes('/video/') ||
+                              lowerUrl.includes('facebook.com/videos');
+
+      if (!isWatchOrShorts) {
+        console.log(`[Th!nc-Extension] URL does not contain watch/shorts/reel/video. Hiding overlay immediately.`);
+        const overlay = document.getElementById('wv-float-overlay');
+        if (overlay) {
+          overlay.classList.add('hidden');
+          overlay.style.display = 'none';
+        }
+        if (isRunning) {
+          toggleSession();
+        }
+        return;
+      }
+
       const videoId = extractVideoIdFromUrl(url);
       if (videoId) {
         console.log(`[Th!nc-Extension] Auto-triggered analysis from navigation: ${videoId}`);
@@ -2076,6 +2094,7 @@
         const overlay = document.getElementById('wv-float-overlay');
         if (overlay) {
           overlay.classList.add('hidden');
+          overlay.style.display = 'none';
         }
         if (isRunning) {
           toggleSession();
@@ -2189,6 +2208,21 @@
             const data = JSON.parse(msg.substring('[THINC-VIDEO-RECT]'.length));
             const overlay = document.getElementById('wv-float-overlay');
             if (overlay) {
+              const currentUrl = wv.getURL ? wv.getURL() : '';
+              const lowerUrl = (currentUrl || '').toLowerCase();
+              const isWatchOrShorts = lowerUrl.includes('watch') || lowerUrl.includes('/shorts/') || 
+                                      lowerUrl.includes('/reel/') || lowerUrl.includes('/video/') ||
+                                      lowerUrl.includes('facebook.com/videos');
+
+              if (!isWatchOrShorts) {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+                if (isRunning) {
+                  toggleSession();
+                }
+                return;
+              }
+
               if (data.isVisible) {
                 const wvRect = wv.getBoundingClientRect();
                 const width = data.width;
@@ -2197,6 +2231,7 @@
                 overlay.style.top = `${wvRect.top + data.top}px`;
                 overlay.style.width = `${width}px`;
                 overlay.style.height = `${data.height}px`;
+                overlay.style.display = '';
                 
                 if (width < 540) {
                   overlay.classList.add('mini-overlay');
@@ -2222,6 +2257,7 @@
                 }
               } else {
                 overlay.classList.add('hidden');
+                overlay.style.display = 'none';
               }
             }
           } catch(err) {}
