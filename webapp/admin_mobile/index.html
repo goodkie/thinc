@@ -858,6 +858,35 @@
           </div>
         </div>
 
+        <!-- YouTube 채널 검색 추가 패널 -->
+        <div style="background: rgba(0, 242, 254, 0.03); border: 1px dashed rgba(0, 242, 254, 0.25); border-radius: 12px; padding: 14px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px;">
+          <h4 style="margin: 0; font-size: 13px; color: var(--primary); font-weight: 700;">🔍 YouTube 채널 검색 및 일괄 등록</h4>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <input type="text" id="yt-channel-search-input" placeholder="YouTube 검색어 입력 (예: 뉴스, 시사)" 
+                   style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid rgba(0, 242, 254, 0.2); padding: 8px 12px; border-radius: 8px; color: #fff; font-size: 12px; outline: none;"
+                   onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='rgba(0, 242, 254, 0.2)'">
+            <button class="btn-csv" id="btn-yt-channel-search" style="background: linear-gradient(135deg, var(--primary) 0%, #0072ff 100%); color: #020206; font-weight: 800; border: none; height: 36px; padding: 0 14px; border-radius: 8px; cursor: pointer; margin:0; font-size: 12px; width: 100%;">🔍 유튜브 검색</button>
+          </div>
+          
+          <!-- 검색 결과 목록 (체크박스 형태로 동적 생성됨) -->
+          <div id="yt-search-results-wrapper" style="display: none; flex-direction: column; gap: 10px;">
+            <div style="max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px;" id="yt-search-results-list">
+              <!-- 체크박스 채널 리스트 동적 삽입 -->
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
+              <div style="font-size: 11px; color: var(--text-muted);" id="yt-search-status-text">추출된 채널: 0개</div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <select id="yt-search-import-tier" style="flex: 1; background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); padding: 6px 10px; border-radius: 6px; color: #fff; font-size: 12px; outline: none; height:32px;">
+                  <option value="high">🔴 상 (HIGH)</option>
+                  <option value="medium" selected>🟡 중 (MEDIUM)</option>
+                  <option value="low">🟢 하 (LOW)</option>
+                </select>
+                <button class="btn-csv" id="btn-yt-channel-bulk-add" style="flex: 1.5; background: linear-gradient(135deg, var(--accent-green) 0%, #00b0ff 100%); color: #020206; font-weight: 800; border: none; height: 32px; padding: 0 12px; border-radius: 6px; cursor: pointer; font-size: 11px; margin:0;">📥 일괄 추가</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 2. 페이징 데이터 테이블 -->
         <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-glass); border-radius: 12px; overflow: hidden; margin-bottom: 15px;">
           <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
@@ -1798,6 +1827,130 @@
             t.classList.remove('visible');
             setTimeout(() => { t.innerHTML = '<span>✅</span> Settings Saved & Applied Successfully!'; }, 400);
           }, 3000);
+        });
+      }
+
+      // === YouTube Channel Search & Bulk Add Logic ===
+      const ytSearchBtn = document.getElementById('btn-yt-channel-search');
+      const ytSearchInput = document.getElementById('yt-channel-search-input');
+      const ytResultsWrapper = document.getElementById('yt-search-results-wrapper');
+      const ytResultsList = document.getElementById('yt-search-results-list');
+      const ytStatusText = document.getElementById('yt-search-status-text');
+      const ytBulkAddBtn = document.getElementById('btn-yt-channel-bulk-add');
+      const ytImportTier = document.getElementById('yt-search-import-tier');
+
+      if (ytSearchBtn && ytSearchInput) {
+        ytSearchBtn.addEventListener('click', async () => {
+          const query = ytSearchInput.value.trim();
+          if (!query) {
+            alert('검색어를 입력하세요.');
+            return;
+          }
+
+          ytSearchBtn.disabled = true;
+          ytSearchBtn.textContent = '⚡ 검색 중...';
+          ytResultsWrapper.style.display = 'none';
+          ytResultsList.innerHTML = '';
+
+          try {
+            const host = serverBaseUrl();
+            const r = await fetch(`${host}/api/search?q=${encodeURIComponent(query)}&hl=${currentEditLang}`);
+            const data = await r.json();
+
+            if (data && Array.isArray(data)) {
+              // Extract unique channel names
+              const channels = [...new Set(data.map(v => v.channel).filter(c => c && c !== 'Unknown Channel'))];
+              
+              if (channels.length === 0) {
+                alert('검색된 채널이 없습니다.');
+                ytSearchBtn.disabled = false;
+                ytSearchBtn.textContent = '🔍 유튜브 검색';
+                return;
+              }
+
+              // Render checkbox list
+              channels.forEach((ch) => {
+                const label = document.createElement('label');
+                label.style.display = 'flex';
+                label.style.alignItems = 'center';
+                label.style.gap = '8px';
+                label.style.fontSize = '12px';
+                label.style.color = '#fff';
+                label.style.cursor = 'pointer';
+                label.style.padding = '4px 0';
+                
+                label.innerHTML = `
+                  <input type="checkbox" value="${escapeHtml(ch)}" checked style="cursor:pointer;">
+                  <span>${escapeHtml(ch)}</span>
+                `;
+                ytResultsList.appendChild(label);
+              });
+
+              ytStatusText.textContent = `추출된 채널: ${channels.length}개`;
+              ytResultsWrapper.style.display = 'flex';
+            } else {
+              alert('유튜브 검색 데이터를 가져오지 못했습니다.');
+            }
+          } catch (e) {
+            alert('유튜브 검색 오류: ' + e.message);
+          } finally {
+            ytSearchBtn.disabled = false;
+            ytSearchBtn.textContent = '🔍 유튜브 검색';
+          }
+        });
+
+        // Trigger search on Enter key
+        ytSearchInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') ytSearchBtn.click();
+        });
+      }
+
+      if (ytBulkAddBtn) {
+        ytBulkAddBtn.addEventListener('click', async () => {
+          const checkedInputs = ytResultsList.querySelectorAll('input[type="checkbox"]:checked');
+          if (checkedInputs.length === 0) {
+            alert('추가할 채널을 선택하세요.');
+            return;
+          }
+
+          const channelsToImport = Array.from(checkedInputs).map(input => input.value);
+          const csvText = channelsToImport.join('\n');
+          const tier = ytImportTier.value;
+
+          ytBulkAddBtn.disabled = true;
+          ytBulkAddBtn.textContent = '📥 등록 중...';
+
+          try {
+            const host = serverBaseUrl();
+            const adminToken = localStorage.getItem('thinc_admin_token') || '';
+            const r = await fetch(`${host}/api/admin/channels/import`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json', 
+                ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) 
+              },
+              body: JSON.stringify({ 
+                lang: currentEditLang, 
+                tier, 
+                csvText, 
+                adminToken 
+              })
+            });
+            const res = await r.json();
+            if (res.ok) {
+              ytResultsWrapper.style.display = 'none';
+              ytSearchInput.value = '';
+              fetchAdminChannels(1); // Refresh channel list table
+              showSuccessToast(`⚡ ${res.imported}개 채널 민감도 DB 등록 완료!`);
+            } else {
+              alert('일괄 등록 실패: ' + (res.error || 'Unknown'));
+            }
+          } catch (e) {
+            alert('일괄 등록 오류: ' + e.message);
+          } finally {
+            ytBulkAddBtn.disabled = false;
+            ytBulkAddBtn.textContent = '📥 일괄 추가';
+          }
         });
       }
 
