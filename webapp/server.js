@@ -11,12 +11,21 @@ const BLACKLIST_DURATION = 1 * 60 * 60 * 1000; // 1 Hour
 
 // --- Admin Settings Server-Side Store ---
 // 어드민이 온라인에서 설정하면 모든 클라이언트(데스크톱/모바일/웹)에 실시간 반영
-const ADMIN_SETTINGS_FILE = path.join(__dirname, 'admin_settings.json');
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+if (!fs.existsSync(DATA_DIR)) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (err) {
+    console.error('[DB] Failed to create DATA_DIR:', err);
+  }
+}
+
+const ADMIN_SETTINGS_FILE = path.join(DATA_DIR, 'admin_settings.json');
 let _adminSettingsCache = null;
 
 // --- SQLite 3 Database & In-Memory Dictionary Cache ---
 const sqlite3 = require('sqlite3').verbose();
-const dbPath = path.join(__dirname, 'thinc_database.db');
+const dbPath = path.join(DATA_DIR, 'thinc_database.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('[DB] SQLite connection error:', err);
@@ -459,6 +468,157 @@ function handleAdminChannelsImport(req, res) {
             loadInMemoryCache();
             res.writeHead(200, CORS);
             res.end(JSON.stringify({ ok: true, imported: lines.length }));
+          });
+        });
+      });
+    } catch (e) {
+      res.writeHead(400, CORS);
+      res.end(JSON.stringify({ ok: false, error: 'Invalid JSON: ' + e.message }));
+    }
+  });
+}
+
+function handleAdminBackup(req, res) {
+  const CORS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  };
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS); res.end(); return;
+  }
+
+  if (req.method !== 'GET') {
+    res.writeHead(405, CORS);
+    res.end(JSON.stringify({ ok: false, error: 'Method Not Allowed' }));
+    return;
+  }
+
+  const parsedUrl = url.parse(req.url, true);
+  const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'koko';
+  const provided = req.headers['x-admin-token'] || parsedUrl.query.token || '';
+  if (ADMIN_TOKEN && provided !== ADMIN_TOKEN) {
+    res.writeHead(401, CORS);
+    res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+    return;
+  }
+
+  db.all(`SELECT lang, tier, channel_name FROM sensitivity_channels`, [], (err, rows) => {
+    if (err) {
+      res.writeHead(500, CORS);
+      res.end(JSON.stringify({ ok: false, error: 'Database error: ' + err.message }));
+      return;
+    }
+
+    const backupData = {
+      version: '1.0',
+      backupTime: new Date().toISOString(),
+      adminSettings: _adminSettingsCache || {},
+      channels: rows || []
+    };
+
+    res.writeHead(200, CORS);
+    res.end(JSON.stringify({ ok: true, data: backupData }));
+  });
+}
+
+function handleAdminRestore(req, res) {
+  const CORS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  };
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS); res.end(); return;
+  }
+
+  if (req.method !== 'POST') {
+    res.writeHead(405, CORS);
+    res.end(JSON.stringify({ ok: false, error: 'Method Not Allowed' }));
+    return;
+  }
+
+  let body = '';
+  req.on('data', chunk => { body += chunk; });
+  req.on('end', () => {
+    try {
+      const payload = JSON.parse(body);
+      const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'koko';
+      if (ADMIN_TOKEN) {
+        const provided = req.headers['x-admin-token'] || payload.adminToken || '';
+        if (provided !== ADMIN_TOKEN) {
+          res.writeHead(401, CORS);
+          res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+          return;
+        }
+      }
+
+      const backupData = payload.backupData;
+      if (!backupData || !backupData.adminSettings || !Array.isArray(backupData.channels)) {
+        res.writeHead(400, CORS);
+        res.end(JSON.stringify({ ok: false, error: 'Invalid backup data format' }));
+        return;
+      }
+
+      // 1. 어드민 설정 복원
+      _adminSettingsCache = backupData.adminSettings;
+      _adminSettingsCache._updatedAt = new Date().toISOString();
+      fs.writeFileSync(ADMIN_SETTINGS_FILE, JSON.stringify(_adminSettingsCache, null, 2), 'utf8');
+
+      // 2. 데이터베이스 복원 (기존 데이터 비우고 일괄 삽입)
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        db.run('DELETE FROM sensitivity_channels', (err) => {
+          if (err) {
+            db.run('ROLLBACK');
+            console.error('[Restore] Failed to clear DB:', err);
+            res.writeHead(500, CORS);
+            res.end(JSON.stringify({ ok: false, error: 'Failed to clear existing database' }));
+            return;
+          }
+
+          const stmt = db.prepare('INSERT OR REPLACE INTO sensitivity_channels (lang, tier, channel_name) VALUES (?, ?, ?)');
+          let hasError = false;
+
+          for (const item of backupData.channels) {
+            if (!item.lang || !item.tier || !item.channel_name) continue;
+            stmt.run([item.lang, item.tier, item.channel_name.trim()], (err) => {
+              if (err) {
+                hasError = true;
+                console.error('[Restore] Failed to insert row:', err);
+              }
+            });
+          }
+
+          stmt.finalize((err) => {
+            if (err || hasError) {
+              db.run('ROLLBACK');
+              res.writeHead(500, CORS);
+              res.end(JSON.stringify({ ok: false, error: 'Failed to restore database rows' }));
+              return;
+            }
+
+            db.run('COMMIT', (commitErr) => {
+              if (commitErr) {
+                console.error('[Restore] Commit failed:', commitErr);
+                res.writeHead(500, CORS);
+                res.end(JSON.stringify({ ok: false, error: 'Failed to commit transaction' }));
+                return;
+              }
+
+              // 인메모리 캐시 갱신
+              loadInMemoryCache();
+              console.log('[Restore] DB & admin_settings restore completed successfully.');
+
+              res.writeHead(200, CORS);
+              res.end(JSON.stringify({ ok: true, message: 'Restore completed successfully' }));
+            });
           });
         });
       });
@@ -2937,6 +3097,10 @@ const server = http.createServer((req, res) => {
     handleAdminChannels(req, res);
   } else if (parsedUrl.pathname === '/api/admin/channels/import') {
     handleAdminChannelsImport(req, res);
+  } else if (parsedUrl.pathname === '/api/admin/backup') {
+    handleAdminBackup(req, res);
+  } else if (parsedUrl.pathname === '/api/admin/restore') {
+    handleAdminRestore(req, res);
   } else {
     let safePath = parsedUrl.pathname;
     if (safePath === '/' || safePath === '') {
