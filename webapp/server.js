@@ -1582,73 +1582,13 @@ let lastPipedInstancesFetchTime = 0;
 async function getPipedInstances() {
   const now = Date.now();
   
-  const fallbackList = [
-    "https://pipedapi.kavin.rocks",
-    "https://api.piped.private.coffee",
-    "https://pipedapi.in.projectsegfau.lt",
-    "https://pipedapi.darkness.services",
-    "https://piped-api.lunar.icu",
-    "https://pipedapi.r4fo.com",
-    "https://piped.video",
-    "https://piped.yt"
-  ];
-
-  if (cachedPipedInstances.length > 0 && (now - lastPipedInstancesFetchTime < 6 * 3600 * 1000)) {
-    const active = cachedPipedInstances.filter(url => !isNodeBlacklisted(url));
-    return active.length > 0 ? active : cachedPipedInstances;
-  }
-  
-  // Try dynamic fetching from multiple mirror sources
-  const sources = [
-    'https://piped-instances.kavin.rocks/',
-    'https://raw.githubusercontent.com/team-piped/piped-instances/main/piped-instances.json'
-  ];
-
-  for (const src of sources) {
-    try {
-      const list = await new Promise((resolve, reject) => {
-        const options = {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          timeout: 3000
-        };
-        https.get(src, options, (res) => {
-          if (res.statusCode !== 200) {
-            reject(new Error(`Status: ${res.statusCode}`));
-            return;
-          }
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
-          });
-        }).on('error', reject);
-      });
-      
-      if (Array.isArray(list)) {
-        let urls = list
-          .filter(item => item && item.api_url)
-          .map(item => item.api_url);
-        
-        // Ensure private.coffee is prioritized
-        const index = urls.indexOf("https://api.piped.private.coffee");
-        if (index !== -1) urls.splice(index, 1);
-        urls.unshift("https://api.piped.private.coffee");
-        
-        if (urls.length > 0) {
-          cachedPipedInstances = urls;
-          lastPipedInstancesFetchTime = now;
-          const active = cachedPipedInstances.filter(url => !isNodeBlacklisted(url));
-          return active.length > 0 ? active : cachedPipedInstances;
-        }
-      }
-    } catch (err) {
-      console.warn(`Failed to fetch dynamic Piped instances from ${src}:`, err.message);
-    }
-  }
-  
-  const activeFallback = fallbackList.filter(url => !isNodeBlacklisted(url));
-  return activeFallback.length > 0 ? activeFallback : fallbackList;
+  // Piped has officially shut down (June 2025). All piped instances return "Piped has shutdown".
+  // Return empty list to prevent wasting time on dead endpoints.
+  console.warn('[Piped] Piped service has officially shut down. Skipping Piped fallback.');
+  return [];
 }
+
+
 
 async function fetchPipedCaptionsBackend(videoId) {
   const instances = await getPipedInstances();
@@ -1804,7 +1744,10 @@ async function getInvidiousInstances() {
     "https://yewtu.be",
     "https://yt.chocolatemoo53.com",
     "https://invidious.lunar.icu",
-    "https://invidious.drgns.space"
+    "https://invidious.drgns.space",
+    "https://invidious.io.lol",
+    "https://inv.riverside.rocks",
+    "https://invidious.privacyredirect.com"
   ];
 
   if (cachedInvidiousInstances.length > 0 && (now - lastInstancesFetchTime < 6 * 3600 * 1000)) {
@@ -2092,28 +2035,51 @@ async function getYouTubeTranscriptDirect(videoId, lang) {
       "AIzaSyD-aDj6stnH465S41hszj5q3bUeQ6mO0e8"  // Android Key
     ].filter(Boolean);
 
-    // Client signature sets for emulation (TVHTML5 embedded player is most reliable for captions)
+    // Client signature sets for emulation - latest versions as of 2025
+    // MWEB and ANDROID clients are most reliable for bypassing caption blocks
     const clientSignatures = [
+      {
+        name: 'MWEB',
+        version: '2.20250619.01.00',
+        ua: 'Mozilla/5.0 (Linux; Android 11; Pixel 4a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36',
+        hl: lang || 'ko',
+        gl: 'KR'
+      },
+      {
+        name: 'ANDROID',
+        version: '19.44.41',
+        ua: 'com.google.android.youtube/19.44.41 (Linux; U; Android 14; ko_KR) AppleWebKit/537.36 Mobile Safari/537.36',
+        hl: lang || 'ko',
+        gl: 'KR'
+      },
       {
         name: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
         version: '2.0',
         ua: 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.5) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/5.0 Chrome/85.0.4183.93 TV Safari/537.36',
-        embedUrl: `https://www.youtube.com/embed/${videoId}`
+        embedUrl: `https://www.youtube.com/embed/${videoId}`,
+        hl: lang || 'ko',
+        gl: 'KR'
       },
       {
         name: 'WEB',
-        version: '2.20240409.01.00',
-        ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-      },
-      {
-        name: 'ANDROID',
-        version: '19.05.35',
-        ua: 'com.google.android.youtube/19.05.35 (Linux; U; Android 11; ko_KR) Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 Mobile Safari/537.36'
+        version: '2.20250619.01.00',
+        ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        hl: lang || 'ko',
+        gl: 'KR'
       },
       {
         name: 'IOS',
-        version: '19.08.2',
-        ua: 'com.google.ios.youtube/19.08.2 (iPhone14,3; U; CPU iOS 15_4 like Mac OS X; ko_KR)'
+        version: '19.44.4',
+        ua: 'com.google.ios.youtube/19.44.4 (iPhone14,3; U; CPU iOS 17_5 like Mac OS X; ko_KR)',
+        hl: lang || 'ko',
+        gl: 'KR'
+      },
+      {
+        name: 'ANDROID',
+        version: '19.44.41',
+        ua: 'com.google.android.youtube/19.44.41 (Linux; U; Android 14; en_US) AppleWebKit/537.36 Mobile Safari/537.36',
+        hl: 'en',
+        gl: 'US'
       }
     ];
 
@@ -2125,8 +2091,8 @@ async function getYouTubeTranscriptDirect(videoId, lang) {
               client: {
                 clientName: sig.name,
                 clientVersion: sig.version,
-                hl: lang || 'ko',
-                gl: 'KR',
+                hl: sig.hl || lang || 'ko',
+                gl: sig.gl || 'KR',
                 userAgent: sig.ua
               }
             },
@@ -2138,24 +2104,31 @@ async function getYouTubeTranscriptDirect(videoId, lang) {
           }
           const payload = JSON.stringify(payloadObj);
           
+          const reqHeaders = {
+            'Content-Type': 'application/json',
+            'User-Agent': sig.ua,
+            'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com',
+            'X-YouTube-Client-Name': sig.name === 'MWEB' ? '2' : sig.name === 'ANDROID' ? '3' : sig.name === 'IOS' ? '5' : '1',
+            'X-YouTube-Client-Version': sig.version,
+            'Content-Length': Buffer.byteLength(payload)
+          };
+          
           const resData = await new Promise((resolve, reject) => {
             const req = https.request({
               hostname: 'www.youtube.com',
               port: 443,
-              path: `/youtubei/v1/player?key=${key}`,
+              path: `/youtubei/v1/player?prettyPrint=false`,
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'User-Agent': sig.ua,
-                'Referer': 'https://www.youtube.com/',
-                'Content-Length': Buffer.byteLength(payload)
-              }
+              headers: reqHeaders,
+              timeout: 8000
             }, (res) => {
               let body = '';
               res.on('data', chunk => body += chunk);
               res.on('end', () => resolve(body));
             });
             req.on('error', reject);
+            req.on('timeout', () => { req.destroy(); reject(new Error('InnerTube request timeout')); });
             req.write(payload);
             req.end();
           });
@@ -2304,11 +2277,16 @@ function handleCaptions(req, res) {
   async function tryFetch(lang) {
     let segments;
     try {
-      const opts = lang ? { lang } : {};
-      segments = await YoutubeTranscript.fetchTranscript(videoId, opts);
-    } catch (err) {
-      console.warn(`[handleCaptions] YoutubeTranscript library failed for lang=${lang}, trying direct robust fetcher:`, err.message);
+      // 1순위: 우회율이 높고 빠르며 직접 작동하는 InnerTube 스크래퍼 시도
       segments = await getYouTubeTranscriptDirect(videoId, lang);
+    } catch (err) {
+      console.warn(`[handleCaptions] getYouTubeTranscriptDirect failed for lang=${lang}, trying YoutubeTranscript library:`, err.message);
+      try {
+        const opts = lang ? { lang } : {};
+        segments = await YoutubeTranscript.fetchTranscript(videoId, opts);
+      } catch (errLib) {
+        console.warn(`[handleCaptions] YoutubeTranscript library also failed for lang=${lang}:`, errLib.message);
+      }
     }
     if (!segments || segments.length === 0) {
       throw new Error('Empty transcript from API');
@@ -2365,13 +2343,11 @@ function handleCaptions(req, res) {
   }
 
   chain
-    // Fallback 1: Piped Captions Scrape (가장 우회율이 높음)
-    .catch(() => fetchPipedCaptionsBackend(videoId).then(res => { console.log('[handleCaptions] Piped success:', res.lang); actualLang = res.lang; return res.captions; }))
-    // Fallback 2: YouTube timedtext official backend scraper
+    // Fallback 1: YouTube timedtext official backend scraper (Piped 제거)
     .catch(() => fetchYoutubeTimedTextOfficialBackend(videoId).then(res => { console.log('[handleCaptions] timedtext success'); actualLang = res.lang; return res.captions; }))
-    // Fallback 3: YouTube Native XML Scraper Scrape
+    // Fallback 2: YouTube Native XML Scraper Scrape
     .catch(() => fetchYoutubeCaptionsFallback(videoId).then(captions => { console.log('[handleCaptions] Native XML success'); actualLang = 'ko'; return captions; }))
-    // Fallback 4: Invidious Open Captions Scrape
+    // Fallback 3: Invidious Open Captions Scrape
     .catch(() => fetchInvidiousCaptionsFallback(videoId).then(captions => { console.log('[handleCaptions] Invidious success'); actualLang = 'ko'; return captions; }))
     .then(captions => {
       console.log(`[handleCaptions] Returning ${captions.length} captions for ${videoId}`);
@@ -2454,38 +2430,39 @@ async function handleAnalyzeVideoFast(req, res) {
   }
 
   try {
-  // ── 자막 세그먼트 수집 (다단 폴백) ──────────────────────────────────────────
+  // ── 자막 세그먼트 수집 (다단 폴백 - Piped 서비스 종료로 InnerTube 직접 API 우선) ──
   let rawSegments = null;
   
-  // 1차: YoutubeTranscript 라이브러리 (가장 빠름)
-  try {
-    rawSegments = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'ko' });
-  } catch (e1) {
-    try {
-      rawSegments = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' });
-    } catch (e2) {
-      // no-op, try next
-    }
-  }
-  
-  // 2차: YouTube 직접 스크래핑 폴백
+  // 1차: YouTube InnerTube 직접 API (여러 클라이언트 순환, 가장 신뢰성 높음)
   if (!rawSegments || rawSegments.length === 0) {
     try {
       rawSegments = await getYouTubeTranscriptDirect(videoId, 'ko');
-    } catch(e) {}
+      console.log(`[handleAnalyzeVideoFast] InnerTube ko success: ${rawSegments.length} segs`);
+    } catch(e) {
+      console.warn(`[handleAnalyzeVideoFast] InnerTube ko failed: ${e.message}`);
+    }
   }
   if (!rawSegments || rawSegments.length === 0) {
     try {
       rawSegments = await getYouTubeTranscriptDirect(videoId, 'en');
-    } catch(e) {}
+      console.log(`[handleAnalyzeVideoFast] InnerTube en success: ${rawSegments.length} segs`);
+    } catch(e) {
+      console.warn(`[handleAnalyzeVideoFast] InnerTube en failed: ${e.message}`);
+    }
   }
   
-  // 3차: Piped 폴백 (병렬 다인스턴스 레이스)
+  // 2차: YoutubeTranscript 라이브러리 (IP 차단 시 실패할 수 있음)
   if (!rawSegments || rawSegments.length === 0) {
     try {
-      rawSegments = await fetchPipedCaptionsBackend(videoId);
-    } catch(e) {
-      console.warn(`[handleAnalyzeVideoFast] Piped fallback failed: ${e.message}`);
+      rawSegments = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'ko' });
+      console.log(`[handleAnalyzeVideoFast] YoutubeTranscript ko success: ${rawSegments.length} segs`);
+    } catch (e1) {
+      try {
+        rawSegments = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' });
+        console.log(`[handleAnalyzeVideoFast] YoutubeTranscript en success: ${rawSegments.length} segs`);
+      } catch (e2) {
+        console.warn(`[handleAnalyzeVideoFast] YoutubeTranscript both langs failed`);
+      }
     }
   }
 
@@ -2602,12 +2579,13 @@ async function handleAnalyzeVideoFast(req, res) {
   if (sensInfo.tier === 'high') {
     // 상: 35% ~ 70% 미만의 임의의 값 (35 ~ 69)
     score = 35 + Math.floor(Math.random() * 35);
+    // caution과 danger의 점수 판정 기준 교환 (score < 50 일 때 주의, score >= 50 일 때 위험)
     if (score < 50) {
-      rating = 'danger'; // 위험 판정
-      badgeText = `위험 [상] ${100 - score}%${fuzzySuffix}`;
-    } else {
       rating = 'caution'; // 주의 판정
       badgeText = `주의 [상] ${100 - score}%${fuzzySuffix}`;
+    } else {
+      rating = 'danger'; // 위험 판정
+      badgeText = `위험 [상] ${100 - score}%${fuzzySuffix}`;
     }
   } else if (sensInfo.tier === 'medium') {
     // 중: 70% ~ 85% 의 임의의 값 (70 ~ 85)
@@ -2627,7 +2605,7 @@ async function handleAnalyzeVideoFast(req, res) {
   } else {
     // DB 미매칭: 무조건 '스캔중' 뱃지 표시
     score = 65 + Math.floor(Math.random() * 16);
-    rating = 'caution';
+    rating = 'scanning';
     badgeText = '스캔중';
   }
 

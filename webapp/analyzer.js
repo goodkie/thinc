@@ -512,8 +512,8 @@ class VoiceStressAnalyzer {
           const avgRms = this.calibrationRmsValues.reduce((a, b) => a + b, 0) / n;
           const variance = this.calibrationRmsValues.reduce((a, b) => a + Math.pow(b - avgRms, 2), 0) / n;
           const stdDev = Math.sqrt(variance);
-          // Set silence threshold: average + 2.5 * standard deviation
-          this.silenceThreshold = Math.max(0.002, Math.min(0.03, avgRms + (2.5 * stdDev)));
+          // Set silence threshold: average + 2.5 * standard deviation (하한선 0.012로 상향하여 미세 잡음 환경 무음 감지 개선)
+          this.silenceThreshold = Math.max(0.012, Math.min(0.04, avgRms + (2.5 * stdDev)));
           console.log(`[Th!nc VoiceStressAnalyzer] Calibration complete. Dynamic Silence Threshold set to: ${this.silenceThreshold.toFixed(5)} (avgRms: ${avgRms.toFixed(5)}, stdDev: ${stdDev.toFixed(5)})`);
         }
       }
@@ -583,13 +583,12 @@ class VoiceStressAnalyzer {
     const smoothAIScore = this.aiHistory.reduce((a, b) => a + b, 0) / this.aiHistory.length;
 
     // Multidimensional music and effect detector
-    // Guard: only flag as music when there's significant audio energy (rms > 0.005)
-    // Thresholds lowered to make music and effect detection more sensitive per user request
-    const isMusicOrEffect = rms > 0.003 && (
-      (hnr > 0.85) ||
-      (hnr > 0.82 && jitter < 0.03 && pdr < 0.12) ||
-      (hnr > 0.80 && fi < 0.06 && pdr < 0.10 && jitter < 0.025) ||
-      (normEntropy < 0.40 && hnr > 0.80)
+    // 음악 및 효과음 탐지 감도 대폭 상향 (임계값 완화하여 효과음/음악 구간에서 0점 처리 확실히 되도록 개선)
+    const isMusicOrEffect = rms > 0.002 && (
+      (hnr > 0.72) ||
+      (hnr > 0.68 && jitter < 0.045 && pdr < 0.18) ||
+      (hnr > 0.65 && fi < 0.08 && pdr < 0.15 && jitter < 0.035) ||
+      (normEntropy < 0.48 && hnr > 0.65)
     );
 
     if (isMusicOrEffect) {
