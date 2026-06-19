@@ -861,6 +861,12 @@
         <!-- YouTube 채널 검색 추가 패널 -->
         <div style="background: rgba(0, 242, 254, 0.03); border: 1px dashed rgba(0, 242, 254, 0.25); border-radius: 12px; padding: 14px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px;">
           <h4 style="margin: 0; font-size: 13px; color: var(--primary); font-weight: 700;">🔍 YouTube 채널 검색 및 일괄 등록</h4>
+          
+          <!-- 프로그레스 바 UI 추가 -->
+          <div id="yt-search-progress-container" style="display:none; width:100%; background:rgba(255,255,255,0.05); height:5px; border-radius:2.5px; margin: 2px 0 6px 0; overflow:hidden;">
+            <div id="yt-search-progress-bar" style="width:0%; height:100%; background: linear-gradient(90deg, var(--primary) 0%, var(--accent-green) 100%); transition: width 0.4s ease;"></div>
+          </div>
+
           <div style="display: flex; flex-direction: column; gap: 8px;">
             <input type="text" id="yt-channel-search-input" placeholder="YouTube 검색어 입력 (예: 뉴스, 시사)" 
                    style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid rgba(0, 242, 254, 0.2); padding: 8px 12px; border-radius: 8px; color: #fff; font-size: 12px; outline: none;"
@@ -1841,9 +1847,11 @@
       const ytStatusText = document.getElementById('yt-search-status-text');
       const ytBulkAddBtn = document.getElementById('btn-yt-channel-bulk-add');
       const ytImportTier = document.getElementById('yt-search-import-tier');
+      const ytProgressContainer = document.getElementById('yt-search-progress-container');
+      const ytProgressBar = document.getElementById('yt-search-progress-bar');
 
       if (ytSearchBtn && ytSearchInput) {
-        ytSearchBtn.addEventListener('click', async () => {
+        ytSearchBtn.addEventListener('click', () => {
           const query = ytSearchInput.value.trim();
           if (!query) {
             alert('검색어를 입력하세요.');
@@ -1851,51 +1859,78 @@
           }
 
           ytSearchBtn.disabled = true;
-          ytSearchBtn.textContent = '⚡ 검색 중...';
+          ytSearchBtn.textContent = '⚡ 탐색 시작...';
+          
+          if (ytProgressContainer) {
+            ytProgressContainer.style.display = 'block';
+            ytProgressBar.style.width = '0%';
+          }
+          
           ytResultsWrapper.style.display = 'none';
           ytResultsList.innerHTML = '';
+          ytStatusText.textContent = '대기 중...';
 
           try {
             const host = serverBaseUrl();
-            const r = await fetch(`${host}/api/search?q=${encodeURIComponent(query)}&hl=${currentEditLang}&collectChannels=true`);
-            const data = await r.json();
+            const sseUrl = `${host}/api/search-stream?q=${encodeURIComponent(query)}&hl=${currentEditLang}`;
+            const source = new EventSource(sseUrl);
 
-            if (data && Array.isArray(data)) {
-              const channels = data;
-              
-              if (channels.length === 0) {
-                alert('검색된 채널이 없습니다.');
-                ytSearchBtn.disabled = false;
-                ytSearchBtn.textContent = '🔍 유튜브 검색';
-                return;
+            source.onmessage = (event) => {
+              try {
+                const msg = JSON.parse(event.data);
+                const percent = msg.percent || 0;
+                const status = msg.status || '';
+                const channels = msg.data || [];
+
+                if (ytProgressBar) {
+                  ytProgressBar.style.width = percent + '%';
+                }
+                ytStatusText.textContent = `⚡ [${percent}%] ${status}`;
+
+                if (channels.length > 0) {
+                  ytResultsList.innerHTML = '';
+                  channels.forEach((ch) => {
+                    const label = document.createElement('label');
+                    label.style.display = 'flex';
+                    label.style.alignItems = 'center';
+                    label.style.gap = '8px';
+                    label.style.fontSize = '12px';
+                    label.style.color = '#fff';
+                    label.style.cursor = 'pointer';
+                    label.style.padding = '4px 0';
+                    
+                    label.innerHTML = `
+                      <input type="checkbox" value="${escapeHtml(ch)}" checked style="cursor:pointer;">
+                      <span>${escapeHtml(ch)}</span>
+                    `;
+                    ytResultsList.appendChild(label);
+                  });
+                  ytResultsWrapper.style.display = 'flex';
+                }
+
+                if (percent === 100) {
+                  source.close();
+                  ytSearchBtn.disabled = false;
+                  ytSearchBtn.textContent = '🔍 유튜브 검색';
+                  if (channels.length === 0) {
+                    alert('검색된 채널이 없습니다.');
+                  }
+                }
+              } catch (err) {
+                console.error("SSE parse error", err);
               }
+            };
 
-              // Render checkbox list
-              channels.forEach((ch) => {
-                const label = document.createElement('label');
-                label.style.display = 'flex';
-                label.style.alignItems = 'center';
-                label.style.gap = '8px';
-                label.style.fontSize = '12px';
-                label.style.color = '#fff';
-                label.style.cursor = 'pointer';
-                label.style.padding = '4px 0';
-                
-                label.innerHTML = `
-                  <input type="checkbox" value="${escapeHtml(ch)}" checked style="cursor:pointer;">
-                  <span>${escapeHtml(ch)}</span>
-                `;
-                ytResultsList.appendChild(label);
-              });
+            source.onerror = (err) => {
+              console.error("SSE Error:", err);
+              source.close();
+              ytSearchBtn.disabled = false;
+              ytSearchBtn.textContent = '🔍 유튜브 검색';
+              alert('검색 스트리밍 연결 실패 또는 시간 초과 발생.');
+            };
 
-              ytStatusText.textContent = `추출된 채널: ${channels.length}개`;
-              ytResultsWrapper.style.display = 'flex';
-            } else {
-              alert('유튜브 검색 데이터를 가져오지 못했습니다.');
-            }
           } catch (e) {
-            alert('유튜브 검색 오류: ' + e.message);
-          } finally {
+            alert('유튜브 검색 초기화 오류: ' + e.message);
             ytSearchBtn.disabled = false;
             ytSearchBtn.textContent = '🔍 유튜브 검색';
           }

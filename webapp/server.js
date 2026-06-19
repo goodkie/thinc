@@ -786,179 +786,10 @@ function handleSearch(req, res) {
           }
         }
 
-        // Return direct channel harvest if collectChannels is true
+        // Return direct channel harvest (legacy redirect - streaming should be used now)
         if (collectChannels) {
-          const gatheredChannels = new Set();
-          
-          // 1. Gather uploaders from video results
-          videos.forEach(v => {
-            if (v.channel && v.channel !== 'Unknown Channel') {
-              gatheredChannels.add(v.channel);
-            }
-          });
-
-          // 2. Gather channels and handles from JSON (recursively)
-          const findChannelsInJson = (obj) => {
-            if (!obj || typeof obj !== 'object') return;
-
-            // channelRenderer
-            if (obj.channelRenderer) {
-              const cr = obj.channelRenderer;
-              const chName = cr.title?.runs?.[0]?.text || cr.title?.simpleText;
-              if (chName && chName !== 'Unknown Channel') {
-                gatheredChannels.add(chName);
-              }
-              if (cr.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl) {
-                const handle = cr.navigationEndpoint.browseEndpoint.canonicalBaseUrl.replace(/^\//, '');
-                if (handle.startsWith('@')) {
-                  gatheredChannels.add(handle.substring(1));
-                }
-              }
-            }
-
-            // ownerText, shortBylineText, longBylineText 등 채널 텍스트 필드 추출
-            const textFields = ['ownerText', 'shortBylineText', 'longBylineText', 'author', 'publisher'];
-            for (const key of textFields) {
-              if (obj[key] && typeof obj[key] === 'object') {
-                const runs = obj[key].runs;
-                if (Array.isArray(runs)) {
-                  runs.forEach(r => {
-                    if (r.text && r.text !== 'Unknown Channel') {
-                      gatheredChannels.add(r.text);
-                    }
-                  });
-                } else if (typeof obj[key].simpleText === 'string') {
-                  gatheredChannels.add(obj[key].simpleText);
-                }
-              }
-            }
-
-            // browseEndpoint가 채널인 경우 canonicalBaseUrl 추출
-            if (obj.browseEndpoint && typeof obj.browseEndpoint.browseId === 'string' && obj.browseEndpoint.browseId.startsWith('UC')) {
-              if (obj.browseEndpoint.canonicalBaseUrl) {
-                const handle = obj.browseEndpoint.canonicalBaseUrl.replace(/^\//, '');
-                if (handle.startsWith('@')) {
-                  gatheredChannels.add(handle.substring(1));
-                }
-              }
-            }
-
-            // descriptionSnippet 에서 텍스트 추출 및 멘션 수집
-            if (obj.descriptionSnippet && Array.isArray(obj.descriptionSnippet.runs)) {
-              obj.descriptionSnippet.runs.forEach(r => {
-                if (r.text) {
-                  const mentionRegex = /@([a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣_.-]+)/g;
-                  let match;
-                  while ((match = mentionRegex.exec(r.text)) !== null) {
-                    const mentioned = match[1].trim();
-                    if (mentioned.length >= 2 && mentioned.length <= 30) {
-                      gatheredChannels.add(mentioned);
-                    }
-                  }
-                }
-              });
-            }
-
-            for (const key of Object.keys(obj)) {
-              findChannelsInJson(obj[key]);
-            }
-          };
-          
-          findChannelsInJson(parsedData);
-
-          // 3. Scan for titles: extract potential channel names from video titles
-          // e.g., "[채널명]", "【채널명】", "(채널명)", "채널명 - 제목", "제목 | 채널명"
-          videos.forEach(v => {
-            if (!v.title) return;
-            
-            // 대괄호 / 소괄호 내부 추출
-            const bracketsRegex = /[\[\(【「『（［]([^\]\)】」』）］]+)[\]\)】」』）］]/g;
-            let bracketMatch;
-            while ((bracketMatch = bracketsRegex.exec(v.title)) !== null) {
-              const candidate = bracketMatch[1].trim();
-              if (candidate.length >= 2 && candidate.length <= 25) {
-                gatheredChannels.add(candidate);
-              }
-            }
-
-            // 구분자로 쪼개기
-            const separators = [' - ', ' | ', ' : ', ' / ', ' vs ', ' vs. ', ' • ', ' · '];
-            separators.forEach(sep => {
-              if (v.title.includes(sep)) {
-                const parts = v.title.split(sep);
-                parts.forEach(part => {
-                  const cleanedPart = part.trim();
-                  // 너무 길지 않고 채널명처럼 생긴 경우 수집 (한글, 영문, 숫자, 공백 위주)
-                  if (cleanedPart.length >= 2 && cleanedPart.length <= 25 && /^[a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣\s_.@~!-]+$/.test(cleanedPart)) {
-                    const wordCount = cleanedPart.split(/\s+/).length;
-                    if (wordCount <= 4) {
-                      gatheredChannels.add(cleanedPart);
-                    }
-                  }
-                });
-              }
-            });
-          });
-
-          // 4. Scan HTML buffer for @mentions and channel handles
-          const mentionRegex = /@([a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣_.-]+)/g;
-          let mentionMatch;
-          while ((mentionMatch = mentionRegex.exec(dataBuffer)) !== null) {
-            const mentioned = mentionMatch[1].trim();
-            if (mentioned.length >= 2 && mentioned.length <= 30) {
-              gatheredChannels.add(mentioned);
-            }
-          }
-
-          // 5. Fetch comment authors & mentions from top 12 videos in parallel
-          const topVideoIds = videos.slice(0, 12).map(v => v.id);
-          if (topVideoIds.length > 0) {
-            try {
-              const commentsLists = await Promise.all(topVideoIds.map(vid => harvestComments(vid)));
-              commentsLists.forEach(list => {
-                if (list && Array.isArray(list)) {
-                  list.forEach(item => gatheredChannels.add(item));
-                }
-              });
-            } catch (e) {
-              console.warn("[ChannelHarvest] Parallel comments harvest failed:", e.message);
-            }
-          }
-
-          // 6. Filtering and cleaning
-          const blacklist = new Set([
-            'unknown', 'unknown channel', 'unknown user', 'null', 'undefined', 'youtube', 'yt', 'google',
-            'official', 'music', 'live', 'shorts', 'playlist', 'video', 'channel', 'sub', 'subscribe', 'lyrics',
-            '공식', '구독', '좋아요', '알림설정', '댓글', '영상', '채널', '쇼츠', '뮤직', '라이브', '오피셜', 
-            '플레이리스트', '가사', '자막', '추천', '인기', '영화', '예능', '드라마', '뉴스', '보도', '속보',
-            '방송', '티비', 'tv', '클립', '다시보기', '풀버전', '비하인드', '리뷰', '설명', '더보기', '더빙',
-            '애니', '만화', '게임', '노래', '음악', '커버', '반응', '리액션', '하이라이트', '모음', '모음집'
-          ]);
-
-          const finalChannels = Array.from(gatheredChannels)
-            .map(c => {
-              let cleaned = c.trim();
-              if (cleaned.startsWith('@')) {
-                cleaned = cleaned.substring(1);
-              }
-              return cleaned.trim();
-            })
-            .filter(c => {
-              if (c.length < 2 || c.length > 40) return false;
-              if (/^[0-9\s_.-]+$/.test(c)) return false;
-              
-              const lower = c.toLowerCase();
-              if (blacklist.has(lower)) return false;
-              if (lower.includes('youtube.com') || lower.includes('http://') || lower.includes('https://') || lower.includes('www.')) return false;
-              
-              return true;
-            });
-
-          // Sort alphabetically/Korean-first
-          finalChannels.sort((a, b) => a.localeCompare(b, 'ko'));
-
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
-          res.end(JSON.stringify(finalChannels));
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'Use streaming endpoint /api/search-stream for harvesting' }));
           return;
         }
 
@@ -977,6 +808,324 @@ function handleSearch(req, res) {
     res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ error: 'Failed to fetch YouTube page', details: err.message }));
   });
+}
+
+// ─── 3-Level Deep YouTube Channel Harvesting (SSE) ──────────────────────────────────
+function safeDecode(str) {
+  try {
+    let decoded = str;
+    while (decoded.includes('%')) {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    }
+    return decoded;
+  } catch (e) {
+    return str;
+  }
+}
+
+async function fetchChannelsFromYoutube(query, hl) {
+  const gl = hl === 'ko' ? 'KR' : 'US';
+  const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&hl=${hl}&gl=${gl}`;
+  const langHeader = hl === 'ko' ? 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7' : `${hl},en;q=0.9`;
+  const options = {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Language': langHeader
+    }
+  };
+
+  const gathered = new Set();
+  
+  try {
+    const dataBuffer = await new Promise((resolve, reject) => {
+      https.get(ytUrl, options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => resolve(data));
+      }).on('error', reject);
+    });
+
+    let jsonStr = null;
+    const startMark = "ytInitialData = ";
+    const startIdx = dataBuffer.indexOf(startMark);
+    if (startIdx !== -1) {
+      const endIdx = dataBuffer.indexOf("};", startIdx);
+      if (endIdx !== -1) {
+        jsonStr = dataBuffer.substring(startIdx + startMark.length, endIdx + 1);
+      }
+    }
+    
+    if (!jsonStr) {
+      const altMark = 'window["ytInitialData"] = ';
+      const altIdx = dataBuffer.indexOf(altMark);
+      if (altIdx !== -1) {
+        const endIdx = dataBuffer.indexOf("};", altIdx);
+        if (endIdx !== -1) {
+          jsonStr = dataBuffer.substring(altIdx + altMark.length, endIdx + 1);
+        }
+      }
+    }
+
+    if (!jsonStr) return { channels: [], videoIds: [] };
+
+    const parsedData = JSON.parse(jsonStr);
+    const sections = parsedData?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+    if (!sections) return { channels: [], videoIds: [] };
+
+    const videos = [];
+    const seenIds = new Set();
+
+    for (const section of sections) {
+      let items = section?.itemSectionRenderer?.contents;
+      if (!items && section?.shelfRenderer?.content?.verticalListRenderer?.items) {
+        items = section.shelfRenderer.content.verticalListRenderer.items;
+      }
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          const vr = item.videoRenderer;
+          if (vr && vr.videoId && !seenIds.has(vr.videoId)) {
+            seenIds.add(vr.videoId);
+            const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || "Unknown Title";
+            const channel = vr.ownerText?.runs?.[0]?.text || vr.longBylineText?.runs?.[0]?.text || "Unknown Channel";
+            videos.push({ id: vr.videoId, title, channel });
+          }
+        }
+      }
+    }
+
+    videos.forEach(v => {
+      if (v.channel && v.channel !== 'Unknown Channel') gathered.add(v.channel);
+    });
+
+    const findChannelsInJson = (obj) => {
+      if (!obj || typeof obj !== 'object') return;
+
+      if (obj.channelRenderer) {
+        const cr = obj.channelRenderer;
+        const chName = cr.title?.runs?.[0]?.text || cr.title?.simpleText;
+        if (chName && chName !== 'Unknown Channel') gathered.add(chName);
+        if (cr.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl) {
+          const handle = cr.navigationEndpoint.browseEndpoint.canonicalBaseUrl.replace(/^\//, '');
+          if (handle.startsWith('@')) gathered.add(handle.substring(1));
+        }
+      }
+
+      const textFields = ['ownerText', 'shortBylineText', 'longBylineText', 'author', 'publisher'];
+      for (const key of textFields) {
+        if (obj[key] && typeof obj[key] === 'object') {
+          const runs = obj[key].runs;
+          if (Array.isArray(runs)) {
+            runs.forEach(r => {
+              if (r.text && r.text !== 'Unknown Channel') gathered.add(r.text);
+            });
+          } else if (typeof obj[key].simpleText === 'string') {
+            gathered.add(obj[key].simpleText);
+          }
+        }
+      }
+
+      if (obj.browseEndpoint && typeof obj.browseEndpoint.browseId === 'string' && obj.browseEndpoint.browseId.startsWith('UC')) {
+        if (obj.browseEndpoint.canonicalBaseUrl) {
+          const handle = obj.browseEndpoint.canonicalBaseUrl.replace(/^\//, '');
+          if (handle.startsWith('@')) gathered.add(handle.substring(1));
+        }
+      }
+
+      if (obj.descriptionSnippet && Array.isArray(obj.descriptionSnippet.runs)) {
+        obj.descriptionSnippet.runs.forEach(r => {
+          if (r.text) {
+            const mentionRegex = /@([a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣_.-]+)/g;
+            let match;
+            while ((match = mentionRegex.exec(r.text)) !== null) {
+              const mentioned = match[1].trim();
+              if (mentioned.length >= 2 && mentioned.length <= 30) gathered.add(mentioned);
+            }
+          }
+        });
+      }
+
+      for (const key of Object.keys(obj)) {
+        findChannelsInJson(obj[key]);
+      }
+    };
+    findChannelsInJson(parsedData);
+
+    videos.forEach(v => {
+      if (!v.title) return;
+      const bracketsRegex = /[\[\(【「『（［]([^\]\)】」』）］]+)[\]\)】」』）］]/g;
+      let bracketMatch;
+      while ((bracketMatch = bracketsRegex.exec(v.title)) !== null) {
+        const candidate = bracketMatch[1].trim();
+        if (candidate.length >= 2 && candidate.length <= 25) gathered.add(candidate);
+      }
+
+      const separators = [' - ', ' | ', ' : ', ' / ', ' vs ', ' vs. ', ' • ', ' · '];
+      separators.forEach(sep => {
+        if (v.title.includes(sep)) {
+          const parts = v.title.split(sep);
+          parts.forEach(part => {
+            const cleanedPart = part.trim();
+            if (cleanedPart.length >= 2 && cleanedPart.length <= 25 && /^[a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣\s_.@~!-]+$/.test(cleanedPart)) {
+              const wordCount = cleanedPart.split(/\s+/).length;
+              if (wordCount <= 4) gathered.add(cleanedPart);
+            }
+          });
+        }
+      });
+    });
+
+    const mentionRegex = /@([a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣_.-]+)/g;
+    let mentionMatch;
+    while ((mentionMatch = mentionRegex.exec(dataBuffer)) !== null) {
+      const mentioned = mentionMatch[1].trim();
+      if (mentioned.length >= 2 && mentioned.length <= 30) gathered.add(mentioned);
+    }
+
+    return {
+      channels: Array.from(gathered),
+      videoIds: videos.slice(0, 12).map(v => v.id)
+    };
+
+  } catch (err) {
+    console.error(`[fetchChannelsFromYoutube] Error for ${query}:`, err.message);
+    return { channels: [], videoIds: [] };
+  }
+}
+
+function filterAndDecodeChannels(rawSet) {
+  const blacklist = new Set([
+    'unknown', 'unknown channel', 'unknown user', 'null', 'undefined', 'youtube', 'yt', 'google',
+    'official', 'music', 'live', 'shorts', 'playlist', 'video', 'channel', 'sub', 'subscribe', 'lyrics',
+    '공식', '구독', '좋아요', '알림설정', '댓글', '영상', '채널', '쇼츠', '뮤직', '라이브', '오피셜', 
+    '플레이리스트', '가사', '자막', '추천', '인기', '영화', '예능', '드라마', '뉴스', '보도', '속보',
+    '방송', '티비', 'tv', '클립', '다시보기', '풀버전', '비하인드', '리뷰', '설명', '더보기', '더빙',
+    '애니', '만화', '게임', '노래', '음악', '커버', '반응', '리액션', '하이라이트', '모음', '모음집'
+  ]);
+
+  const decodedSet = new Set();
+
+  rawSet.forEach(c => {
+    let decoded = c.trim();
+    
+    // URL/URI 디코딩 처리 (반복 디코딩으로 깨짐 제거)
+    decoded = safeDecode(decoded);
+
+    // 골뱅이 제거
+    if (decoded.startsWith('@')) {
+      decoded = decoded.substring(1);
+    }
+    decoded = decoded.trim();
+
+    if (decoded.length < 2 || decoded.length > 40) return;
+    if (/^[0-9\s_.-]+$/.test(decoded)) return;
+
+    const lower = decoded.toLowerCase();
+    if (blacklist.has(lower)) return;
+    if (lower.includes('youtube.com') || lower.includes('http://') || lower.includes('https://') || lower.includes('www.')) return;
+
+    decodedSet.add(decoded);
+  });
+
+  const finalArray = Array.from(decodedSet);
+  finalArray.sort((a, b) => a.localeCompare(b, 'ko'));
+  return finalArray;
+}
+
+async function handleSearchStream(req, res) {
+  const parsedUrl = url.parse(req.url, true);
+  const query = (parsedUrl.query.q || '').trim();
+  const hl = parsedUrl.query.hl || 'en';
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+
+  const sendProgress = (percent, status, data = null) => {
+    res.write(`data: ${JSON.stringify({ percent, status, data })}\n\n`);
+  };
+
+  if (!query) {
+    sendProgress(100, "에러: 검색어가 비어 있습니다.");
+    res.end();
+    return;
+  }
+
+  try {
+    const allGathered = new Set();
+    const allVideoIds = new Set();
+
+    // === 1단계: 메인 검색 (0% ~ 30%) ===
+    sendProgress(10, `1단계 시작: 메인 검색어 "${query}" 유튜브 탐색 중...`);
+    const step1Result = await fetchChannelsFromYoutube(query, hl);
+    
+    step1Result.channels.forEach(c => allGathered.add(c));
+    step1Result.videoIds.forEach(id => allVideoIds.add(id));
+    
+    const progressChannels1 = filterAndDecodeChannels(allGathered);
+    sendProgress(30, `1단계 완료: 메인 검색 결과에서 ${progressChannels1.length}개 채널 추출`, progressChannels1);
+
+    // === 2단계: 심층 1차 연관 검색 (30% ~ 60%) ===
+    const step2Queries = progressChannels1.slice(0, 3);
+    if (step2Queries.length > 0) {
+      sendProgress(40, `2단계 시작: 연관 채널들 (${step2Queries.join(', ')})로 심층 2단계 탐색 중...`);
+      
+      const step2Results = await Promise.all(step2Queries.map(q => fetchChannelsFromYoutube(q, hl)));
+      step2Results.forEach(resObj => {
+        resObj.channels.forEach(c => allGathered.add(c));
+        resObj.videoIds.forEach(id => allVideoIds.add(id));
+      });
+    }
+    
+    const progressChannels2 = filterAndDecodeChannels(allGathered);
+    sendProgress(60, `2단계 완료: 심층 2단계 탐색 결과 누적 ${progressChannels2.length}개 채널 추출`, progressChannels2);
+
+    // === 3단계: 심층 2차 연관 및 댓글 검색 (60% ~ 90%) ===
+    const alreadyQueried = new Set([query, ...step2Queries]);
+    const step3Queries = progressChannels2
+      .filter(c => !alreadyQueried.has(c))
+      .slice(0, 2);
+
+    if (step3Queries.length > 0) {
+      sendProgress(70, `3단계 시작: 추가 연관 채널들 (${step3Queries.join(', ')})로 심층 3단계 탐색 중...`);
+      const step3Results = await Promise.all(step3Queries.map(q => fetchChannelsFromYoutube(q, hl)));
+      step3Results.forEach(resObj => {
+        resObj.channels.forEach(c => allGathered.add(c));
+        resObj.videoIds.forEach(id => allVideoIds.add(id));
+      });
+    }
+
+    sendProgress(80, `댓글/멘션 수집 단계: 비디오 댓글 본문 내 @멘션 및 작성자 탐색 중...`);
+    const targetVideoIds = Array.from(allVideoIds).slice(0, 12);
+    if (targetVideoIds.length > 0) {
+      try {
+        const commentResults = await Promise.all(targetVideoIds.map(vid => harvestComments(vid)));
+        commentResults.forEach(list => {
+          if (list && Array.isArray(list)) {
+            list.forEach(item => allGathered.add(item));
+          }
+        });
+      } catch (e) {
+        console.warn("[handleSearchStream] Comment harvest fail:", e.message);
+      }
+    }
+    
+    // === 최종 완료 (90% ~ 100%) ===
+    sendProgress(90, `최종 필터링 및 디코딩 정제 중...`);
+    const finalChannels = filterAndDecodeChannels(allGathered);
+    
+    sendProgress(100, `검색 완료: 총 ${finalChannels.length}개 채널 수확 완료`, finalChannels);
+    res.end();
+
+  } catch (err) {
+    console.error("[handleSearchStream] Streaming error:", err.message);
+    sendProgress(100, `오류 발생: ${err.message}`);
+    res.end();
+  }
 }
 
 // WebVTT / XML Caption Fallback scrapers
@@ -2762,6 +2911,8 @@ const server = http.createServer((req, res) => {
   
   if (parsedUrl.pathname === '/api/search') {
     handleSearch(req, res);
+  } else if (parsedUrl.pathname === '/api/search-stream') {
+    handleSearchStream(req, res);
   } else if (parsedUrl.pathname === '/api/video-meta') {
     handleVideoMeta(req, res);
   } else if (parsedUrl.pathname === '/api/captions') {
