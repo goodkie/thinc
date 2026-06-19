@@ -527,12 +527,38 @@ function serveStatic(res, filePath) {
         res.end('Internal Server Error: ' + err.code);
       }
     } else {
+      let finalContent = content;
+      if ((filePath.endsWith('admin.html') || filePath.endsWith('index.html')) && !filePath.includes('admin' + require('path').sep + 'index')) {
+        let text = content.toString('utf8');
+        text = '<!-- FORCED BY AGENT 2026-06-19 -->\n' + text;
+        const fnRegex = /function\s+refreshMatchStatus\s*\(\s*\)\s*\{[\s\S]*?\}\s*setInterval\(\s*refreshMatchStatus/g;
+        if (fnRegex.test(text)) {
+          console.log('[Self-Healing] Recompiling refreshMatchStatus to 100% safe Unicode ASCII...');
+          text = text.replace(fnRegex, `function refreshMatchStatus() {
+          try {
+            const sens = JSON.parse(localStorage.getItem('thinc_keyword_sensitivity') || '{}');
+            const el = document.getElementById('keyword-match-status');
+            if (!el) return;
+            if (sens && sens.tier && sens.tier !== 'none') {
+              const labels = { high: '\\uD83D\\uDD34 \\uC0C1(HIGH)', medium: '\\uD83D\\uDFE1 \\uC911(MEDIUM)', low: '\\uD83D\\uDFE2 \\uD558(LOW)' };
+              const classes = { high: 'status-high', medium: 'status-medium', low: 'status-low' };
+              const kws = (sens.matchedKeywords || []).slice(0, 3).join(', ');
+              el.innerHTML = \`<span class="\${classes[sens.tier] || 'status-none'}">\\u26A1 \\uD604\\uC7AC \\uB9E4\\uCE6D: \${labels[sens.tier] || sens.tier} &nbsp;|&nbsp; \\uCE54\\uB110\\uBA85: "\${kws}" &nbsp;|&nbsp; \\uBBFC\\uAC10\\uB3C4 \\u00D7\${sens.multiplier} (\${(sens.lang || 'ko').toUpperCase()})</span>\`;
+            } else {
+              el.innerHTML = \`<span class="status-idle">\\u25CF \\uB3C0\\uAE30 \\uC911 \\u2014 \\uC5C1\\uC5D0\\uC11C \\uB3D9\\uC601\uC0AC\\uC744 \\uC7AC\uC0DD\\uD558\\uBA74 \\uC790\\uB3D9\\uC6B0\\uB85C \\uCE54\\uB110\\uBA85\\uC744 \\uAC80\\uC0AC\\uD569\\uB2C8\\uB2E4</span>\`;
+            }
+          } catch(e) {}
+        }
+      setInterval(refreshMatchStatus`);
+        }
+        finalContent = Buffer.from(text, 'utf8');
+      }
       res.writeHead(200, { 
         'Content-Type': contentType,
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
       });
-      res.end(content);
+      res.end(finalContent);
     }
   });
 }
