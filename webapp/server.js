@@ -530,19 +530,13 @@ function serveStatic(res, filePath) {
       let finalContent = content;
       if (filePath.endsWith('admin.html') || filePath.endsWith('index.html')) {
         let text = content.toString('utf8');
-        if (text.includes('} else {\n          } catch(e) {}')) {
-          console.log('[Self-Healing] Detected corrupted brackets in admin page. Fixing dynamically.');
-          text = text.replace(
-            '} else {\n          } catch(e) {}',
-            '} else {\n            el.innerHTML = `<span class="status-idle">● 대기 중 — 앱에서 동영상을 재생하면 자동으로 채널명을 검사합니다</span>`;\n          }\n        } catch(e) {}'
-          );
-          finalContent = Buffer.from(text, 'utf8');
-        } else if (text.includes('} else {\r\n          } catch(e) {}')) {
-          console.log('[Self-Healing] Detected corrupted brackets in admin page (CRLF). Fixing dynamically.');
-          text = text.replace(
-            '} else {\r\n          } catch(e) {}',
-            '} else {\r\n            el.innerHTML = `<span class="status-idle">● 대기 중 — 앱에서 동영상을 재생하면 자동으로 채널명을 검사합니다</span>`;\r\n          }\r\n        } catch(e) {}'
-          );
+        const brokenRegex = /}\s*else\s*{\s*}\s*catch\s*\(\s*e\s*\)\s*{\s*}/g;
+        if (brokenRegex.test(text)) {
+          console.log('[Self-Healing] Regex detected corrupted admin page brackets! Applying repair.');
+          text = text.replace(brokenRegex, `} else {
+            el.innerHTML = \`<span class="status-idle">● 대기 중 — 앱에서 동영상을 재생하면 자동으로 채널명을 검사합니다</span>\`;
+          }
+        } catch(e) {}`);
           finalContent = Buffer.from(text, 'utf8');
         }
       }
