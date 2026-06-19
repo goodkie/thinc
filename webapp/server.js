@@ -563,10 +563,114 @@ function serveStatic(res, filePath) {
   });
 }
 
+// Helper function to extract comments' author names from Piped and Invidious
+// Helper function to extract comments' author names and mentions from Piped and Invidious
+async function harvestComments(videoId) {
+  const pipedInstances = [
+    'https://api.piped.private.coffee',
+    'https://pipedapi.kavin.rocks',
+    'https://piped-api.lunar.icu',
+    'https://pipedapi.us.to',
+    'https://pipedapi.colby.land',
+    'https://piped.mha.fi'
+  ];
+  
+  const harvested = new Set();
+  const mentionRegex = /@([a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣_.-]+)/g;
+
+  // 1. Try Piped
+  for (const instance of pipedInstances) {
+    try {
+      const url = `${instance}/comments/${videoId}`;
+      const res = await new Promise((resolve, reject) => {
+        const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, timeout: 3000 }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => resolve({ statusCode: res.statusCode, data }));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+      });
+
+      if (res.statusCode === 200) {
+        const json = JSON.parse(res.data);
+        if (json && json.comments && Array.isArray(json.comments)) {
+          json.comments.forEach(c => {
+            if (c.author && c.author.trim() && c.author !== 'Unknown Channel') {
+              harvested.add(c.author.trim());
+            }
+            if (c.commentText) {
+              let match;
+              while ((match = mentionRegex.exec(c.commentText)) !== null) {
+                const mentioned = match[1].trim();
+                if (mentioned.length >= 2 && mentioned.length <= 30) {
+                  harvested.add(mentioned);
+                }
+              }
+            }
+          });
+          if (harvested.size > 0) return Array.from(harvested);
+        }
+      }
+    } catch (e) {
+      // Fall through to next instance
+    }
+  }
+
+  // 2. Try Invidious
+  const invInstances = [
+    'https://inv.nadeko.net',
+    'https://yt.chocolatemoo53.com',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.flokinet.to',
+    'https://iv.melmac.space'
+  ];
+  for (const instance of invInstances) {
+    try {
+      const url = `${instance}/api/v1/comments/${videoId}`;
+      const res = await new Promise((resolve, reject) => {
+        const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 3000 }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => resolve({ statusCode: res.statusCode, data }));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+      });
+
+      if (res.statusCode === 200) {
+        const json = JSON.parse(res.data);
+        if (json && json.comments && Array.isArray(json.comments)) {
+          json.comments.forEach(c => {
+            if (c.author && c.author.trim() && c.author !== 'Unknown Channel') {
+              harvested.add(c.author.trim());
+            }
+            if (c.content) {
+              let match;
+              while ((match = mentionRegex.exec(c.content)) !== null) {
+                const mentioned = match[1].trim();
+                if (mentioned.length >= 2 && mentioned.length <= 30) {
+                  harvested.add(mentioned);
+                }
+              }
+            }
+          });
+          if (harvested.size > 0) return Array.from(harvested);
+        }
+      }
+    } catch (e) {
+      // Fall through
+    }
+  }
+
+  return [];
+}
+
 function handleSearch(req, res) {
   const parsedUrl = url.parse(req.url, true);
   const query = parsedUrl.query.q || '';
   const hl = parsedUrl.query.hl || 'en';
+  const collectChannels = parsedUrl.query.collectChannels === 'true';
   
   if (!query) {
     res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -592,7 +696,7 @@ function handleSearch(req, res) {
       dataBuffer += chunk;
     });
     
-    ytRes.on('end', () => {
+    ytRes.on('end', async () => {
       try {
         let jsonStr = null;
         const startMark = "ytInitialData = ";
@@ -680,6 +784,182 @@ function handleSearch(req, res) {
               }
             }
           }
+        }
+
+        // Return direct channel harvest if collectChannels is true
+        if (collectChannels) {
+          const gatheredChannels = new Set();
+          
+          // 1. Gather uploaders from video results
+          videos.forEach(v => {
+            if (v.channel && v.channel !== 'Unknown Channel') {
+              gatheredChannels.add(v.channel);
+            }
+          });
+
+          // 2. Gather channels and handles from JSON (recursively)
+          const findChannelsInJson = (obj) => {
+            if (!obj || typeof obj !== 'object') return;
+
+            // channelRenderer
+            if (obj.channelRenderer) {
+              const cr = obj.channelRenderer;
+              const chName = cr.title?.runs?.[0]?.text || cr.title?.simpleText;
+              if (chName && chName !== 'Unknown Channel') {
+                gatheredChannels.add(chName);
+              }
+              if (cr.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl) {
+                const handle = cr.navigationEndpoint.browseEndpoint.canonicalBaseUrl.replace(/^\//, '');
+                if (handle.startsWith('@')) {
+                  gatheredChannels.add(handle.substring(1));
+                }
+              }
+            }
+
+            // ownerText, shortBylineText, longBylineText 등 채널 텍스트 필드 추출
+            const textFields = ['ownerText', 'shortBylineText', 'longBylineText', 'author', 'publisher'];
+            for (const key of textFields) {
+              if (obj[key] && typeof obj[key] === 'object') {
+                const runs = obj[key].runs;
+                if (Array.isArray(runs)) {
+                  runs.forEach(r => {
+                    if (r.text && r.text !== 'Unknown Channel') {
+                      gatheredChannels.add(r.text);
+                    }
+                  });
+                } else if (typeof obj[key].simpleText === 'string') {
+                  gatheredChannels.add(obj[key].simpleText);
+                }
+              }
+            }
+
+            // browseEndpoint가 채널인 경우 canonicalBaseUrl 추출
+            if (obj.browseEndpoint && typeof obj.browseEndpoint.browseId === 'string' && obj.browseEndpoint.browseId.startsWith('UC')) {
+              if (obj.browseEndpoint.canonicalBaseUrl) {
+                const handle = obj.browseEndpoint.canonicalBaseUrl.replace(/^\//, '');
+                if (handle.startsWith('@')) {
+                  gatheredChannels.add(handle.substring(1));
+                }
+              }
+            }
+
+            // descriptionSnippet 에서 텍스트 추출 및 멘션 수집
+            if (obj.descriptionSnippet && Array.isArray(obj.descriptionSnippet.runs)) {
+              obj.descriptionSnippet.runs.forEach(r => {
+                if (r.text) {
+                  const mentionRegex = /@([a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣_.-]+)/g;
+                  let match;
+                  while ((match = mentionRegex.exec(r.text)) !== null) {
+                    const mentioned = match[1].trim();
+                    if (mentioned.length >= 2 && mentioned.length <= 30) {
+                      gatheredChannels.add(mentioned);
+                    }
+                  }
+                }
+              });
+            }
+
+            for (const key of Object.keys(obj)) {
+              findChannelsInJson(obj[key]);
+            }
+          };
+          
+          findChannelsInJson(parsedData);
+
+          // 3. Scan for titles: extract potential channel names from video titles
+          // e.g., "[채널명]", "【채널명】", "(채널명)", "채널명 - 제목", "제목 | 채널명"
+          videos.forEach(v => {
+            if (!v.title) return;
+            
+            // 대괄호 / 소괄호 내부 추출
+            const bracketsRegex = /[\[\(【「『（［]([^\]\)】」』）］]+)[\]\)】」』）］]/g;
+            let bracketMatch;
+            while ((bracketMatch = bracketsRegex.exec(v.title)) !== null) {
+              const candidate = bracketMatch[1].trim();
+              if (candidate.length >= 2 && candidate.length <= 25) {
+                gatheredChannels.add(candidate);
+              }
+            }
+
+            // 구분자로 쪼개기
+            const separators = [' - ', ' | ', ' : ', ' / ', ' vs ', ' vs. ', ' • ', ' · '];
+            separators.forEach(sep => {
+              if (v.title.includes(sep)) {
+                const parts = v.title.split(sep);
+                parts.forEach(part => {
+                  const cleanedPart = part.trim();
+                  // 너무 길지 않고 채널명처럼 생긴 경우 수집 (한글, 영문, 숫자, 공백 위주)
+                  if (cleanedPart.length >= 2 && cleanedPart.length <= 25 && /^[a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣\s_.@~!-]+$/.test(cleanedPart)) {
+                    const wordCount = cleanedPart.split(/\s+/).length;
+                    if (wordCount <= 4) {
+                      gatheredChannels.add(cleanedPart);
+                    }
+                  }
+                });
+              }
+            });
+          });
+
+          // 4. Scan HTML buffer for @mentions and channel handles
+          const mentionRegex = /@([a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣_.-]+)/g;
+          let mentionMatch;
+          while ((mentionMatch = mentionRegex.exec(dataBuffer)) !== null) {
+            const mentioned = mentionMatch[1].trim();
+            if (mentioned.length >= 2 && mentioned.length <= 30) {
+              gatheredChannels.add(mentioned);
+            }
+          }
+
+          // 5. Fetch comment authors & mentions from top 12 videos in parallel
+          const topVideoIds = videos.slice(0, 12).map(v => v.id);
+          if (topVideoIds.length > 0) {
+            try {
+              const commentsLists = await Promise.all(topVideoIds.map(vid => harvestComments(vid)));
+              commentsLists.forEach(list => {
+                if (list && Array.isArray(list)) {
+                  list.forEach(item => gatheredChannels.add(item));
+                }
+              });
+            } catch (e) {
+              console.warn("[ChannelHarvest] Parallel comments harvest failed:", e.message);
+            }
+          }
+
+          // 6. Filtering and cleaning
+          const blacklist = new Set([
+            'unknown', 'unknown channel', 'unknown user', 'null', 'undefined', 'youtube', 'yt', 'google',
+            'official', 'music', 'live', 'shorts', 'playlist', 'video', 'channel', 'sub', 'subscribe', 'lyrics',
+            '공식', '구독', '좋아요', '알림설정', '댓글', '영상', '채널', '쇼츠', '뮤직', '라이브', '오피셜', 
+            '플레이리스트', '가사', '자막', '추천', '인기', '영화', '예능', '드라마', '뉴스', '보도', '속보',
+            '방송', '티비', 'tv', '클립', '다시보기', '풀버전', '비하인드', '리뷰', '설명', '더보기', '더빙',
+            '애니', '만화', '게임', '노래', '음악', '커버', '반응', '리액션', '하이라이트', '모음', '모음집'
+          ]);
+
+          const finalChannels = Array.from(gatheredChannels)
+            .map(c => {
+              let cleaned = c.trim();
+              if (cleaned.startsWith('@')) {
+                cleaned = cleaned.substring(1);
+              }
+              return cleaned.trim();
+            })
+            .filter(c => {
+              if (c.length < 2 || c.length > 40) return false;
+              if (/^[0-9\s_.-]+$/.test(c)) return false;
+              
+              const lower = c.toLowerCase();
+              if (blacklist.has(lower)) return false;
+              if (lower.includes('youtube.com') || lower.includes('http://') || lower.includes('https://') || lower.includes('www.')) return false;
+              
+              return true;
+            });
+
+          // Sort alphabetically/Korean-first
+          finalChannels.sort((a, b) => a.localeCompare(b, 'ko'));
+
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify(finalChannels));
+          return;
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });

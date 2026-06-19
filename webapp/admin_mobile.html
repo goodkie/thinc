@@ -1854,12 +1854,11 @@
 
           try {
             const host = serverBaseUrl();
-            const r = await fetch(`${host}/api/search?q=${encodeURIComponent(query)}&hl=${currentEditLang}`);
+            const r = await fetch(`${host}/api/search?q=${encodeURIComponent(query)}&hl=${currentEditLang}&collectChannels=true`);
             const data = await r.json();
 
             if (data && Array.isArray(data)) {
-              // Extract unique channel names
-              const channels = [...new Set(data.map(v => v.channel).filter(c => c && c !== 'Unknown Channel'))];
+              const channels = data;
               
               if (channels.length === 0) {
                 alert('검색된 채널이 없습니다.');
