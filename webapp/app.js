@@ -4228,6 +4228,12 @@
       grade: grade
     };
 
+    try {
+      localStorage.setItem('thinc_video_metadata', JSON.stringify(videoMetadata));
+    } catch(e) {
+      console.warn('[Th!nc-Admin] Failed to save videoMetadata to localStorage:', e);
+    }
+
     // Update Banner UI
     document.getElementById('det-cat-badge').innerText = videoMetadata.genre;
     const relBadge = document.getElementById('det-rel-badge');
