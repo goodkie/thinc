@@ -1295,9 +1295,11 @@
       const errorEl = document.getElementById('error-message');
       const passCard = document.getElementById('passcode-card');
 
-      // Check Session Auth
-      if (sessionStorage.getItem('thinc_admin_authenticated') === 'true') {
+      // Check Session Auth & Token Presence
+      if (sessionStorage.getItem('thinc_admin_authenticated') === 'true' && localStorage.getItem('thinc_admin_token') === CORRECT_PASSCODE) {
         bypassSecurity();
+      } else {
+        sessionStorage.removeItem('thinc_admin_authenticated');
       }
 
       function bypassSecurity() {
