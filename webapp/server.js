@@ -53,63 +53,101 @@ function initializeDatabase() {
 }
 
 function triggerInitialMigration() {
-  if (!_adminSettingsCache) return;
-  
-  const koDict = _adminSettingsCache.sensitivity_dict_ko;
-  const enDict = _adminSettingsCache.sensitivity_dict_en;
-  
-  let migrated = false;
-  
-  db.serialize(() => {
-    db.run('BEGIN TRANSACTION');
-    const stmt = db.prepare(`
-      INSERT OR IGNORE INTO sensitivity_channels (lang, tier, channel_name)
-      VALUES (?, ?, ?)
-    `);
-
-    if (koDict) {
-      ['high', 'medium', 'low'].forEach(tier => {
-        if (Array.isArray(koDict[tier])) {
-          koDict[tier].forEach(ch => {
-            if (ch && ch.trim()) {
-              stmt.run('ko', tier, ch.trim());
-              migrated = true;
-            }
-          });
-        }
-      });
+  db.get(`SELECT COUNT(*) as cnt FROM sensitivity_channels`, (err, row) => {
+    if (err) {
+      console.error('[DB] Failed to count channels for initial migration check:', err);
+      loadInMemoryCache();
+      return;
     }
 
-    if (enDict) {
-      ['high', 'medium', 'low'].forEach(tier => {
-        if (Array.isArray(enDict[tier])) {
-          enDict[tier].forEach(ch => {
-            if (ch && ch.trim()) {
-              stmt.run('en', tier, ch.trim());
-              migrated = true;
-            }
-          });
-        }
-      });
+    const currentCount = row ? row.cnt : 0;
+    
+    // 만약 데이터가 없거나 admin_settings.json 데이터가 존재하면 마이그레이션 격발
+    const koDict = _adminSettingsCache ? _adminSettingsCache.sensitivity_dict_ko : null;
+    const enDict = _adminSettingsCache ? _adminSettingsCache.sensitivity_dict_en : null;
+    
+    if (currentCount > 0 && !koDict && !enDict) {
+      console.log('[DB] Database already populated. Skipping initial migration.');
+      loadInMemoryCache();
+      return;
     }
 
-    stmt.finalize(() => {
-      db.run('COMMIT', (err) => {
-        if (err) {
-          console.error('[DB] Initial migration transaction commit failed:', err);
+    console.log('[DB] Running database initial migration...');
+    let migrated = false;
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+      const stmt = db.prepare(`
+        INSERT OR IGNORE INTO sensitivity_channels (lang, tier, channel_name)
+        VALUES (?, ?, ?)
+      `);
+
+      // 1. 기존 admin_settings.json 마이그레이션
+      if (koDict) {
+        ['high', 'medium', 'low'].forEach(tier => {
+          if (Array.isArray(koDict[tier])) {
+            koDict[tier].forEach(ch => {
+              if (ch && ch.trim()) {
+                stmt.run('ko', tier, ch.trim());
+                migrated = true;
+              }
+            });
+          }
+        });
+      }
+
+      if (enDict) {
+        ['high', 'medium', 'low'].forEach(tier => {
+          if (Array.isArray(enDict[tier])) {
+            enDict[tier].forEach(ch => {
+              if (ch && ch.trim()) {
+                stmt.run('en', tier, ch.trim());
+                migrated = true;
+              }
+            });
+          }
+        });
+      }
+
+      // 2. 만약 DB가 완전히 비어 있고 마이그레이션된 항목도 없는 경우, 폴백 기본 사전 적재
+      if (currentCount === 0 && !migrated) {
+        console.log('[DB] Populating default sensitivity channels fallback dictionary...');
+        const DEFAULT_KO = {
+          high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장'],
+          medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
+          low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
+        };
+        const DEFAULT_EN = {
+          high:   ['scam', 'fraud', 'lie', 'fake', 'manipulation', 'expose', 'conspiracy', 'crime', 'blackmail', 'corruption', 'hoax', 'propaganda'],
+          medium: ['controversy', 'rumor', 'suspicion', 'dispute', 'conflict', 'criticism', 'rebuttal', 'explanation', 'debate', 'claim'],
+          low:    ['education', 'science', 'research', 'official', 'announcement', 'lecture', 'documentary', 'learning', 'analysis', 'report', 'thesis', 'study']
+        };
+
+        ['high', 'medium', 'low'].forEach(tier => {
+          DEFAULT_KO[tier].forEach(ch => stmt.run('ko', tier, ch));
+          DEFAULT_EN[tier].forEach(ch => stmt.run('en', tier, ch));
+        });
+        migrated = true;
+      }
+
+      stmt.finalize(() => {
+        db.run('COMMIT', (err) => {
+          if (err) {
+            console.error('[DB] Initial migration transaction commit failed:', err);
+            loadInMemoryCache();
+            return;
+          }
+          if (migrated && _adminSettingsCache) {
+            console.log('[DB] Migration completed successfully.');
+            delete _adminSettingsCache.sensitivity_dict_ko;
+            delete _adminSettingsCache.sensitivity_dict_en;
+            fs.writeFile(ADMIN_SETTINGS_FILE, JSON.stringify(_adminSettingsCache, null, 2), (err) => {
+              if (err) console.error('[DB] Failed to update admin_settings.json after migration:', err);
+              else console.log('[DB] admin_settings.json updated, channel lists removed to save space.');
+            });
+          }
           loadInMemoryCache();
-          return;
-        }
-        if (migrated) {
-          console.log('[DB] Migration from admin_settings.json completed.');
-          delete _adminSettingsCache.sensitivity_dict_ko;
-          delete _adminSettingsCache.sensitivity_dict_en;
-          fs.writeFile(ADMIN_SETTINGS_FILE, JSON.stringify(_adminSettingsCache, null, 2), (err) => {
-            if (err) console.error('[DB] Failed to update admin_settings.json after migration:', err);
-            else console.log('[DB] admin_settings.json updated, channel lists removed to save space.');
-          });
-        }
-        loadInMemoryCache();
+        });
       });
     });
   });
