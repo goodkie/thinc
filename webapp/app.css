@@ -47,6 +47,7 @@ html, body {
   position: fixed; /* Prevent bouncy scrolling on mobile */
   left: 0;
   top: 0;
+  border-radius: 12px;
 }
 
 /* Glassmorphism Background grid */
@@ -285,6 +286,8 @@ body::before {
   flex-direction: column;
   position: relative;
   z-index: 5;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 /* Top Navigation Bar */
