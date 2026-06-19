@@ -2326,31 +2326,57 @@
     let captionsLoaded = false;
 
     // 유튜브 백그라운드 자막 가져오기
-    if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions && platform.includes('youtube')) {
-      try {
-        if (window.PerformanceLogger) {
-          window.PerformanceLogger.log('Captions', 'Background Captions Fetch Start', 0, 'Info', `Requesting background scraper window for video ${videoId}`);
-        }
-        const result = await window.electronAPI.fetchBackgroundCaptions(videoId);
-        if (result && result.ok && result.captions) {
-          console.log(`[Th!nc-Extension] Successfully fetched background captions (${result.captions.length} segments).`);
-          if (window.PerformanceLogger) {
-            window.PerformanceLogger.log('Captions', 'Background Captions Scraping Success', 0, 'Success', `Scraped ${result.captions.length} caption segments.`);
+    if (platform.includes('youtube')) {
+      // 0순위: 데스크톱 앱(Electron) 환경에서는 CORS 차단이 없으므로 브라우저에서 다이렉트로 InnerTube 자막 추출 시도 (초고속 및 캡차 완벽 우회)
+      if (window.electronAPI) {
+        try {
+          console.log(`[Th!nc-Extension] Electron direct InnerTube capture started for video: ${videoId}`);
+          const directResult = await getYouTubeTranscriptDirectBrowser(videoId, currentLang);
+          if (directResult && directResult.captions && directResult.captions.length > 0) {
+            console.log(`[Th!nc-Extension] Successfully fetched direct browser captions (${directResult.captions.length} segments) in 100ms.`);
+            liveCaptions = directResult.captions;
+            captionLoadStatus = 'loaded';
+            captionsLoaded = true;
+            captionPlaybackSec = 0;
+            lastShownCaptionIdx = -1;
           }
-          liveCaptions = result.captions;
-          captionLoadStatus = 'loaded';
-          captionsLoaded = true;
-          captionPlaybackSec = 0;
-          lastShownCaptionIdx = -1;
-        } else {
-          if (window.PerformanceLogger) {
-            window.PerformanceLogger.log('Captions', 'Background Captions Scraping Empty', 0, 'Warning', result ? result.error || 'No captions returned' : 'No result');
-          }
+        } catch (directErr) {
+          console.warn('[Th!nc-Extension] Direct browser InnerTube capture failed, falling back to other ways:', directErr.message);
         }
-      } catch (err) {
-        console.warn('[Th!nc-Extension] Background caption fetch exception:', err.message);
-        if (window.PerformanceLogger) {
-          window.PerformanceLogger.log('Captions', 'Background Captions Scraping Error', 0, 'Failed', err.message);
+      }
+
+      // 1순위: 다이렉트 획득 실패 시, 기존 백그라운드 스크래핑 BrowserWindow 윈도우 호출 시도
+      if (!captionsLoaded && window.electronAPI && window.electronAPI.fetchBackgroundCaptions) {
+        try {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Background Captions Fetch Start', 0, 'Info', `Requesting background scraper window for video ${videoId}`);
+          }
+          const result = await window.electronAPI.fetchBackgroundCaptions(videoId);
+          if (result && result.ok && result.captions) {
+            console.log(`[Th!nc-Extension] Successfully fetched background captions (${result.captions.length} segments).`);
+            if (window.PerformanceLogger) {
+              window.PerformanceLogger.log('Captions', 'Background Captions Scraping Success', 0, 'Success', `Scraped ${result.captions.length} caption segments.`);
+            }
+            // background 스크래퍼가 돌려주는 segment 구조는 { offset, duration, text } 이므로 { start, dur, text } 로 정규화
+            liveCaptions = result.captions.map(c => ({
+              start: c.start !== undefined ? c.start : (c.offset !== undefined ? c.offset / 1000 : 0),
+              dur: c.dur !== undefined ? c.dur : (c.duration !== undefined ? c.duration / 1000 : 1.0),
+              text: c.text
+            }));
+            captionLoadStatus = 'loaded';
+            captionsLoaded = true;
+            captionPlaybackSec = 0;
+            lastShownCaptionIdx = -1;
+          } else {
+            if (window.PerformanceLogger) {
+              window.PerformanceLogger.log('Captions', 'Background Captions Scraping Empty', 0, 'Warning', result ? result.error || 'No captions returned' : 'No result');
+            }
+          }
+        } catch (err) {
+          console.warn('[Th!nc-Extension] Background caption fetch exception:', err.message);
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Background Captions Scraping Error', 0, 'Failed', err.message);
+          }
         }
       }
     }
@@ -4604,6 +4630,134 @@
     }
   }
 
+  // CORS 차단이 없는 Electron 환경용 초고속 브라우저 InnerTube 자막 추출 함수
+  async function getYouTubeTranscriptDirectBrowser(videoId, lang = 'ko') {
+    const clientSignatures = [
+      {
+        name: 'MWEB',
+        version: '2.20250619.01.00',
+        ua: 'Mozilla/5.0 (Linux; Android 11; Pixel 4a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36',
+        hl: lang || 'ko',
+        gl: 'KR'
+      },
+      {
+        name: 'ANDROID',
+        version: '19.44.41',
+        ua: 'com.google.android.youtube/19.44.41 (Linux; U; Android 14; ko_KR) AppleWebKit/537.36 Mobile Safari/537.36',
+        hl: lang || 'ko',
+        gl: 'KR'
+      },
+      {
+        name: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
+        version: '2.0',
+        ua: 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.5) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/5.0 Chrome/85.0.4183.93 TV Safari/537.36',
+        hl: lang || 'ko',
+        gl: 'KR'
+      },
+      {
+        name: 'WEB',
+        version: '2.20250619.01.00',
+        ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        hl: lang || 'ko',
+        gl: 'KR'
+      }
+    ];
+
+    let lastError = null;
+
+    for (const sig of clientSignatures) {
+      try {
+        const payloadObj = {
+          context: {
+            client: {
+              clientName: sig.name,
+              clientVersion: sig.version,
+              hl: sig.hl || lang || 'ko',
+              gl: sig.gl || 'KR',
+              userAgent: sig.ua
+            }
+          },
+          videoId: videoId
+        };
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'User-Agent': sig.ua,
+          'Referer': 'https://www.youtube.com/',
+          'Origin': 'https://www.youtube.com',
+          'X-YouTube-Client-Name': sig.name === 'MWEB' ? '2' : sig.name === 'ANDROID' ? '3' : '1',
+          'X-YouTube-Client-Version': sig.version
+        };
+
+        console.log(`[getYouTubeTranscriptDirectBrowser] Trying client ${sig.name} for ${videoId}`);
+        const response = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(payloadObj),
+          signal: getTimeoutSignal(6000)
+        });
+
+        if (!response.ok) {
+          throw new Error(`InnerTube server returned status ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.captions || !data.captions.playerCaptionsTracklistRenderer) {
+          throw new Error('No captions metadata in player response');
+        }
+
+        const tracklist = data.captions.playerCaptionsTracklistRenderer;
+        const tracks = tracklist.captionTracks || [];
+        if (tracks.length === 0) {
+          throw new Error('No caption tracks found');
+        }
+
+        let targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase() === (lang || 'ko').toLowerCase());
+        if (!targetTrack && lang !== 'ko') targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase() === 'ko');
+        if (!targetTrack) targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase() === 'en');
+        if (!targetTrack) targetTrack = tracks[0];
+
+        if (!targetTrack || !targetTrack.baseUrl) {
+          throw new Error('No baseUrl in chosen caption track');
+        }
+
+        console.log(`[getYouTubeTranscriptDirectBrowser] Found track: ${targetTrack.languageCode}, url: ${targetTrack.baseUrl}`);
+        const captionResponse = await fetch(targetTrack.baseUrl + '&fmt=json', {
+          signal: getTimeoutSignal(5000)
+        });
+
+        if (!captionResponse.ok) {
+          throw new Error(`Failed to fetch caption data: ${captionResponse.status}`);
+        }
+
+        const captionsJson = await captionResponse.json();
+        const segments = [];
+        if (captionsJson && Array.isArray(captionsJson.events)) {
+          captionsJson.events.forEach(event => {
+            if (!event.segs) return;
+            const text = event.segs.map(s => s.utf8).join('').trim();
+            if (!text) return;
+            const startSec = event.tStartMs ? event.tStartMs / 1000 : 0;
+            const durSec = event.dDurationMs ? event.dDurationMs / 1000 : 1.0;
+            segments.push({ start: startSec, dur: durSec, text });
+          });
+        }
+
+        if (segments.length > 0) {
+          console.log(`[getYouTubeTranscriptDirectBrowser] Success! Parsed ${segments.length} segments.`);
+          return { lang: targetTrack.languageCode || lang, captions: segments };
+        } else {
+          throw new Error('Parsed captions were empty');
+        }
+      } catch (err) {
+        console.warn(`[getYouTubeTranscriptDirectBrowser] Client ${sig.name} failed:`, err.message);
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('All InnerTube clients failed');
+  }
+
   async function loadCaptionsForVideo(videoId) {
     captionLoadStatus = 'loading';
     const overallStartTime = performance.now();
@@ -4611,6 +4765,26 @@
       window.PerformanceLogger.log('Captions', 'Load Captions Started', 0, 'Info', `Video ID: ${videoId}`);
     }
     
+    // 0. 데스크톱 앱(Electron) 환경의 경우, CORS 제약이 없으므로 브라우저 다이렉트 InnerTube 추출 우선 시도 (초고속 및 캡차 완벽 우회)
+    if (window.electronAPI) {
+      try {
+        console.log(`[loadCaptionsForVideo] Direct browser InnerTube capture started for video: ${videoId}`);
+        const directResult = await getYouTubeTranscriptDirectBrowser(videoId, currentLang);
+        if (directResult && directResult.captions && directResult.captions.length > 0) {
+          liveCaptions = await translateCaptionsIfRequired(directResult.captions, currentLang);
+          captionLoadStatus = 'loaded';
+          const localizedLang = directResult.lang === 'ko' ? (currentLang === 'ko' ? '한국어' : 'Korean') : (currentLang === 'ko' ? '영어' : 'English');
+          showToast(t('toast_captions_loaded').replace('{lang}', localizedLang).replace('{count}', directResult.captions.length));
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Load Captions Complete', performance.now() - overallStartTime, 'Success', `Source: Electron Direct, Count: ${directResult.captions.length}`);
+          }
+          return;
+        }
+      } catch (directErr) {
+        console.warn('[loadCaptionsForVideo] Electron direct InnerTube capture failed:', directErr.message);
+      }
+    }
+
     // 1. Try local/online backend first (generous timeout: backend may cascade through multiple fallbacks)
     let captionData = null;
     const backendStartTime = performance.now();
