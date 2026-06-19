@@ -6730,8 +6730,8 @@
     if (brandBtn) {
       brandBtn.addEventListener('click', () => {
         const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
-        const landingPage = browserLang.startsWith('ko') ? 'landing_ko.html' : 'landing_en.html';
-        const absoluteLandingUrl = new URL(landingPage, window.location.href).href;
+        const landingPage = browserLang.startsWith('ko') ? '/landing_ko.html' : '/landing_en.html';
+        const absoluteLandingUrl = new URL(landingPage, window.location.origin).href;
         try {
           if (window.self !== window.top) {
             window.top.location.href = absoluteLandingUrl;

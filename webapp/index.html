@@ -17,8 +17,8 @@
       const ua = navigator.userAgent;
       const touchSupport = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
       const isMobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) || (touchSupport && window.innerWidth < 1024);
-      const targetPage = isMobile ? 'mobile.html' : 'desktop.html';
-      const targetUrl = new URL(targetPage + window.location.search, window.location.href).href;
+      const targetPage = isMobile ? '/mobile.html' : '/desktop.html';
+      const targetUrl = new URL(targetPage + window.location.search, window.location.origin).href;
       
       // 2. Handle Iframe / Masked Forwarding Safely
       try {
