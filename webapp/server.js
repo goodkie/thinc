@@ -11,7 +11,16 @@ const BLACKLIST_DURATION = 1 * 60 * 60 * 1000; // 1 Hour
 
 // --- Admin Settings Server-Side Store ---
 // 어드민이 온라인에서 설정하면 모든 클라이언트(데스크톱/모바일/웹)에 실시간 반영
-const DATA_DIR = process.env.DATA_DIR || __dirname;
+let DATA_DIR = process.env.DATA_DIR;
+if (!DATA_DIR) {
+  // Railway 볼륨 마운트 경로인 /data 가 실제 디렉토리로 존재하는지 체크하여 자동 매칭
+  if (fs.existsSync('/data')) {
+    DATA_DIR = '/data';
+  } else {
+    DATA_DIR = __dirname;
+  }
+}
+
 if (!fs.existsSync(DATA_DIR)) {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
