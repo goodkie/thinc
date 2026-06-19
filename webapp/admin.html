@@ -1467,6 +1467,35 @@
         }
       });
       
+      // Reset Action
+      const resetBtn = document.getElementById('btn-reset');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+          if (confirm('모든 설정을 공장 초기값으로 리셋하시겠습니까?')) {
+            localStorage.removeItem('thinc_admin_settings');
+            localStorage.removeItem('thinc_backend_url');
+            loadConfig();
+            const toast = document.getElementById('toast-success');
+            toast.innerHTML = '<span>🔄</span> 설정을 초기화했습니다!';
+            toast.classList.add('visible');
+            setTimeout(() => {
+              toast.classList.remove('visible');
+              setTimeout(() => { toast.innerHTML = '<span>✅</span> Settings Saved & Engine Hot-Swapped Successfully!'; }, 400);
+            }, 3000);
+          }
+        });
+      }
+
+      // Exit Action
+      const exitBtn = document.getElementById('btn-exit');
+      if (exitBtn) {
+        exitBtn.addEventListener('click', () => {
+          sessionStorage.removeItem('thinc_admin_authenticated');
+          localStorage.removeItem('thinc_admin_token');
+          window.location.reload();
+        });
+      }
+      
       // ─── SQLite DB 연동 및 검색식 어드민 구현 ───────────────────────────────
 
       let currentEditLang = 'ko';

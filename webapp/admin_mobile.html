@@ -1158,10 +1158,13 @@
 
       // Exit Action
       const exitBtn = document.getElementById('btn-exit');
-      exitBtn.addEventListener('click', () => {
-        const lastPage = document.referrer || 'index.html';
-        window.location.href = lastPage;
-      });
+      if (exitBtn) {
+        exitBtn.addEventListener('click', () => {
+          sessionStorage.removeItem('thinc_admin_authenticated');
+          localStorage.removeItem('thinc_admin_token');
+          window.location.reload();
+        });
+      }
 
       // ─── SQLite DB 연동 및 검색식 어드민 구현 ───────────────────────────────
       let currentEditLang = 'ko';
