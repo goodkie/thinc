@@ -840,7 +840,7 @@
       </div>
       <button class="passcode-btn" id="btn-unlock">ENGAGE ENGINE CONSOLE</button>
       <div class="error-msg" id="error-message">ACCESS DENIED: INVALID SECURITY KEY</div>
-      <div style="margin-top: 25px; font-size: 11px; color: var(--text-muted); font-family: 'Roboto Mono', monospace;">Th!nc Admin Console v1.6.1-LOGIN-FIX</div>
+      <div style="margin-top: 25px; font-size: 11px; color: var(--text-muted); font-family: 'Roboto Mono', monospace;">Th!nc Admin Console v1.6.0-MODAL</div>
     </div>
   </div>
 
@@ -853,7 +853,7 @@
       </div>
       <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
         <div class="badge-admin">ALGORITHMIC ACCESS</div>
-        <div style="font-size: 11px; color: var(--primary); font-family: 'Roboto Mono', monospace; font-weight: bold; letter-spacing: 0.05em; text-shadow: 0 0 8px var(--primary-glow);">v1.6.1-LOGIN-FIX</div>
+        <div style="font-size: 11px; color: var(--primary); font-family: 'Roboto Mono', monospace; font-weight: bold; letter-spacing: 0.05em; text-shadow: 0 0 8px var(--primary-glow);">v1.6.0-MODAL</div>
       </div>
     </header>
 
@@ -1033,6 +1033,12 @@
           <button class="btn-action btn-save" id="btn-save">💾 Save & Apply Settings</button>
           <button class="btn-action btn-reset" id="btn-reset">🔄 Reset to Factory Default</button>
           <button class="btn-action btn-db-manage" id="btn-open-db-modal">📁 채널명 민감도 DB 관리</button>
+          <!-- Backup and Restore Actions -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px; margin-bottom: 5px;">
+            <button class="btn-action" id="btn-backup" style="background: rgba(59, 130, 246, 0.25); border-color: rgba(59, 130, 246, 0.4); margin-bottom: 0;">💾 전체 데이터 백업</button>
+            <button class="btn-action" id="btn-restore" style="background: rgba(16, 185, 129, 0.25); border-color: rgba(16, 185, 129, 0.4); margin-bottom: 0;">📤 백업 데이터 복구</button>
+          </div>
+          <input type="file" id="file-restore" style="display: none;" accept=".json">
           <button class="btn-action btn-exit" id="btn-exit">🚪 Exit Admin Console</button>
           <div id="admin-sync-status" style="margin-top:12px;font-size:12px;color:rgba(148,163,184,0.8);min-height:20px;letter-spacing:0.03em;transition:all 0.3s;"></div>
         </div>
@@ -1520,6 +1526,107 @@
               setTimeout(() => { toast.innerHTML = '<span>✅</span> Settings Saved & Engine Hot-Swapped Successfully!'; }, 400);
             }, 3000);
           }
+        });
+      }
+
+      // Backup Action
+      const backupBtn = document.getElementById('btn-backup');
+      if (backupBtn) {
+        backupBtn.addEventListener('click', async () => {
+          try {
+            const host = serverBaseUrl();
+            const token = localStorage.getItem('thinc_admin_token') || '';
+            const res = await fetch(`${host}/api/admin/backup?token=${encodeURIComponent(token)}`, {
+              headers: { 'X-Admin-Token': token }
+            });
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({ error: 'HTTP error ' + res.status }));
+              alert('백업 실패: ' + (errData.error || '알 수 없는 오류'));
+              return;
+            }
+            const resData = await res.json();
+            if (resData.ok && resData.data) {
+              const dataStr = JSON.stringify(resData.data, null, 2);
+              const blob = new Blob([dataStr], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const dateStr = new Date().toISOString().split('T')[0];
+              a.download = `thinc_backup_${dateStr}.json`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              
+              const toast = document.getElementById('toast-success');
+              if (toast) {
+                toast.innerHTML = '<span>💾</span> 전체 데이터를 다운로드했습니다!';
+                toast.classList.add('visible');
+                setTimeout(() => { toast.classList.remove('visible'); }, 3000);
+              }
+            } else {
+              alert('백업 데이터를 불러오지 못했습니다.');
+            }
+          } catch(e) {
+            alert('네트워크 오류: ' + e.message);
+          }
+        });
+      }
+
+      // Restore Action
+      const restoreBtn = document.getElementById('btn-restore');
+      const restoreFile = document.getElementById('file-restore');
+      if (restoreBtn && restoreFile) {
+        restoreBtn.addEventListener('click', () => {
+          restoreFile.click();
+        });
+        
+        restoreFile.addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          
+          if (!confirm('백업 데이터를 복원하시겠습니까? 기존 설정과 DB 데이터가 모두 초기화되고 백업 시점으로 복구됩니다.')) {
+            restoreFile.value = '';
+            return;
+          }
+          
+          const reader = new FileReader();
+          reader.onload = async (evt) => {
+            try {
+              const backupData = JSON.parse(evt.target.result);
+              if (!backupData.adminSettings || !Array.isArray(backupData.channels)) {
+                alert('올바르지 않은 백업 파일 형식입니다.');
+                restoreFile.value = '';
+                return;
+              }
+              
+              const host = serverBaseUrl();
+              const token = localStorage.getItem('thinc_admin_token') || '';
+              const res = await fetch(`${host}/api/admin/restore`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Admin-Token': token
+                },
+                body: JSON.stringify({
+                  adminToken: token,
+                  backupData: backupData
+                })
+              });
+              
+              const resData = await res.json().catch(() => ({}));
+              if (res.ok && resData.ok) {
+                alert('백업 데이터 복구가 완료되었습니다. 페이지를 새로고침하여 설정을 다시 적용합니다.');
+                window.location.reload();
+              } else {
+                alert('복구 실패: ' + (resData.error || '알 수 없는 서버 오류'));
+              }
+            } catch(err) {
+              alert('복구 실패 (JSON 파싱 오류 또는 네트워크 오류): ' + err.message);
+            }
+            restoreFile.value = '';
+          };
+          reader.readAsText(file);
         });
       }
 
