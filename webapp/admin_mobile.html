@@ -1170,7 +1170,7 @@
 
       const serverBaseUrl = () => {
         const backendUrl = localStorage.getItem('thinc_backend_url') || '';
-        return backendUrl || (location.origin.includes('localhost') || location.origin.includes('127.0.0.1') ? location.origin : '');
+        return backendUrl || location.origin;
       };
 
       async function fetchAdminChannels(page = 1) {

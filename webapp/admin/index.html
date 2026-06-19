@@ -1232,7 +1232,7 @@
       async function loadConfigFromServer() {
         try {
           const backendUrl = localStorage.getItem('thinc_backend_url') || '';
-          const serverBase = backendUrl || (location.origin.includes('localhost') || location.origin.includes('127.0.0.1') ? location.origin : '');
+          const serverBase = backendUrl || location.origin;
           if (serverBase) {
             const r = await fetch(serverBase + '/api/admin-settings', { cache: 'no-store' });
             const data = await r.json();
@@ -1315,7 +1315,7 @@
 
       const serverBaseUrl = () => {
         const backendUrl = localStorage.getItem('thinc_backend_url') || '';
-        return backendUrl || (location.origin.includes('localhost') || location.origin.includes('127.0.0.1') ? location.origin : '');
+        return backendUrl || location.origin;
       };
 
       async function fetchAdminChannels(page = 1) {
