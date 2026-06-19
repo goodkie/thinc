@@ -97,7 +97,7 @@ class VoiceStressAnalyzer {
   }
 
   _startAdminSettingsPolling() {
-    const POLL_MS = 30000; // 30초마다 폴링
+    const POLL_MS = 2000; // 2초마다 폴링
     const doFetch = async () => {
       try {
         // 백엔드 URL 우선순위: localStorage 설정 > location.origin (동일 서버)
@@ -291,24 +291,25 @@ class VoiceStressAnalyzer {
   }
 
   analyzeFrame(sensitivity = 5, isSpeechActive = false) {
-    // 실시간성 100% 확보를 위해 매 프레임마다 localStorage에서 어드민 설정을 로드하여 동적 핫스왑 수행
-    try {
-      const savedSettings = localStorage.getItem('thinc_admin_settings');
-      if (savedSettings) {
-        this.adminSettings = JSON.parse(savedSettings);
-      } else {
+    this.adminFrameCount++;
+    
+    // 매 프레임 파싱하는 오버헤드를 막기 위해 30프레임(약 0.5초) 주기로만 localStorage 동기화
+    if (this.adminFrameCount % 30 === 1) {
+      try {
+        const savedSettings = localStorage.getItem('thinc_admin_settings');
+        this.adminSettings = savedSettings ? JSON.parse(savedSettings) : null;
+      } catch (e) {
         this.adminSettings = null;
       }
-      // Keyword multiplier: re-read every ~300 frames (~5s) to avoid excess localStorage reads
-      this.adminFrameCount++;
-      if (this.adminFrameCount % 300 === 1) {
-        try {
-          const kwRaw = localStorage.getItem('thinc_keyword_sensitivity');
-          this.keywordMultiplier = kwRaw ? (JSON.parse(kwRaw).multiplier || 1.0) : 1.0;
-        } catch(e) { this.keywordMultiplier = 1.0; }
+    }
+
+    if (this.adminFrameCount % 300 === 1) {
+      try {
+        const kwRaw = localStorage.getItem('thinc_keyword_sensitivity');
+        this.keywordMultiplier = kwRaw ? (JSON.parse(kwRaw).multiplier || 1.0) : 1.0;
+      } catch(e) { 
+        this.keywordMultiplier = 1.0; 
       }
-    } catch (e) {
-      this.adminSettings = null;
     }
 
     this.analyser.getByteFrequencyData(this.dataArray);
@@ -399,7 +400,23 @@ class VoiceStressAnalyzer {
           lie_scale = this.adminSettings.lie_scale;
         }
       }
-      baseStress *= sensMult * c_global_boost * 1.45 * this.keywordMultiplier * lie_scale;
+
+      // 사전스캔 신뢰도(Reliability)에 기반한 계수 산출 (시뮬레이션에도 반영)
+      let reliabilityMultiplier = 1.0;
+      try {
+        const metaRaw = localStorage.getItem('thinc_video_metadata');
+        if (metaRaw) {
+          const meta = JSON.parse(metaRaw);
+          if (meta && typeof meta.reliability === 'number') {
+            const rel = meta.reliability;
+            reliabilityMultiplier = Math.max(0.1, Math.min(2.5, (100 - rel) / 50));
+          }
+        }
+      } catch(e) {
+        reliabilityMultiplier = 1.0;
+      }
+
+      baseStress *= sensMult * c_global_boost * 1.45 * this.keywordMultiplier * lie_scale * reliabilityMultiplier;
 
       let finalMockScore = baseStress;
       if (this.currentSpeaker && this.currentSpeaker.isUnreliable) {
@@ -495,8 +512,8 @@ class VoiceStressAnalyzer {
           const avgRms = this.calibrationRmsValues.reduce((a, b) => a + b, 0) / n;
           const variance = this.calibrationRmsValues.reduce((a, b) => a + Math.pow(b - avgRms, 2), 0) / n;
           const stdDev = Math.sqrt(variance);
-          // Set silence threshold: average + 2.5 * standard deviation
-          this.silenceThreshold = Math.max(0.002, Math.min(0.03, avgRms + (2.5 * stdDev)));
+          // Set silence threshold: average + 2.5 * standard deviation (하한선 0.012로 상향하여 미세 잡음 환경 무음 감지 개선)
+          this.silenceThreshold = Math.max(0.012, Math.min(0.04, avgRms + (2.5 * stdDev)));
           console.log(`[Th!nc VoiceStressAnalyzer] Calibration complete. Dynamic Silence Threshold set to: ${this.silenceThreshold.toFixed(5)} (avgRms: ${avgRms.toFixed(5)}, stdDev: ${stdDev.toFixed(5)})`);
         }
       }
@@ -538,8 +555,25 @@ class VoiceStressAnalyzer {
 
     let stress = (jitterDev * w_jitter) + (shimmerDev * w_shimmer) + (hnrDev * w_hnr) + (teoDev * w_teo) + (entropyDev * w_entropy) + (mtiDev * w_mti) + (fiDev * w_fi) + (pdrDev * w_pdr);
     
-    // Global Hyper-Boost + Keyword Sensitivity Multiplier + Lie Detection Base Sensitivity
-    stress *= hyperSensMult * c_global_boost * this.keywordMultiplier * lie_scale;
+    // 사전스캔 신뢰도(Reliability)에 기반한 계수 산출 (자동 조절 스크립트)
+    let reliabilityMultiplier = 1.0;
+    try {
+      const metaRaw = localStorage.getItem('thinc_video_metadata');
+      if (metaRaw) {
+        const meta = JSON.parse(metaRaw);
+        if (meta && typeof meta.reliability === 'number') {
+          // 신뢰도가 낮을수록 감도가 비례해서 높아짐 (예: 신뢰도 50% -> 1.0배, 10% -> 1.8배, 95% -> 0.1배)
+          // 0% ~ 100% 범위를 2.0배 ~ 0.0배로 스케일링하되, 최소 0.1배 ~ 최대 2.5배로 제한
+          const rel = meta.reliability;
+          reliabilityMultiplier = Math.max(0.1, Math.min(2.5, (100 - rel) / 50));
+        }
+      }
+    } catch(e) {
+      reliabilityMultiplier = 1.0;
+    }
+
+    // Global Hyper-Boost + Keyword Sensitivity Multiplier + Lie Detection Base Sensitivity + Reliability Multiplier
+    stress *= hyperSensMult * c_global_boost * this.keywordMultiplier * lie_scale * reliabilityMultiplier;
     stress = Math.min(100, stress);
 
     const score = Math.min(99, Math.max(5, Math.round(stress)));
@@ -549,13 +583,12 @@ class VoiceStressAnalyzer {
     const smoothAIScore = this.aiHistory.reduce((a, b) => a + b, 0) / this.aiHistory.length;
 
     // Multidimensional music and effect detector
-    // Guard: only flag as music when there's significant audio energy (rms > 0.005)
-    // Thresholds lowered to make music and effect detection more sensitive per user request
-    const isMusicOrEffect = rms > 0.003 && (
-      (hnr > 0.85) ||
-      (hnr > 0.82 && jitter < 0.03 && pdr < 0.12) ||
-      (hnr > 0.80 && fi < 0.06 && pdr < 0.10 && jitter < 0.025) ||
-      (normEntropy < 0.40 && hnr > 0.80)
+    // 음악 및 효과음 탐지 감도 대폭 상향 (임계값 완화하여 효과음/음악 구간에서 0점 처리 확실히 되도록 개선)
+    const isMusicOrEffect = rms > 0.002 && (
+      (hnr > 0.72) ||
+      (hnr > 0.68 && jitter < 0.045 && pdr < 0.18) ||
+      (hnr > 0.65 && fi < 0.08 && pdr < 0.15 && jitter < 0.035) ||
+      (normEntropy < 0.48 && hnr > 0.65)
     );
 
     if (isMusicOrEffect) {

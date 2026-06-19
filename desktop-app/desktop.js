@@ -3037,7 +3037,7 @@
         badge.className = `yt-lie-badge ${data.rating}`;
         badge.style.opacity = '0';
         badge.style.transition = 'opacity 0.3s ease';
-        const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : '🔴';
+        const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : data.rating === 'scanning' ? '⏳' : '🔴';
         badge.innerHTML = `${emoji} ${data.badgeText || data.score + '%'}`;
         thumbWrap.appendChild(badge);
         requestAnimationFrame(() => { badge.style.opacity = '1'; });
@@ -3099,7 +3099,7 @@
           badge.className = `yt-lie-badge ${data.rating}`;
           badge.style.opacity = '0';
           badge.style.transition = 'opacity 0.3s ease';
-          const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : '🔴';
+          const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : data.rating === 'scanning' ? '⏳' : '🔴';
           badge.innerHTML = `${emoji} ${data.badgeText || data.score + '%'}`;
           thumbWrap.appendChild(badge);
           requestAnimationFrame(() => { badge.style.opacity = '1'; });
@@ -3107,12 +3107,10 @@
       };
       
       const handleScanFailure = async () => {
-        const hash = videoId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const hashScore = 80 + (hash % 15);
         const defaultData = {
           ok: true,
-          rating: 'caution',
-          score: hashScore,
+          rating: 'scanning',
+          score: 0,
           badgeText: '스캔중'
         };
         await applyResult(defaultData);
@@ -5388,9 +5386,13 @@
           const capEnd = cap.start + Math.max(cap.dur, 1.5);
           const isMatched = nowSec >= cap.start && nowSec < capEnd;
           if (isMatched) {
-            // [소리 지시어 제거 처리] 음악/효과음/웃음소리 등 노이즈 텍스트 자막은 소리 신호 분석 제외(갭으로 간주)
+            // [소리 지시어 제거 처리] 음악/효과음/웃음소리/박수 등 노이즈 텍스트 자막은 소리 신호 분석 제외(갭으로 간주)
             const text = (cap.text || '').trim();
-            const isAudioNoise = /^\[.*\]$|^\(.*\)$|^[\s]*$/.test(text);
+            // [공백], [효과음], [음악], (웃음), ♪ 기호 포함 등 모두 제거
+            const isAudioNoise = /^[\[\(].*[\]\)]$|^[\s]*$|🎵|🎶|♪|♬/.test(text) ||
+              /^\[.*\]$|^\(.*\)$/.test(text) ||
+              /\[음악\]|\[music\]|\[효과음\]|\[박수\]|\[웃음\]|\[웅성거림\]|\[소음\]|\[침묵\]|\[무음\]|\[배경음\]|\[앰비언트\]/i.test(text) ||
+              /\(음악\)|\(music\)|\(laughter\)|\(applause\)|\(crowd\)|\(noise\)|\(effects\)|\(background\)/i.test(text);
             if (isAudioNoise) {
               return false;
             }
@@ -5621,7 +5623,8 @@
       }
 
       // Music/FX caption → suppress score
-      const MUSIC_FX_REGEX = /\[음악\]|\[Music\]|\[웅성거림\]|\[웃음\]|\(음악\)|\(Music\)|\(Laughter\)|\(Loud\)|🎵|🎶|♪/i;
+      // 음악/효과음/박수/웃음소리/무음 등 노이즈 자막 감지 → 분석 억제
+      const MUSIC_FX_REGEX = /\[음악\]|\[Music\]|\[웅성거림\]|\[웃음\]|\[박수\]|\[효과음\]|\[배경음\]|\[소음\]|\[무음\]|\[침묵\]|\[앰비언트\]|\(음악\)|\(Music\)|\(Laughter\)|\(Applause\)|\(Crowd\)|\(Loud\)|\(Noise\)|\(Effects\)|\(Background\)|🎵|🎶|♪|♬/i;
       if (MUSIC_FX_REGEX.test(activeCaptionText)) {
         return {
           stressScore: 0, isSilent: false, isMusic: true, aiProbability: 0, gainStatus: 'OPTIMAL',
