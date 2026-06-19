@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <script>
@@ -1283,6 +1283,7 @@
         const val = passField.value;
         if (val === CORRECT_PASSCODE) {
           sessionStorage.setItem('thinc_admin_authenticated', 'true');
+          localStorage.setItem('thinc_admin_token', val);
           errorEl.style.opacity = '0';
           bypassSecurity();
         } else {

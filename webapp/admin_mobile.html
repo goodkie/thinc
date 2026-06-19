@@ -1020,6 +1020,7 @@
       function verifyPasscode() {
         if (passField.value === CORRECT_PASSCODE) {
           sessionStorage.setItem('thinc_admin_authenticated', 'true');
+          localStorage.setItem('thinc_admin_token', passField.value);
           errorEl.style.opacity = '0';
           bypassSecurity();
         } else {
@@ -1406,11 +1407,27 @@
       }
 
       // CSV Import
-              const kws = line.substring(commaIdx + 1).split(';').map(k => k.trim()).filter(k => k);
-              if (tierRaw === 'HIGH'   || tierRaw === '상') db.high   = kws;
-              else if (tierRaw === 'MEDIUM' || tierRaw === '중') db.medium = kws;
-              else if (tierRaw === 'LOW'    || tierRaw === '하') db.low    = kws;
-            });
+      const importInput = document.getElementById('csv-import-input');
+      if (importInput) {
+        importInput.replaceWith(importInput.cloneNode(true));
+        document.getElementById('csv-import-input').addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            try {
+              const text = evt.target.result.replace(/^\uFEFF/, '');
+              const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.startsWith('Tier'));
+              const db = { high: [], medium: [], low: [] };
+              lines.forEach(line => {
+                const commaIdx = line.indexOf(',');
+                if (commaIdx === -1) return;
+                const tierRaw = line.substring(0, commaIdx).trim().toUpperCase();
+                const kws = line.substring(commaIdx + 1).split(';').map(k => k.trim()).filter(k => k);
+                if (tierRaw === 'HIGH'   || tierRaw === '상') db.high   = kws;
+                else if (tierRaw === 'MEDIUM' || tierRaw === '중') db.medium = kws;
+                else if (tierRaw === 'LOW'    || tierRaw === '하') db.low    = kws;
+              });
             document.getElementById('kw-high').value   = db.high.join('\n');
             document.getElementById('kw-medium').value = db.medium.join('\n');
             document.getElementById('kw-low').value    = db.low.join('\n');
@@ -1435,6 +1452,7 @@
         reader.readAsText(file, 'UTF-8');
         e.target.value = '';
       });
+    }
 
       // Live match status
       function refreshMatchStatus() {
