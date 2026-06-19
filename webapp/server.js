@@ -2315,17 +2315,25 @@ function handleCaptions(req, res) {
     }
     
     // Robust time unit auto-detection:
-    // youtube-transcript may return offsets in seconds (float) or ms (integer).
-    // If any segment has an offset or duration > 1000, it's highly likely to be milliseconds,
-    // especially for short videos or segments where duration is typically a few seconds (ms > 1000).
-    const isMs = segments.some(s => s.offset > 1000) || segments.some(s => s.duration > 1000);
+    // youtube-transcript v1 uses 'offset'/'duration' fields, v2+ uses 'start'/'dur' fields.
+    // If any segment has an offset/start > 1000, it's likely milliseconds.
+    const hasOffset = segments.some(s => s.offset !== undefined);
+    const hasStart  = segments.some(s => s.start  !== undefined);
+    const rawStart0 = hasOffset ? (segments[0].offset || 0) : (hasStart ? (segments[0].start || 0) : 0);
+    const rawDur0   = segments[0].duration !== undefined ? segments[0].duration : (segments[0].dur !== undefined ? segments[0].dur : 1);
+    // If any offset/start or duration > 1000, assume milliseconds
+    const isMs = rawStart0 > 1000 || rawDur0 > 1000 ||
+                 segments.some(s => (s.offset || s.start || 0) > 1000) ||
+                 segments.some(s => (s.duration || s.dur || 0) > 1000);
 
     const filtered = segments
-      .filter(s => !NOISE.test(s.text.trim()))
+      .filter(s => !NOISE.test((s.text || '').trim()))
       .map(s => {
-        const start = isMs ? Math.round(s.offset / 1000)   : Math.round(s.offset);
-        const dur   = isMs ? Math.max(1, Math.round(s.duration / 1000)) : Math.max(1, Math.round(s.duration));
-        return { start, dur, text: s.text.replace(/\n/g, ' ').trim() };
+        const rawS = s.start !== undefined ? s.start : (s.offset !== undefined ? s.offset : 0);
+        const rawD = s.duration !== undefined ? s.duration : (s.dur !== undefined ? s.dur : 1);
+        const start = isMs ? Math.round(rawS / 1000)   : parseFloat(rawS);
+        const dur   = isMs ? Math.max(1, Math.round(rawD / 1000)) : Math.max(0.5, parseFloat(rawD));
+        return { start, dur, text: (s.text || '').replace(/\n/g, ' ').trim() };
       });
       
     if (filtered.length === 0) {
@@ -2409,24 +2417,24 @@ async function handleAnalyzeVideoFast(req, res) {
         score = 35 + Math.floor(Math.random() * 35);
         if (score < 50) {
           rating = 'danger';
-          badgeText = `Danger [상] ${100 - score}%${fuzzySuffix}`;
+          badgeText = `위험 [상] ${100 - score}%${fuzzySuffix}`;
         } else {
           rating = 'caution';
-          badgeText = `Caution [상] ${100 - score}%${fuzzySuffix}`;
+          badgeText = `주의 [상] ${100 - score}%${fuzzySuffix}`;
         }
       } else if (sensInfo.tier === 'medium') {
         score = 70 + Math.floor(Math.random() * 16);
         if (score < 80) {
           rating = 'caution';
-          badgeText = `Caution [중] ${100 - score}%${fuzzySuffix}`;
+          badgeText = `주의 [중] ${100 - score}%${fuzzySuffix}`;
         } else {
           rating = 'safe';
-          badgeText = `Safe [중] ${score}%${fuzzySuffix}`;
+          badgeText = `안전 [중] ${score}%${fuzzySuffix}`;
         }
       } else if (sensInfo.tier === 'low') {
         score = 85 + Math.floor(Math.random() * 11);
         rating = 'safe';
-        badgeText = `Safe [하] ${score}%${fuzzySuffix}`;
+        badgeText = `안전 [하] ${score}%${fuzzySuffix}`;
       }
       
       res.writeHead(200, CORS);
