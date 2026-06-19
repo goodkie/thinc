@@ -2381,38 +2381,63 @@ async function handleAnalyzeVideoFast(req, res) {
 
   const queryChannel = (parsedUrl.query.channel || '').trim();
   let uploaderName = queryChannel;
+  let meta = null;
 
-  if (!uploaderName) {
-    let meta = null;
-    try {
-      meta = await fetchVideoMetaInternal(videoId);
-    } catch (metaErr) {
-      console.warn(`[handleAnalyzeVideoFast] Failed to fetch meta for ${videoId}: ${metaErr.message}`);
-    }
-    uploaderName = meta ? (meta.uploaderName || '') : '';
+  try {
+    meta = await fetchVideoMetaInternal(videoId);
+  } catch (metaErr) {
+    console.warn(`[handleAnalyzeVideoFast] Failed to fetch meta for ${videoId}: ${metaErr.message}`);
   }
 
-  const sensInfo = getSensitivityMultiplier(uploaderName);
+  if (!uploaderName && meta) {
+    uploaderName = meta.uploaderName || '';
+  }
+
+  const tags = meta ? (meta.tags || []) : [];
+
+  // 채널명 및 태그 통합 스캔
+  let sensInfo = { multiplier: 1.0, tier: 'none', count: 0, matchType: 'none' };
+  if (uploaderName) {
+    sensInfo = getSensitivityMultiplier(uploaderName);
+  }
+
+  if (sensInfo.tier === 'none' && tags.length > 0) {
+    const tierPriority = { 'none': 0, 'low': 1, 'medium': 2, 'high': 3 };
+    for (const tag of tags) {
+      const tagSens = getSensitivityMultiplier(tag);
+      if (tagSens.tier !== 'none') {
+        if (tierPriority[tagSens.tier] > tierPriority[sensInfo.tier]) {
+          sensInfo = {
+            ...tagSens,
+            matchType: 'keyword',
+            matchedName: tag
+          };
+        }
+      }
+    }
+  }
 
   const isFuzzy = sensInfo.matchType === 'fuzzy';
-  const fuzzySuffix = isFuzzy ? ' ~유사' : '';
+  const isKeyword = sensInfo.matchType === 'keyword';
+  const fuzzySuffix = isFuzzy ? ' ~유사' : (isKeyword ? ' (태그)' : '');
 
+  // Caution과 Danger 계산 로직 서로 스왑 적용
   if (sensInfo.tier === 'high') {
     // 상: 35% ~ 70% 미만의 임의의 값 (35 ~ 69)
     score = 35 + Math.floor(Math.random() * 35);
     if (score < 50) {
-      rating = 'danger';
-      badgeText = `Danger [상] ${100 - score}%${fuzzySuffix}`;
-    } else {
-      rating = 'caution';
+      rating = 'caution'; // 로직 교체: 기존 danger -> caution
       badgeText = `Caution [상] ${100 - score}%${fuzzySuffix}`;
+    } else {
+      rating = 'danger';  // 로직 교체: 기존 caution -> danger
+      badgeText = `Danger [상] ${100 - score}%${fuzzySuffix}`;
     }
   } else if (sensInfo.tier === 'medium') {
     // 중: 70% ~ 85% 의 임의의 값 (70 ~ 85)
     score = 70 + Math.floor(Math.random() * 16);
     if (score < 80) {
-      rating = 'caution';
-      badgeText = `Caution [중] ${100 - score}%${fuzzySuffix}`;
+      rating = 'danger';  // 로직 교체: 기존 caution -> danger
+      badgeText = `Danger [중] ${100 - score}%${fuzzySuffix}`;
     } else {
       rating = 'safe';
       badgeText = `Safe [중] ${score}%${fuzzySuffix}`;
@@ -2423,23 +2448,10 @@ async function handleAnalyzeVideoFast(req, res) {
     rating = 'safe';
     badgeText = `Safe [하] ${score}%${fuzzySuffix}`;
   } else {
-    // DB에 없는 채널: 자막 유무에 따라 '스캔중' 또는 중립 점수 표시
-    if (textBuffer.length > 0) {
-      // 자막이 있으면 자막 기반 점수 (67~83% 범위 중립)
-      score = 67 + Math.floor(Math.random() * 17);
-      if (score < 75) {
-        rating = 'caution';
-        badgeText = `Caution ${100 - score}%`;
-      } else {
-        rating = 'safe';
-        badgeText = `Safe ${score}%`;
-      }
-    } else {
-      // 자막 없음 → 스캔중 표시
-      score = 65 + Math.floor(Math.random() * 16);
-      rating = 'caution';
-      badgeText = '스캔중';
-    }
+    // DB 미매칭: 무조건 '스캔중' 뱃지 표시
+    score = 65 + Math.floor(Math.random() * 16);
+    rating = 'caution';
+    badgeText = '스캔중';
   }
 
   res.writeHead(200, CORS);
