@@ -551,11 +551,11 @@ class VoiceStressAnalyzer {
     // Multidimensional music and effect detector
     // Guard: only flag as music when there's significant audio energy (rms > 0.005)
     // Thresholds lowered to make music and effect detection more sensitive per user request
-    const isMusicOrEffect = rms > 0.005 && (
-      (hnr > 0.93) ||
-      (hnr > 0.90 && jitter < 0.02 && pdr < 0.10) ||
-      (hnr > 0.88 && fi < 0.04 && pdr < 0.08 && jitter < 0.015) ||
-      (normEntropy < 0.30 && hnr > 0.88)
+    const isMusicOrEffect = rms > 0.003 && (
+      (hnr > 0.85) ||
+      (hnr > 0.82 && jitter < 0.03 && pdr < 0.12) ||
+      (hnr > 0.80 && fi < 0.06 && pdr < 0.10 && jitter < 0.025) ||
+      (normEntropy < 0.40 && hnr > 0.80)
     );
 
     if (isMusicOrEffect) {

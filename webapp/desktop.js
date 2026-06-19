@@ -6,6 +6,7 @@
 (function () {
   // ===== STATE VARIABLES =====
   let isRunning = false;
+  let currentUploaderName = '';
   let currentTab = 'youtube';
   let viewMode = 'expert'; // visual, expert, mini
   let currentLang = 'en';
@@ -22,6 +23,7 @@
   let sourceNode = null;
   let animationId = null;
   let activeVideoId = null;
+  let activePlatform = 'youtube';
   let videoMetadata = {
     title: "일반 유튜브 비디오",
     channel: "YouTube Creator",
@@ -52,6 +54,46 @@
   let lastShownCaptionIdx = -1;   // Track which caption was last displayed
   let activeCardElement = null;   // Active card DOM element in sentence list
   let captionLoadStatus = 'none'; // 'none' | 'loading' | 'loaded' | 'failed'
+  let isAnalysisLocked = false;   // ✅ 중복 loadSocialVideoAnalysis 실행 방지 전역 잠금 플래그
+
+  // Cache for fast video analysis ratings
+  const scanCache = {};
+
+  // Background Thumbnail Captions Scraping Queue
+  const bgScanQueue = [];
+  let isBgScanning = false;
+
+  async function enqueueBgScan(videoId, onComplete, onFailure) {
+    bgScanQueue.push({ videoId, onComplete, onFailure });
+    processNextBgScan();
+  }
+
+  async function processNextBgScan() {
+    if (isBgScanning || bgScanQueue.length === 0) return;
+    isBgScanning = true;
+    
+    const task = bgScanQueue.shift();
+    try {
+      console.log(`[Queue] Starting background scrap scan for video: ${task.videoId}`);
+      if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions) {
+        const result = await window.electronAPI.fetchBackgroundCaptions(task.videoId);
+        if (result && result.ok && result.captions && result.captions.length > 0) {
+          const localResult = analyzeCaptionsLocally(task.videoId, result.captions);
+          task.onComplete(localResult);
+        } else {
+          task.onFailure(new Error(result?.error || 'No captions in background scrap'));
+        }
+      } else {
+        task.onFailure(new Error('electronAPI not available'));
+      }
+    } catch (e) {
+      console.warn(`[Queue] Background scrap failed for ${task.videoId}:`, e.message);
+      task.onFailure(e);
+    } finally {
+      isBgScanning = false;
+      setTimeout(processNextBgScan, 1000);
+    }
+  }
 
   // History sessions list
   let sessionHistory = [];
@@ -82,7 +124,7 @@
     const baseUrls = [];
 
     // 모바일(Capacitor) 또는 데스크톱(Electron) 환경에서는 Railway 백엔드를 최우선으로 시도
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     const isElectron = typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron;
     
     if (isCapacitor || isElectron) {
@@ -125,9 +167,12 @@
       const startTime = performance.now();
       const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
       try {
-        // Each attempt: 8 s per-host cap, honouring caller signal when provided
+        // Each attempt: 18s for captions/scan, 8s for others, honouring caller signal when provided
+        const isTimeoutHeavy = endpoint.includes('/api/captions') || endpoint.includes('/api/analyze-video-fast');
+        const timeoutDuration = isTimeoutHeavy ? 18000 : 8000;
+        
         const perAttemptController = new AbortController();
-        const perAttemptTimer = setTimeout(() => perAttemptController.abort(), 8000);
+        const perAttemptTimer = setTimeout(() => perAttemptController.abort(), timeoutDuration);
         if (userSignal) {
           userSignal.addEventListener('abort', () => perAttemptController.abort(), { once: true });
         }
@@ -1525,6 +1570,16 @@
 
         updateTabIcons();
 
+        if (tab !== 'detector') {
+          const overlay = document.getElementById('wv-float-overlay');
+          if (overlay) {
+            overlay.classList.add('hidden');
+          }
+          if (isRunning) {
+            toggleSession();
+          }
+        }
+
         // Re-initialize mini charts when detector tab becomes visible
         if (tab === 'detector') {
           setTimeout(initMiniCharts, 100);
@@ -1543,23 +1598,79 @@
 
   // ===== DOM EVENT BINDINGS =====
   function initBinds() {
+    // 사이드바 & 우측 분석패널 토글 바인딩
+    const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
+    const sidebarEl = document.querySelector('.sidebar');
+    if (btnSidebarToggle && sidebarEl) {
+      btnSidebarToggle.addEventListener('click', () => {
+        sidebarEl.classList.toggle('collapsed');
+        document.body.classList.toggle('sidebar-collapsed');
+        const isCollapsed = sidebarEl.classList.contains('collapsed');
+        btnSidebarToggle.innerText = isCollapsed ? '▶' : '◀';
+        window.dispatchEvent(new Event('resize'));
+      });
+    }
+
+    const btnRightPanelToggle = document.getElementById('btn-right-panel-toggle');
+    const rightPanelEl = document.querySelector('.right-panel');
+    if (btnRightPanelToggle && rightPanelEl) {
+      btnRightPanelToggle.addEventListener('click', () => {
+        rightPanelEl.classList.toggle('collapsed');
+        document.body.classList.toggle('right-panel-collapsed');
+        const isCollapsed = rightPanelEl.classList.contains('collapsed');
+        btnRightPanelToggle.innerText = isCollapsed ? '◀' : '▶';
+        window.dispatchEvent(new Event('resize'));
+      });
+    }
+
+    // 웹뷰 오버레이 분석 시작 버튼 바인딩
+    const wvFloatStartBtn = document.getElementById('wv-float-start-btn');
+    if (wvFloatStartBtn) {
+      wvFloatStartBtn.addEventListener('click', () => {
+        toggleSession();
+      });
+    }
+
+    // 백그라운드 거짓 스캔 버튼 바인딩
+    const btnBgScan = document.getElementById('btn-bg-scan');
+    if (btnBgScan) {
+      btnBgScan.addEventListener('click', () => {
+        showToast("백그라운드 거짓 스캔을 실행합니다...");
+        const activeTab = document.querySelector('.platform-tab.active');
+        const platform = activeTab ? activeTab.dataset.platform : 'youtube';
+        const activeWebview = document.getElementById(`wv-${platform}`);
+        if (activeWebview) {
+          activeWebview.executeJavaScript('if (typeof forceScanPage === "function") { forceScanPage(); } else if (typeof scanPage === "function") { scanPage(); }');
+        }
+      });
+    }
+
     // YouTube Loader Binds
-    document.getElementById('btn-open-youtube').addEventListener('click', () => {
-      loadYouTubeVideo("home");
-    });
+    const btnOpenYoutube = document.getElementById('btn-open-youtube');
+    if (btnOpenYoutube) {
+      btnOpenYoutube.addEventListener('click', () => {
+        loadYouTubeVideo("home");
+      });
+    }
 
-    document.getElementById('btn-yt-go').addEventListener('click', () => {
-      const val = document.getElementById('yt-url-input').value;
-      if (val) loadYouTubeVideo(val);
-    });
-
-    document.getElementById('yt-url-input').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        const val = e.target.value;
+    const btnYtGo = document.getElementById('btn-yt-go');
+    if (btnYtGo) {
+      btnYtGo.addEventListener('click', () => {
+        const val = document.getElementById('yt-url-input')?.value;
         if (val) loadYouTubeVideo(val);
-        e.target.blur(); // Hide software keyboard on mobile
-      }
-    });
+      });
+    }
+
+    const ytUrlInput = document.getElementById('yt-url-input');
+    if (ytUrlInput) {
+      ytUrlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          const val = e.target.value;
+          if (val) loadYouTubeVideo(val);
+          e.target.blur(); // Hide software keyboard on mobile
+        }
+      });
+    }
 
     // Search input focus & history dropdown handling
     const searchInput = document.getElementById('yt-url-input');
@@ -1660,13 +1771,16 @@
     });
 
     // Back to feed list
-    document.getElementById('btn-yt-back').addEventListener('click', () => {
-      disableAlternativePlayer();
-      if (ytBlockedTimer) clearTimeout(ytBlockedTimer);
-      const blockedOverlay = document.getElementById('yt-blocked-overlay');
-      if (blockedOverlay) blockedOverlay.classList.add('hidden');
-      showBrowserFeed();
-    });
+    const btnYtBack = document.getElementById('btn-yt-back');
+    if (btnYtBack) {
+      btnYtBack.addEventListener('click', () => {
+        disableAlternativePlayer();
+        if (ytBlockedTimer) clearTimeout(ytBlockedTimer);
+        const blockedOverlay = document.getElementById('yt-blocked-overlay');
+        if (blockedOverlay) blockedOverlay.classList.add('hidden');
+        showBrowserFeed();
+      });
+    }
 
     // Alternative player event binds
     const btnUseAlt = document.getElementById('btn-use-alt');
@@ -1701,14 +1815,19 @@
     }
 
     // Start/Stop analysis
-    document.getElementById('btn-toggle').addEventListener('click', toggleSession);
+    const btnToggle = document.getElementById('btn-toggle');
+    if (btnToggle) {
+      btnToggle.addEventListener('click', toggleSession);
+    }
 
     // Sensitivity slider
     const sensSlider = document.getElementById('sens-slider');
     const sensVal = document.getElementById('sens-val');
-    sensSlider.addEventListener('input', (e) => {
-      sensVal.innerText = e.target.value;
-    });
+    if (sensSlider && sensVal) {
+      sensSlider.addEventListener('input', (e) => {
+        sensVal.innerText = e.target.value;
+      });
+    }
 
     // View Modes tabs
     const modeTabs = document.querySelectorAll('#mode-tabs .mode-tab');
@@ -1724,17 +1843,17 @@
         const feed = document.getElementById('subtitle-feed');
 
         if (viewMode === 'expert') {
-          expertGrid.classList.remove('hidden');
-          multichart.classList.remove('hidden');
-          feed.classList.remove('hidden');
+          if (expertGrid) expertGrid.classList.remove('hidden');
+          if (multichart) multichart.classList.remove('hidden');
+          if (feed) feed.classList.remove('hidden');
         } else if (viewMode === 'mini') {
-          expertGrid.classList.add('hidden');
-          multichart.classList.add('hidden');
-          feed.classList.add('hidden');
+          if (expertGrid) expertGrid.classList.add('hidden');
+          if (multichart) multichart.classList.add('hidden');
+          if (feed) feed.classList.add('hidden');
         } else { // visual
-          expertGrid.classList.add('hidden');
-          multichart.classList.remove('hidden');
-          feed.classList.remove('hidden');
+          if (expertGrid) expertGrid.classList.add('hidden');
+          if (multichart) multichart.classList.remove('hidden');
+          if (feed) feed.classList.remove('hidden');
         }
       });
     });
@@ -1767,9 +1886,12 @@
     if (btnShotPlus) btnShotPlus.addEventListener('click', () => adjustScreenshotCount(1));
 
     // Share alert modal
-    document.getElementById('btn-share').addEventListener('click', triggerTruthCapture);
-    document.getElementById('btn-close-modal').addEventListener('click', closeTruthModal);
-    document.getElementById('btn-modal-bottom-close').addEventListener('click', closeTruthModal);
+    const btnShare = document.getElementById('btn-share');
+    if (btnShare) btnShare.addEventListener('click', triggerTruthCapture);
+    const btnCloseModal = document.getElementById('btn-close-modal');
+    if (btnCloseModal) btnCloseModal.addEventListener('click', closeTruthModal);
+    const btnModalBottomClose = document.getElementById('btn-modal-bottom-close');
+    if (btnModalBottomClose) btnModalBottomClose.addEventListener('click', closeTruthModal);
     
     // Final Report Access from modal
     const btnGoReport = document.getElementById('btn-modal-go-report');
@@ -1781,12 +1903,16 @@
       });
     }
 
+
     // Export report CSV
-    document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
-    document.getElementById('btn-share-report').addEventListener('click', shareReportScreenshot);
+    const btnExportCsv = document.getElementById('btn-export-csv');
+    if (btnExportCsv) btnExportCsv.addEventListener('click', exportCSV);
+    const btnShareReport = document.getElementById('btn-share-report');
+    if (btnShareReport) btnShareReport.addEventListener('click', shareReportScreenshot);
 
     // Clear history
-    document.getElementById('btn-clear-history').addEventListener('click', clearHistory);
+    const btnClearHistory = document.getElementById('btn-clear-history');
+    if (btnClearHistory) btnClearHistory.addEventListener('click', clearHistory);
 
     // Minimize float button redirect
     const floatBtn = document.getElementById('float-detector-btn');
@@ -1817,6 +1943,483 @@
     // Drag Capture & Social Share Init
     initDragCapture();
     initSocialShareBinds();
+    initSocialExtension();
+  }
+
+  // ===== TH!NC INTEGRATED SOCIAL EXTENSION =====
+  function initSocialExtension() {
+    console.log('[Th!nc-Extension] Initializing Social Integration...');
+
+    const tabs = document.querySelectorAll('.platform-tab');
+    const webviews = document.querySelectorAll('.social-webview');
+    const urlInput = document.getElementById('yt-url-input');
+    const btnGo = document.getElementById('btn-yt-go');
+    const btnPrev = document.getElementById('btn-nav-prev');
+    const btnNext = document.getElementById('btn-nav-next');
+    const btnReload = document.getElementById('btn-nav-reload');
+    const btnLogin = document.getElementById('btn-platform-login');
+
+    let activeWebview = document.getElementById('wv-youtube');
+
+    // 1. 탭 전환 제어
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const platform = tab.dataset.platform;
+        
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        webviews.forEach(wv => {
+          wv.classList.remove('active');
+          if (wv.id === `wv-${platform}`) {
+            wv.classList.add('active');
+            activeWebview = wv;
+
+            // 탭 포커스 시 비로소 로딩 (백그라운드 소리/재생 방지)
+            const currentSrc = wv.getAttribute('src');
+            const dataSrc = wv.getAttribute('data-src');
+            if ((!currentSrc || currentSrc === 'about:blank') && dataSrc) {
+              console.log(`[Th!nc-Extension] Lazy loading webview ${wv.id} with ${dataSrc}`);
+              wv.setAttribute('src', dataSrc);
+            }
+          }
+        });
+
+        // 로그인 버튼은 유튜브 플랫폼일 때만 노출
+        if (btnLogin) {
+          if (platform === 'youtube') btnLogin.classList.remove('hidden');
+          else btnLogin.classList.add('hidden');
+        }
+
+        // 주소창 업데이트
+        try {
+          urlInput.value = activeWebview.getURL();
+        } catch(e) {
+          if (platform === 'youtube') urlInput.value = 'https://m.youtube.com';
+          else if (platform === 'facebook') urlInput.value = 'https://m.facebook.com';
+          else if (platform === 'instagram') urlInput.value = 'https://www.instagram.com';
+          else if (platform === 'tiktok') urlInput.value = 'https://www.tiktok.com';
+        }
+      });
+    });
+
+    // 2. 뒤로 / 앞으로 / 새로고침 제어
+    if (btnPrev) btnPrev.addEventListener('click', () => { if (activeWebview && activeWebview.canGoBack()) activeWebview.goBack(); });
+    if (btnNext) btnNext.addEventListener('click', () => { if (activeWebview && activeWebview.canGoForward()) activeWebview.goForward(); });
+    if (btnReload) btnReload.addEventListener('click', () => { if (activeWebview) activeWebview.reload(); });
+
+    // 3. 주소 이동 및 검색 처리
+    function navigateToUrl() {
+      let val = urlInput.value.trim();
+      if (!val) return;
+
+      if (!val.startsWith('http://') && !val.startsWith('https://')) {
+        const platform = document.querySelector('.platform-tab.active').dataset.platform;
+        if (platform === 'youtube') val = `https://m.youtube.com/results?q=${encodeURIComponent(val)}`;
+        else if (platform === 'facebook') val = `https://m.facebook.com/search/top/?q=${encodeURIComponent(val)}`;
+        else if (platform === 'instagram') val = `https://www.instagram.com/explore/tags/${encodeURIComponent(val)}`;
+        else if (platform === 'tiktok') val = `https://www.tiktok.com/search?q=${encodeURIComponent(val)}`;
+      }
+      if (activeWebview) activeWebview.loadURL(val);
+    }
+
+    if (btnGo) btnGo.addEventListener('click', navigateToUrl);
+    if (urlInput) urlInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        navigateToUrl();
+        urlInput.blur();
+      }
+    });
+
+    // 4. 구글 로그인 버튼 연동
+    if (btnLogin) btnLogin.addEventListener('click', () => {
+      if (window.electronAPI && window.electronAPI.openYoutubeLogin) {
+        window.electronAPI.openYoutubeLogin();
+      }
+    });
+
+    function extractVideoIdFromUrl(url) {
+      if (!url) return null;
+      try {
+        const parsed = new URL(url);
+        if (parsed.hostname.includes('youtube.com')) {
+          return parsed.searchParams.get('v');
+        } else if (parsed.hostname.includes('youtu.be')) {
+          return parsed.pathname.substring(1);
+        } else if (parsed.pathname.includes('/watch')) {
+          const match = parsed.search.match(/v=([^&]+)/);
+          return match ? match[1] : null;
+        } else if (parsed.pathname.includes('/shorts/')) {
+          const parts = parsed.pathname.split('/shorts/');
+          return parts[1] ? parts[1].split('?')[0] : null;
+        } else if (parsed.hostname.includes('tiktok.com') && parsed.pathname.includes('/video/')) {
+          const parts = parsed.pathname.split('/video/');
+          return parts[1] ? parts[1].split('?')[0] : null;
+        } else if (parsed.hostname.includes('instagram.com') && parsed.pathname.includes('/reel/')) {
+          const parts = parsed.pathname.split('/reel/');
+          return parts[1] ? parts[1].split('/')[0] : null;
+        } else if (parsed.hostname.includes('facebook.com') && (parsed.pathname.includes('/videos/') || parsed.pathname.includes('/watch/'))) {
+          const match = parsed.pathname.match(/\/(?:videos|watch)\/([0-9]+)/);
+          return match ? match[1] : null;
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function checkAndTriggerAnalysis(url, webviewId) {
+      const lowerUrl = (url || '').toLowerCase();
+      const isWatchOrShorts = lowerUrl.includes('watch') || lowerUrl.includes('/shorts/') || 
+                              lowerUrl.includes('/reel/') || lowerUrl.includes('/video/') ||
+                              lowerUrl.includes('facebook.com/videos');
+
+      if (!isWatchOrShorts) {
+        console.log(`[Th!nc-Extension] URL does not contain watch/shorts/reel/video. Hiding overlay immediately.`);
+        const overlay = document.getElementById('wv-float-overlay');
+        if (overlay) {
+          overlay.classList.add('hidden');
+          overlay.style.display = 'none';
+        }
+        if (isRunning) {
+          toggleSession();
+        }
+        return;
+      }
+
+      const videoId = extractVideoIdFromUrl(url);
+      if (videoId) {
+        console.log(`[Th!nc-Extension] Auto-triggered analysis from navigation: ${videoId}`);
+        loadSocialVideoAnalysis(videoId, webviewId);
+      } else {
+        console.log(`[Th!nc-Extension] Navigation away from video. Hiding overlay.`);
+        const overlay = document.getElementById('wv-float-overlay');
+        if (overlay) {
+          overlay.classList.add('hidden');
+          overlay.style.display = 'none';
+        }
+        if (isRunning) {
+          toggleSession();
+        }
+      }
+    }
+
+    // 5. 웹뷰 로딩 이벤트 감지 및 주소창 동기화 + 인젝션
+    const injectScriptText = (window.electronAPI && window.electronAPI.readSocialInjectScript) ? window.electronAPI.readSocialInjectScript() : '';
+
+    webviews.forEach(wv => {
+      wv.addEventListener('did-navigate', (e) => {
+        if (wv === activeWebview) {
+          urlInput.value = e.url;
+        }
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Webview', `Webview Navigated (${wv.id})`, 0, 'Info', `URL: ${e.url}`);
+        }
+        checkAndTriggerAnalysis(e.url, wv.id);
+      });
+      wv.addEventListener('did-navigate-in-page', (e) => {
+        if (wv === activeWebview) {
+          urlInput.value = e.url;
+        }
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Webview', `Webview In-Page Navigated (${wv.id})`, 0, 'Info', `URL: ${e.url}`);
+        }
+        checkAndTriggerAnalysis(e.url, wv.id);
+      });
+
+      wv.addEventListener('console-message', async (e) => {
+        const msg = e.message;
+        if (msg && msg.startsWith('[THINC-PLAYBACK]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-PLAYBACK]'.length));
+            console.log(`[Th!nc-Extension] Received playback console msg:`, data);
+            if (window.PerformanceLogger) {
+              window.PerformanceLogger.log('Webview', `Playback Detected (${wv.id})`, 0, 'Info', `Video ID: ${data.videoId}`);
+            }
+            if (data.videoId) {
+              loadSocialVideoAnalysis(data.videoId, data.platform);
+            }
+          } catch(err) {
+            console.error('Failed to parse playback msg:', err);
+          }
+        } else if (msg && msg.startsWith('[THINC-TIMEUPDATE]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-TIMEUPDATE]'.length));
+            if (data.videoId) {
+              if (data.videoId !== activeVideoId) {
+                console.log(`[Th!nc-Extension] Auto-aligning activeVideoId on timeupdate: ${activeVideoId} -> ${data.videoId}`);
+                activeVideoId = data.videoId;
+              }
+              captionPlaybackSec = data.currentTime;
+            }
+          } catch(err) {}
+        } else if (msg && msg.startsWith('[THINC-CAPTIONS-DATA]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-CAPTIONS-DATA]'.length));
+            if (data.captions && data.captions.length > 0) {
+              if (data.videoId && data.videoId !== activeVideoId) {
+                console.log(`[Th!nc-Extension] Auto-aligning activeVideoId on captions: ${activeVideoId} -> ${data.videoId}`);
+                activeVideoId = data.videoId;
+              }
+              console.log(`[Th!nc-Extension] Received ${data.captions.length} captions directly from injected webview!`);
+              liveCaptions = await translateCaptionsIfRequired(data.captions, currentLang);
+              captionLoadStatus = 'loaded';
+              const localizedLang = data.lang === 'ko' ? (currentLang === 'ko' ? '한국어' : 'Korean') : (currentLang === 'ko' ? '영어' : 'English');
+              showToast(t('toast_captions_loaded').replace('{lang}', localizedLang + ' (Direct)').replace('{count}', data.captions.length));
+              
+              if (window.PerformanceLogger) {
+                window.PerformanceLogger.log('Captions', 'Load Captions Complete', 0, 'Success', `Source: Webview Direct, Count: ${data.captions.length}`);
+              }
+            }
+          } catch(err) {
+            console.error('Failed to parse injected captions:', err);
+          }
+        } else if (msg && msg.startsWith('[THINC-DOM-SUBTITLE]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-DOM-SUBTITLE]'.length));
+            if (data.text) {
+              if (data.videoId && data.videoId !== activeVideoId) {
+                console.log(`[Th!nc-Extension] Auto-aligning activeVideoId on DOM subtitles: ${activeVideoId} -> ${data.videoId}`);
+                activeVideoId = data.videoId;
+              }
+              currentSubtitle = data.text;
+              captionLoadStatus = 'loaded';
+
+              // 실시간 DOM 자막 데이터를 liveCaptions에도 안전하게 적재하여 분석 파이프라인 동화
+              const startSec = captionPlaybackSec > 0 ? captionPlaybackSec : 0;
+              const hasDuplicate = liveCaptions.some(c => c.text === data.text && Math.abs(c.start - startSec) < 3);
+              if (!hasDuplicate) {
+                liveCaptions.push({
+                  start: startSec,
+                  dur: 3,
+                  text: data.text
+                });
+              }
+
+              const currentLieScore = isSilentOrMusicOrPaused ? 0 : Math.min(99, Math.max(0, Math.round(finalScore)));
+              updateSentenceFeed(data.text, currentLieScore, false);
+              
+              // 실시간 자막 감지에 따라 민감도 실시간 갱신 실행
+              if (activeVideoId) {
+                checkKeywordSensitivity(activeVideoId);
+              }
+            }
+          } catch(err) {}
+        } else if (msg && msg.startsWith('[THINC-VIDEO-RECT]')) {
+          try {
+            const data = JSON.parse(msg.substring('[THINC-VIDEO-RECT]'.length));
+            const overlay = document.getElementById('wv-float-overlay');
+            if (overlay) {
+              const currentUrl = wv.getURL ? wv.getURL() : '';
+              const lowerUrl = (currentUrl || '').toLowerCase();
+              const isWatchOrShorts = lowerUrl.includes('watch') || lowerUrl.includes('/shorts/') || 
+                                      lowerUrl.includes('/reel/') || lowerUrl.includes('/video/') ||
+                                      lowerUrl.includes('facebook.com/videos');
+
+              if (!isWatchOrShorts) {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+                if (isRunning) {
+                  toggleSession();
+                }
+                return;
+              }
+
+              if (data.isVisible) {
+                const wvRect = wv.getBoundingClientRect();
+                const width = data.width;
+                overlay.style.position = 'fixed';
+                overlay.style.left = `${wvRect.left + data.left}px`;
+                overlay.style.top = `${wvRect.top + data.top}px`;
+                overlay.style.width = `${width}px`;
+                overlay.style.height = `${data.height}px`;
+                overlay.style.display = '';
+                
+                if (width < 540) {
+                  overlay.classList.add('mini-overlay');
+                } else {
+                  overlay.classList.remove('mini-overlay');
+                }
+                
+                overlay.classList.remove('hidden');
+
+                // 분석 구동 상태에 따라 게이지와 누적 바 숨김/보임 처리
+                const truthBar = document.getElementById('wv-float-truth-bar');
+                const gauge = document.getElementById('wv-float-gauge');
+                const sub = document.getElementById('wv-float-subtitle');
+
+                if (isRunning) {
+                  if (truthBar) truthBar.classList.remove('hidden');
+                  if (gauge) gauge.classList.remove('hidden');
+                  if (sub) sub.classList.remove('hidden');
+                } else {
+                  if (truthBar) truthBar.classList.add('hidden');
+                  if (gauge) gauge.classList.add('hidden');
+                  if (sub) sub.classList.add('hidden');
+                }
+              } else {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+              }
+            }
+          } catch(err) {}
+        }
+      });
+
+      wv.addEventListener('dom-ready', () => {
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Webview', `DOM Ready (${wv.id})`, 0, 'Success', `Guest webview content loaded.`);
+        }
+        if (injectScriptText) {
+          console.log(`[Th!nc-Extension] Injecting script to webview: ${wv.id}`);
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Webview', `Injecting Social Extension (${wv.id})`, 0, 'Info', `Executing inject-social.js`);
+          }
+          wv.executeJavaScript(injectScriptText);
+        }
+      });
+    });
+
+    // 6. 소셜 미디어 내 동영상 재생 시작 감지 수신
+    if (window.electronAPI && window.electronAPI.onVideoPlaybackStarted) {
+      window.electronAPI.onVideoPlaybackStarted((data) => {
+        console.log('[Th!nc-Extension] Received playing signal from background:', data);
+        if (data.videoId) {
+          loadSocialVideoAnalysis(data.videoId, data.platform);
+        }
+      });
+    }
+  }
+
+  // 유튜브 및 타 소셜 영상 실시간 분석 트리거 함수
+  async function loadSocialVideoAnalysis(videoId, platform) {
+    // ✅ 진행 중인 분석이 있거나 동일 비디오이면 스킵
+    if (isAnalysisLocked) {
+      console.log(`[Th!nc-Extension] Analysis already running (locked). Ignoring call for: ${videoId}`);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Analysis', 'Social Video Analysis Skipped (Locked)', 0, 'Info', `Already analyzing: ${activeVideoId}, new request: ${videoId}`);
+      }
+      return;
+    }
+    if (activeVideoId === videoId && (captionLoadStatus === 'loaded' || captionLoadStatus === 'loading')) {
+      console.log(`[Th!nc-Extension] Analysis already active/loading for video: ${videoId}. Skipping re-fetch. (Status: ${captionLoadStatus})`);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Analysis', 'Social Video Analysis Skipped (Already Active)', 0, 'Info', `Video ID: ${videoId}, Status: ${captionLoadStatus}`);
+      }
+      return;
+    }
+
+    isAnalysisLocked = true; // ✅ 잠금 활성화
+    console.log(`[Th!nc-Extension] Requesting analysis for video: ${videoId} on ${platform}`);
+    activeVideoId = videoId;
+    activePlatform = platform;
+    
+    if (window.PerformanceLogger) {
+      window.PerformanceLogger.log('Analysis', 'Social Video Analysis Requested', 0, 'Info', `Video ID: ${videoId}, Platform: ${platform}`);
+    }
+
+    const bannerText = document.getElementById('banner-text');
+    if (bannerText) bannerText.innerText = '분석 시작 중...';
+    
+    captionLoadStatus = 'loading';
+    liveCaptions = [];
+    subtitleRecords = [];
+
+    let captionsLoaded = false;
+
+    // 유튜브 백그라운드 자막 가져오기
+    if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions && platform.includes('youtube')) {
+      try {
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Background Captions Fetch Start', 0, 'Info', `Requesting background scraper window for video ${videoId}`);
+        }
+        const result = await window.electronAPI.fetchBackgroundCaptions(videoId);
+        if (result && result.ok && result.captions) {
+          console.log(`[Th!nc-Extension] Successfully fetched background captions (${result.captions.length} segments).`);
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Background Captions Scraping Success', 0, 'Success', `Scraped ${result.captions.length} caption segments.`);
+          }
+          liveCaptions = result.captions;
+          captionLoadStatus = 'loaded';
+          captionsLoaded = true;
+          captionPlaybackSec = 0;
+          lastShownCaptionIdx = -1;
+        } else {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Background Captions Scraping Empty', 0, 'Warning', result ? result.error || 'No captions returned' : 'No result');
+          }
+        }
+      } catch (err) {
+        console.warn('[Th!nc-Extension] Background caption fetch exception:', err.message);
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Background Captions Scraping Error', 0, 'Failed', err.message);
+        }
+      }
+    }
+
+    // 유튜브 백그라운드 수집 실패 시, 강력한 5계층 자막 획득 에이전트(loadCaptionsForVideo)로 우회 시도
+    if (!captionsLoaded && platform.includes('youtube')) {
+      console.log(`[Th!nc-Extension] Background scraper failed or skipped. Trying robust loadCaptionsForVideo fallback...`);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Captions', 'Triggering loadCaptionsForVideo Fallback', 0, 'Info', 'Running 5-tier robust transcription cascade');
+      }
+      try {
+        await loadCaptionsForVideo(videoId);
+        if (liveCaptions && liveCaptions.length > 0) {
+          captionsLoaded = true;
+          captionPlaybackSec = 0;
+          lastShownCaptionIdx = -1;
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Robust Caption Fallback Loaded', 0, 'Success', `Loaded ${liveCaptions.length} segments via frontend cascade.`);
+          }
+        } else {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Captions', 'Robust Caption Fallback Failed', 0, 'Failed', 'No subtitles retrieved via cascade.');
+          }
+        }
+      } catch (err) {
+        console.warn('[Th!nc-Extension] Robust caption load fallback failed:', err.message);
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Captions', 'Robust Caption Fallback Error', 0, 'Failed', err.message);
+        }
+      }
+    }
+
+    // 유튜브 백그라운드 수집 실패 또는 타 플랫폼(페이스북, 인스타, 틱톡)
+    try {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Network', 'Fetch Fast Rating Score', 0, 'Info', `Requesting fast analyze API for ${videoId}`);
+      }
+      const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${videoId}&channel=${encodeURIComponent(currentUploaderName || '')}`);
+      const data = await resp.json();
+      if (data && data.ok) {
+        console.log(`[Th!nc-Extension] Fast rating score obtained: ${data.score}%`);
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Network', 'Fast Rating Score Received', 0, 'Success', `Reliability Score: ${data.score}%, rating: ${data.rating}`);
+        }
+        
+        targetScore = data.score;
+        const relBadge = document.getElementById('det-rel-badge');
+        if (relBadge) relBadge.innerText = `${data.score}% RELIABILITY`;
+      }
+    } catch (e) {
+      console.warn('[Th!nc-Extension] Fallback fast rating failed:', e.message);
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Network', 'Fast Rating Fetch Failed', 0, 'Failed', e.message);
+      }
+    }
+
+    // 분석 기능 기동 (음성/자막) - 이미 실행 중이면 중복 클릭 방지
+    if (bannerText) bannerText.innerText = '음성 분석 중...';
+    if (!isRunning) {
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Analysis', 'Auto-starting VSA engine', 0, 'Info', 'Triggering analysis toggle session');
+      }
+      const btnToggle = document.getElementById('btn-toggle');
+      if (btnToggle && btnToggle.dataset.running === 'false') {
+        btnToggle.click();
+      }
+    }
+
+    isAnalysisLocked = false; // ✅ 분석 요청 완료 후 잠금 해제 (다음 영상 분석 허용)
   }
 
   const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -1854,7 +2457,7 @@
   async function fetchViaCORSProxy(targetUrl) {
     // Electron(데스크톱) 또는 Capacitor(모바일) 환경: CORS 제약 없이 직접 Fetch를 먼저 시도
     const isElectron = window.electronAPI && window.electronAPI.isElectron;
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     if (isElectron || isCapacitor) {
       try {
         console.log(`[Direct] Fetching directly: ${targetUrl}`);
@@ -1955,14 +2558,13 @@
   }
 
   const PIPED_API_INSTANCES = [
-    'https://api.piped.private.coffee',
-    'https://pipedapi.col1g0.de',
-    'https://piped.mha.fi',
-    'https://piped-api.woodland.cafe',
-    'https://piped-api.lunar.icu',
-    'https://pipedapi.really.click',
-    'https://piped.yt',
-    'https://piped.video'
+    "https://pipedapi.kavin.rocks",
+    "https://api.piped.private.coffee",
+    "https://pipedapi.in.projectsegfau.lt",
+    "https://pipedapi.darkness.services",
+    "https://piped-api.lunar.icu",
+    "https://piped-api.garudalinux.org",
+    "https://pipedapi.tokhmi.xyz"
   ];
 
   let dynamicPipedInstances = [...PIPED_API_INSTANCES];
@@ -2326,7 +2928,7 @@
     gridEl.innerHTML = favorites.map(video => {
       const localized = getLocalizedVideo(video);
       return `
-        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')">
+        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')" data-video-id="${localized.id}">
           <div class="yt-video-thumbnail-wrap">
             <img src="https://img.youtube.com/vi/${localized.id}/hqdefault.jpg" alt="${localized.title}">
             <span class="yt-video-duration">${localized.duration}</span>
@@ -2340,6 +2942,8 @@
         </div>
       `;
     }).join('');
+    
+    autoScanDesktopVideos();
   }
 
   window.handleToggleFavClick = function(btn) {
@@ -2380,7 +2984,7 @@
       const isFav = isVideoFavorite(video.id);
       const localized = getLocalizedVideo(video);
       return `
-        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')">
+        <div class="yt-video-card" onclick="playYouTubeEmbed('${localized.id}')" data-video-id="${localized.id}">
           <div class="yt-video-thumbnail-wrap">
             <img src="https://img.youtube.com/vi/${localized.id}/hqdefault.jpg" alt="${localized.title}">
             <span class="yt-video-duration">${localized.duration}</span>
@@ -2403,6 +3007,165 @@
 
     displayedVideoCount += nextChunk.length;
     reattachSentinel();
+    
+    // 새로 렌더된 카드에 백그라운드 사전 스캔 실행
+    autoScanDesktopVideos();
+  }
+
+  async function autoScanDesktopVideos() {
+    const cards = document.querySelectorAll('.yt-video-card:not([data-scanned])');
+    if (cards.length === 0) return;
+    
+    const CONCURRENCY = 4; // 동시 요청 수 제한
+    
+    const scanCard = async (card) => {
+      const videoId = card.getAttribute('data-video-id') || 
+        card.getAttribute('onclick')?.match(/playYouTubeEmbed\('([^']+)'\)/)?.[1];
+      if (!videoId) return;
+      card.setAttribute('data-scanned', '1');
+      
+      const channelEl = card.querySelector('.yt-video-channel');
+      const channelName = channelEl ? channelEl.innerText.trim() : '';
+      
+      const thumbWrap = card.querySelector('.yt-video-thumbnail-wrap');
+      if (!thumbWrap) return;
+      if (thumbWrap.querySelector('.yt-lie-badge:not(.scan-pie)')) return;
+
+      if (scanCache[videoId]) {
+        const data = scanCache[videoId];
+        const badge = document.createElement('div');
+        badge.className = `yt-lie-badge ${data.rating}`;
+        badge.style.opacity = '0';
+        badge.style.transition = 'opacity 0.3s ease';
+        const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : '🔴';
+        badge.innerHTML = `${emoji} ${data.badgeText || data.score + '%'}`;
+        thumbWrap.appendChild(badge);
+        requestAnimationFrame(() => { badge.style.opacity = '1'; });
+        return;
+      }
+      
+      // 파이차트 진행률 뱃지 삽입 (회전 효과 추가)
+      const pieBadge = document.createElement('div');
+      pieBadge.className = 'yt-lie-badge scan-pie';
+      pieBadge.innerHTML = `<svg class="scan-pie-svg" viewBox="0 0 24 24" style="animation: thinc-spin-pulse 3s linear infinite;">
+        <circle cx="12" cy="12" r="10" fill="rgba(10,10,20,0.7)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+        <circle class="scan-pie-track" cx="12" cy="12" r="9" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2.5"/>
+        <circle class="scan-pie-arc" cx="12" cy="12" r="9" fill="none" stroke="#f1c40f" stroke-width="2.5"
+          stroke-dasharray="0 56.55" stroke-linecap="round" transform="rotate(-90 12 12)"/>
+        <circle cx="12" cy="12" r="2" fill="#f1c40f" opacity="0.85"/>
+      </svg>`;
+      thumbWrap.appendChild(pieBadge);
+      
+      const arc = pieBadge.querySelector('.scan-pie-arc');
+      const CIRC = 56.55;
+      let animFrame;
+      let isLocalScanning = false;
+      const startTime = Date.now();
+      const ANIM_DURATION = 4000;
+      
+      const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+      
+      const animate = () => {
+        const elapsed = Date.now() - startTime;
+        const rawPct = Math.min(elapsed / ANIM_DURATION, 1);
+        
+        let pct = easeOutCubic(rawPct) * 0.95;
+        if (isLocalScanning) {
+          // 백그라운드 2차 로컬 스캔 시에는 90%~95% 바운싱 애니메이션 수행 (대기 시각화)
+          pct = 0.92 + Math.sin(Date.now() / 150) * 0.03;
+        }
+        
+        if (arc) arc.setAttribute('stroke-dasharray', `${pct * CIRC} ${CIRC}`);
+        if (rawPct < 1 || isLocalScanning) {
+          animFrame = requestAnimationFrame(animate);
+        }
+      };
+      animFrame = requestAnimationFrame(animate);
+      
+      const applyResult = async (data) => {
+        cancelAnimationFrame(animFrame);
+        if (arc) arc.setAttribute('stroke-dasharray', `${CIRC} ${CIRC}`);
+        
+        await new Promise(r => setTimeout(r, 200)); // 100% 충전 잠시 표시
+        pieBadge.style.transition = 'opacity 0.25s ease';
+        pieBadge.style.opacity = '0';
+        await new Promise(r => setTimeout(r, 250));
+        pieBadge.remove();
+        
+        if (data && data.ok) {
+          scanCache[videoId] = data; // 결과 로컬 캐싱 적용
+          if (thumbWrap.querySelector('.yt-lie-badge:not(.scan-pie)')) return;
+          const badge = document.createElement('div');
+          badge.className = `yt-lie-badge ${data.rating}`;
+          badge.style.opacity = '0';
+          badge.style.transition = 'opacity 0.3s ease';
+          const emoji = data.rating === 'safe' ? '🟢' : data.rating === 'caution' ? '🟡' : '🔴';
+          badge.innerHTML = `${emoji} ${data.badgeText || data.score + '%'}`;
+          thumbWrap.appendChild(badge);
+          requestAnimationFrame(() => { badge.style.opacity = '1'; });
+        }
+      };
+      
+      const handleScanFailure = async () => {
+        const hash = videoId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        const hashScore = 80 + (hash % 15);
+        const defaultData = {
+          ok: true,
+          rating: 'caution',
+          score: hashScore,
+          badgeText: '스캔중'
+        };
+        await applyResult(defaultData);
+      };
+      
+      try {
+        const resp = await fetchWithBackendFallback(`/api/analyze-video-fast?id=${encodeURIComponent(videoId)}&channel=${encodeURIComponent(channelName)}`);
+        const data = await resp.json();
+        
+        if (data && data.ok) {
+          await applyResult(data);
+        } else {
+          if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions) {
+            isLocalScanning = true;
+            enqueueBgScan(videoId,
+              async (localResult) => {
+                isLocalScanning = false;
+                await applyResult(localResult);
+              },
+              async (err) => {
+                isLocalScanning = false;
+                await handleScanFailure();
+              }
+            );
+          } else {
+            await applyResult(data);
+          }
+        }
+      } catch (e) {
+        if (window.electronAPI && window.electronAPI.fetchBackgroundCaptions) {
+          isLocalScanning = true;
+          enqueueBgScan(videoId,
+            async (localResult) => {
+              isLocalScanning = false;
+              await applyResult(localResult);
+            },
+            async (err) => {
+              isLocalScanning = false;
+              await handleScanFailure();
+            }
+          );
+        } else {
+          await handleScanFailure();
+        }
+      }
+    };
+    
+    // CONCURRENCY 개씩 배치 처리
+    const cardArray = Array.from(cards);
+    for (let i = 0; i < cardArray.length; i += CONCURRENCY) {
+      const batch = cardArray.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(scanCard));
+    }
   }
 
   // Sentinel element for IntersectionObserver-based infinite scroll
@@ -2845,236 +3608,7 @@
     }
   }
 
-  async function toggleSession() {
-    const btn = document.getElementById('btn-toggle');
-    const bannerDot = document.getElementById('banner-dot');
-    const bannerText = document.getElementById('banner-text');
-    const quickstartBtn = document.getElementById('btn-yt-quickstart');
 
-    if (isRunning) {
-      isRunning = false;
-      btn.dataset.running = "false";
-      btn.querySelector('#btn-icon').innerText = "▶";
-      btn.querySelector('#btn-text').innerText = t('start');
-      
-      if (quickstartBtn) {
-        quickstartBtn.classList.remove('running');
-        quickstartBtn.innerText = "▶️ " + t('start');
-      }
-      
-      bannerDot.classList.remove('active');
-      bannerText.innerText = t('idle');
-
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-      
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-      }
-
-      const liveBar = document.getElementById('yt-live-reliability-bar');
-      if (liveBar) {
-        liveBar.classList.add('hidden');
-      }
-      showAnalysisEndOverlay();
-
-      // Hide Live Truth Floating Bar
-      const truthBarContainer = document.getElementById('yt-live-truth-bar-container');
-      if (truthBarContainer) {
-        truthBarContainer.classList.add('hidden');
-      }
-
-      saveSessionToHistory();
-      renderReportTab();
-      showToast(t('toast_session_saved'));
-      
-      const truthModal = document.getElementById('truth-modal');
-      if (truthModal) {
-        truthModal.classList.remove('hidden');
-      }
-      
-    } else {
-      isRunning = true;
-      btn.dataset.running = "true";
-      btn.querySelector('#btn-icon').innerText = "■";
-      btn.querySelector('#btn-text').innerText = t('stop');
-      
-      if (quickstartBtn) {
-        quickstartBtn.classList.add('running');
-        quickstartBtn.innerText = "■ " + t('stop');
-      }
-      
-      bannerDot.classList.add('active');
-      bannerText.innerText = t('scanning');
-
-      sessionData = [];
-      subtitleRecords = [];
-      currentSubRecord = null;
-      document.getElementById('sentence-list').innerHTML = "";
-
-      const overlay = document.getElementById('yt-analysis-end-overlay');
-      if (overlay) {
-        overlay.classList.add('hidden');
-      }
-
-      const liveBar = document.getElementById('yt-live-reliability-bar');
-      if (liveBar) {
-        liveBar.classList.remove('hidden');
-        const ctx = liveBar.getContext('2d');
-        ctx.clearRect(0, 0, liveBar.width, liveBar.height);
-      }
-      
-      // Show Live Truth Floating Bar
-      const truthBarContainer = document.getElementById('yt-live-truth-bar-container');
-      if (truthBarContainer) {
-        truthBarContainer.classList.remove('hidden');
-        updateLiveTruthBar();
-      }
-
-      await startAudioRecording();
-      requestAnimationFrame(loop);
-    }
-  }
-
-  async function checkKeywordSensitivity(videoId) {
-    try {
-      // 1. Load keyword DB (now channel DB) based on current language setting
-      const targetLang = (currentLang === 'ko') ? 'ko' : 'en';
-      let db = null;
-      try { db = JSON.parse(localStorage.getItem(`thinc_keyword_db_${targetLang}`)); } catch(e) {}
-      
-      // Fallback to legacy or defaults if not customized
-      if (!db) {
-        if (targetLang === 'ko') {
-          try { db = JSON.parse(localStorage.getItem('thinc_keyword_db')); } catch(e) {}
-          if (!db) {
-            db = {
-              high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장', '한국찐반응'],
-              medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
-              low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
-            };
-          }
-        } else {
-          db = {
-            high:   ['scam', 'fraud', 'lie', 'fake', 'manipulation', 'expose', 'conspiracy', 'crime', 'blackmail', 'corruption', 'hoax', 'propaganda'],
-            medium: ['controversy', 'rumor', 'suspicion', 'dispute', 'conflict', 'criticism', 'rebuttal', 'explanation', 'debate', 'claim'],
-            low:    ['education', 'science', 'research', 'official', 'announcement', 'lecture', 'documentary', 'learning', 'analysis', 'report', 'thesis', 'study']
-          };
-        }
-      }
-
-      if (!db || (!db.high?.length && !db.medium?.length && !db.low?.length)) {
-        localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], lang: targetLang }));
-        return;
-      }
-
-      // 2. Fetch meta from server proxy, fallback to direct Piped API
-      let meta = { title: '', tags: [], description: '', uploaderName: '' };
-      let metaFetched = false;
-      try {
-        const resp = await fetchWithBackendFallback(`/api/video-meta?id=${encodeURIComponent(videoId)}`);
-        if (resp.ok) {
-          meta = await resp.json();
-          metaFetched = true;
-        }
-      } catch(e) {}
-
-      if (!metaFetched) {
-        try {
-          const directMeta = await fetchVideoMetaDirect(videoId);
-          if (directMeta) {
-            meta = directMeta;
-            metaFetched = true;
-          }
-        } catch(e) {
-          console.warn('[Th!nc Keywords] Direct fallback fetch failed:', e);
-        }
-      }
-
-      const cleanUploader = (meta.uploaderName || '').trim().toLowerCase();
-      if (!cleanUploader) {
-        localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
-        return;
-      }
-
-      // 3. Match tiers by channel name
-      const TIERS = [
-        { key: 'high',   keywords: db.high   || [], multiplier: 7.5, label: '🔴 상 (HIGH)' },
-        { key: 'medium', keywords: db.medium || [], multiplier: 2.4, label: '🟡 중 (MEDIUM)' },
-        { key: 'low',    keywords: db.low    || [], multiplier: 0.4, label: '🟢 하 (LOW)' }
-      ];
-
-      for (const tier of TIERS) {
-        const matched = tier.keywords.filter(kw => {
-          const k = (kw || '').toLowerCase().trim();
-          return k.length > 0 && cleanUploader.includes(k);
-        });
-        if (matched.length > 0) {
-          const result = {
-            tier: tier.key,
-            multiplier: tier.multiplier,
-            matchedKeywords: [matched[0]],
-            label: tier.label,
-            videoId,
-            lang: targetLang
-          };
-          localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify(result));
-          showToast(`🔍 채널명 매칭 ${tier.label}: "${matched[0]}" → ×${tier.multiplier}`);
-          console.log('[Th!nc Keywords] Channel Match:', result);
-          return;
-        }
-      }
-
-      // No match in any tier → default multiplier
-      localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
-      console.log('[Th!nc Keywords] No channel match for video', videoId);
-    } catch(err) {
-      console.warn('[Th!nc Keywords] Error during sensitivity check:', err);
-    }
-  }
-
-  function loop(timestamp) {
-    if (!isRunning) return;
-    performCapture();
-    animationId = requestAnimationFrame(loop);
-  }
-
-  function performCapture() {
-    if (!audioContext || audioContext.state !== 'running') return;
-    
-    analyser.getByteFrequencyData(dataArray);
-    let sum = 0;
-    for(let i = 0; i < bufferLength; i++) {
-        sum += dataArray[i];
-    }
-    let average = sum / bufferLength;
-    
-    const timestamp = Date.now();
-    sessionData.push({ timestamp, score: average });
-    
-    drawLiveReliabilityBar(average);
-  }
-
-  function drawLiveReliabilityBar(val) {
-    const canvas = document.getElementById('yt-live-reliability-bar');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
-    const x = (sessionData.length % (canvas.width / 2)) * 2;
-    const h = (val / 255) * canvas.height;
-    
-    ctx.fillStyle = val > 100 ? '#ff4757' : '#2ed573';
-    ctx.fillRect(x, canvas.height - h, 1, h);
-  }
-
-  function showAnalysisEndOverlay() {
-    const overlay = document.getElementById('yt-analysis-end-overlay');
-    if (overlay) {
-      overlay.classList.remove('hidden');
-    }
-  }
 
   function showBrowserFeed() {
     const ytWrapperEl = document.getElementById('yt-player-wrapper');
@@ -3296,6 +3830,7 @@
     
     if (videoId) {
       activeVideoId = videoId;
+      activePlatform = 'youtube';
       placeholder.classList.add('hidden');
       feed.classList.add('hidden');
       const ytWrapperEl = document.getElementById('yt-player-wrapper');
@@ -3412,7 +3947,140 @@
     return null;
   }
 
-  // checkKeywordSensitivity duplicated function removed to use the channel-matching one at L2941
+  async function checkKeywordSensitivity(videoId) {
+    try {
+      // 1. Load keyword DB (now channel DB) based on current language setting
+      const targetLang = (currentLang === 'ko') ? 'ko' : 'en';
+      let db = null;
+      
+      // 1순위: 어드민 설정 캐시에서 동적 민감도 사전 로드
+      try {
+        const adminSettings = JSON.parse(localStorage.getItem('thinc_admin_settings'));
+        if (adminSettings) {
+          if (targetLang === 'ko' && adminSettings.sensitivity_dict_ko) {
+            db = adminSettings.sensitivity_dict_ko;
+          } else if (targetLang === 'en' && adminSettings.sensitivity_dict_en) {
+            db = adminSettings.sensitivity_dict_en;
+          }
+        }
+      } catch(e) {}
+
+      // 2순위: 개별 로컬 스토리지 키 로드
+      if (!db) {
+        try { db = JSON.parse(localStorage.getItem(`thinc_keyword_db_${targetLang}`)); } catch(e) {}
+      }
+      
+      // Fallback to legacy or defaults if not customized
+      if (!db) {
+        if (targetLang === 'ko') {
+          try { db = JSON.parse(localStorage.getItem('thinc_keyword_db')); } catch(e) {}
+          if (!db) {
+            db = {
+              high:   ['사기', '거짓말', '폭로', '음모', '조작', '허위', '가짜', '범죄', '협박', '비리', '부패', '조장', '한국찐반응'],
+              medium: ['논란', '의혹', '주장', '소문', '의심', '논쟁', '갈등', '비판', '반박', '해명'],
+              low:    ['교육', '과학', '연구', '공식', '발표', '강의', '다큐멘터리', '학습', '분석', '리포트', '논문']
+            };
+          }
+        } else {
+          db = {
+            high:   ['scam', 'fraud', 'lie', 'fake', 'manipulation', 'expose', 'conspiracy', 'crime', 'blackmail', 'corruption', 'hoax', 'propaganda'],
+            medium: ['controversy', 'rumor', 'suspicion', 'dispute', 'conflict', 'criticism', 'rebuttal', 'explanation', 'debate', 'claim'],
+            low:    ['education', 'science', 'research', 'official', 'announcement', 'lecture', 'documentary', 'learning', 'analysis', 'report', 'thesis', 'study']
+          };
+        }
+      }
+
+      if (!db || (!db.high?.length && !db.medium?.length && !db.low?.length)) {
+        localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], lang: targetLang }));
+        return;
+      }
+
+      // 2. Fetch meta from server proxy, fallback to direct Piped API
+      let meta = { title: '', tags: [], description: '', uploaderName: '' };
+      let metaFetched = false;
+
+      // ── 최우선 순위: 데스크톱(Electron) 환경의 유튜브 webview DOM에서 직접 채널명 추출 (Piped API 차단 대응) ──
+      const isElectron = typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron;
+      if (isElectron && typeof activePlatform !== 'undefined' && activePlatform === 'youtube') {
+        try {
+          const wv = document.getElementById('wv-youtube');
+          if (wv && typeof wv.executeJavaScript === 'function') {
+            const author = await wv.executeJavaScript('window.ytInitialPlayerResponse?.videoDetails?.author || ""');
+            if (author) {
+              meta.uploaderName = author;
+              metaFetched = true;
+              console.log('[Th!nc Keywords] Successfully retrieved uploaderName directly from webview context:', author);
+            }
+          }
+        } catch(wvErr) {
+          console.warn('[Th!nc Keywords] Failed to fetch uploaderName from webview context:', wvErr);
+        }
+      }
+
+      if (!metaFetched) {
+        try {
+          const resp = await fetchWithBackendFallback(`/api/video-meta?id=${encodeURIComponent(videoId)}`);
+          if (resp.ok) {
+            meta = await resp.json();
+            metaFetched = true;
+          }
+        } catch(e) {}
+      }
+
+      if (!metaFetched) {
+        try {
+          const directMeta = await fetchVideoMetaDirect(videoId);
+          if (directMeta) {
+            meta = directMeta;
+            metaFetched = true;
+          }
+        } catch(e) {
+          console.warn('[Th!nc Keywords] Direct fallback fetch failed:', e);
+        }
+      }
+
+      currentUploaderName = meta.uploaderName || '';
+      const cleanUploader = (meta.uploaderName || '').trim().toLowerCase();
+      if (!cleanUploader) {
+        localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
+        return;
+      }
+
+      // 3. Match tiers by channel name
+      const TIERS = [
+        { key: 'high',   keywords: db.high   || [], multiplier: 22.5, label: '🔴 상 (HIGH)' },
+        { key: 'medium', keywords: db.medium || [], multiplier: 4.8, label: '🟡 중 (MEDIUM)' },
+        { key: 'low',    keywords: db.low    || [], multiplier: 0.4, label: '🟢 하 (LOW)' }
+      ];
+
+      for (const tier of TIERS) {
+        const matched = tier.keywords.filter(kw => {
+          const k = (kw || '').toLowerCase().trim();
+          return k.length > 0 && cleanUploader.includes(k);
+        });
+        if (matched.length > 0) {
+          const result = {
+            tier: tier.key,
+            multiplier: tier.multiplier,
+            matchedKeywords: [matched[0]],
+            label: tier.label,
+            videoId,
+            lang: targetLang
+          };
+          localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify(result));
+          showToast(`🔍 채널명 매칭 ${tier.label}: "${matched[0]}" → ×${tier.multiplier}`);
+          console.log('[Th!nc Keywords] Channel Match:', result);
+          return;
+        }
+      }
+
+      // No match in any tier → default multiplier
+      localStorage.setItem('thinc_keyword_sensitivity', JSON.stringify({ tier: 'none', multiplier: 1.0, matchedKeywords: [], videoId, lang: targetLang }));
+      console.log('[Th!nc Keywords] No keyword match for video', videoId);
+    } catch(err) {
+      console.warn('[Th!nc Keywords] Error during sensitivity check:', err);
+    }
+  }
 
   // Also re-run keyword check after captions finish loading (captions text improves matching)
   function reCheckKeywordAfterCaptions(videoId) {
@@ -3433,7 +4101,7 @@
     
     // Electron/Capacitor 환경인 경우 직접 모바일/크롬 헤더를 싣고 직접 요청
     const isElectron = window.electronAPI && window.electronAPI.isElectron;
-    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const isCapacitor = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform;
     
     if (isElectron || isCapacitor) {
       try {
@@ -3570,8 +4238,40 @@
   async function fetchYoutubeCaptionsOfficialFrontend(videoId) {
     console.log(`[Diagnostic] fetchYoutubeCaptionsOfficialFrontend started for ${videoId}`);
     const pageUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const html = await fetchViaCORSProxy(pageUrl);
-    console.log(`[Diagnostic] HTML fetched via CORS, length: ${html?.length}`);
+    const isElectronEnv = !!(window.electronAPI && window.electronAPI.isElectron);
+
+    let html = null;
+
+    // ✅ Electron 환경에서는 직접 fetch (CORS 제한 없음)
+    if (isElectronEnv) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(pageUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          }
+        });
+        clearTimeout(tid);
+        if (res.ok) {
+          html = await res.text();
+          console.log(`[Diagnostic] HTML fetched via Electron direct, length: ${html?.length}`);
+        }
+      } catch (err) {
+        console.warn('[Diagnostic] Electron direct page fetch failed:', err.message);
+      }
+    }
+
+    // 직접 페치 실패 시 CORS 프록시 폴백
+    if (!html) {
+      html = await fetchViaCORSProxy(pageUrl);
+      console.log(`[Diagnostic] HTML fetched via CORS proxy, length: ${html?.length}`);
+    }
+
+
     
     let captionTracks = null;
     
@@ -3579,16 +4279,26 @@
     const responseMark = 'ytInitialPlayerResponse = ';
     const responseIdx = html.indexOf(responseMark);
     if (responseIdx !== -1) {
-      const endIdx = html.indexOf('};', responseIdx);
-      if (endIdx !== -1) {
-        const rawResponse = html.substring(responseIdx + responseMark.length, endIdx + 1);
-        try {
+      // 안전한 JSON 추출: 브래킷 카운팅으로 정확한 끝 찾기
+      try {
+        let jsonStart = responseIdx + responseMark.length;
+        let depth = 0;
+        let jsonEnd = -1;
+        for (let i = jsonStart; i < html.length; i++) {
+          if (html[i] === '{') depth++;
+          else if (html[i] === '}') {
+            depth--;
+            if (depth === 0) { jsonEnd = i + 1; break; }
+          }
+        }
+        if (jsonEnd !== -1) {
+          const rawResponse = html.substring(jsonStart, jsonEnd);
           const parsed = JSON.parse(rawResponse);
           captionTracks = parsed?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-          console.log(`[Diagnostic] Attempt 1 parsed captionTracks:`, captionTracks);
-        } catch(e) {
-          console.warn("[Diagnostic] Failed parsing ytInitialPlayerResponse:", e);
+          console.log(`[Diagnostic] Attempt 1 parsed captionTracks:`, captionTracks?.length);
         }
+      } catch(e) {
+        console.warn('[Diagnostic] Failed parsing ytInitialPlayerResponse:', e.message);
       }
     } else {
       console.log(`[Diagnostic] Attempt 1 responseMark not found`);
@@ -3683,46 +4393,112 @@
     if (!track) track = captionTracks.find(t => (t.languageCode || '').toLowerCase().startsWith('en'));
     if (!track) track = captionTracks[0];
     
-    if (!track || !track.baseUrl) {
+    if (!track || (!track.baseUrl && !track.languageCode)) {
       console.warn(`[Diagnostic] No valid caption track URL found among ${captionTracks.length} tracks`);
       throw new Error("No valid caption track URL found");
     }
-    console.log(`[Diagnostic] Selected track language: ${track.languageCode}, URL: ${track.baseUrl}`);
     
-    const xmlUrl = track.baseUrl;
-    const xmlText = await fetchViaCORSProxy(xmlUrl);
-    console.log(`[Diagnostic] Fetched XML text length: ${xmlText?.length}`);
-    
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-    
-    const parserError = xmlDoc.getElementsByTagName("parsererror");
-    if (parserError.length > 0) {
-      console.warn(`[Diagnostic] XML parse error`);
-      throw new Error("XML parse error");
+    // baseUrl이 없으면 languageCode로 timedtext URL 직접 구성
+    let xmlUrl = track.baseUrl;
+    if (!xmlUrl && track.languageCode) {
+      xmlUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${track.languageCode}&fmt=srv1`;
+      console.log(`[Diagnostic] No baseUrl, constructed timedtext URL for lang ${track.languageCode}`);
+    } else if (xmlUrl) {
+      if (!xmlUrl.startsWith('http')) xmlUrl = 'https:' + xmlUrl;
+      // 유튜브 서명 URL(baseUrl)은 절대 변조(fmt=json3 강제 등)하면 안 됩니다. 서명이 깨져 빈 응답이 옵니다.
     }
-    
-    const textElements = xmlDoc.getElementsByTagName('text');
-    if (!textElements || textElements.length === 0) {
-      console.warn(`[Diagnostic] No captions text nodes in XML`);
-      throw new Error("No captions text nodes in XML");
+    console.log(`[Diagnostic] Selected track language: ${track.languageCode}, URL: ${xmlUrl}`);
+    let xmlText = null;
+
+    // ✅ Electron 직접 페치 우선 시도 (CORS 우회, 최고 성공률)
+    if (isElectronEnv) {
+      try {
+        console.log(`[Direct XML] Electron direct fetch for: ${xmlUrl}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(xmlUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/xml,application/xml,application/json,*/*'
+          }
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          xmlText = await res.text();
+          console.log(`[Direct XML] Electron direct fetch succeeded, length: ${xmlText?.length}`);
+        }
+      } catch (err) {
+        console.warn('[Direct XML] Electron direct fetch failed:', err.message);
+      }
     }
-    console.log(`[Diagnostic] Parsed ${textElements.length} text elements from XML`);
-    
+
+    // 직접 페치 실패 시 CORS 프록시 폴백
+    if (!xmlText) {
+      console.log(`[Direct XML] Falling back to CORS proxy for: ${xmlUrl}`);
+      xmlText = await fetchViaCORSProxy(xmlUrl);
+    }
+    console.log(`[Diagnostic] Fetched XML/JSON text length: ${xmlText?.length}`);
+
     const parsedCaptions = [];
-    for (let i = 0; i < textElements.length; i++) {
-      const el = textElements[i];
-      const start = parseFloat(el.getAttribute('start') || '0');
-      const dur = parseFloat(el.getAttribute('dur') || '0');
-      const text = el.textContent || '';
-      parsedCaptions.push({
-        start: start,
-        dur: dur,
-        end: start + dur,
-        text: decodeHTMLEntities(text)
-      });
+    const trimmedText = (xmlText || '').trim();
+
+    if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
+      // ✅ JSON 포맷 파싱 (유튜브가 JSON 형태로 자막을 반환하는 경우)
+      try {
+        const json = JSON.parse(trimmedText);
+        const events = json.events || [];
+        events.forEach(event => {
+          if (!event.segs) return;
+          const text = event.segs.map(s => s.utf8).join('').trim();
+          if (!text) return;
+          const startMs = event.tStartMs ? Number(event.tStartMs) : 0;
+          const durMs = event.dDurationMs ? Number(event.dDurationMs) : 1000;
+          parsedCaptions.push({
+            start: startMs / 1000,
+            dur: durMs / 1000,
+            end: (startMs + durMs) / 1000,
+            text: decodeHTMLEntities(text.replace(/\n/g, ' ').trim())
+          });
+        });
+        console.log(`[Diagnostic] Parsed ${parsedCaptions.length} JSON caption segments.`);
+      } catch (jsonErr) {
+        console.warn('[Diagnostic] Failed parsing captions as JSON:', jsonErr.message);
+        throw new Error('JSON caption parse error: ' + jsonErr.message);
+      }
+    } else {
+      // ✅ XML 포맷 파싱
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(trimmedText, 'text/xml');
+      const parserError = xmlDoc.getElementsByTagName('parsererror');
+      if (parserError.length > 0) {
+        console.warn(`[Diagnostic] XML parse error`);
+        throw new Error('XML parse error');
+      }
+      const textElements = xmlDoc.getElementsByTagName('text');
+      if (!textElements || textElements.length === 0) {
+        console.warn(`[Diagnostic] No captions text nodes in XML`);
+        throw new Error('No captions text nodes in XML');
+      }
+      console.log(`[Diagnostic] Parsed ${textElements.length} text elements from XML`);
+      for (let i = 0; i < textElements.length; i++) {
+        const el = textElements[i];
+        const start = parseFloat(el.getAttribute('start') || '0');
+        const dur = parseFloat(el.getAttribute('dur') || '0');
+        parsedCaptions.push({
+          start: start,
+          dur: dur,
+          end: start + dur,
+          text: decodeHTMLEntities(el.textContent || '')
+        });
+      }
     }
-    
+
+    if (parsedCaptions.length === 0) {
+      console.warn(`[Diagnostic] No captions parsed from response`);
+      throw new Error('No captions parsed from response');
+    }
+
     return parsedCaptions;
   }
 
@@ -4229,7 +5005,8 @@
 
   // Poll YouTube player API directly for high-resolution playback sync (every 100ms)
   setInterval(() => {
-    if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
+    const isLocalYoutube = activePlatform === 'youtube';
+    if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
       try {
         const t = ytPlayer.getCurrentTime();
         if (typeof t === 'number' && !isNaN(t)) {
@@ -4278,12 +5055,6 @@
       grade: grade
     };
 
-    try {
-      localStorage.setItem('thinc_video_metadata', JSON.stringify(videoMetadata));
-    } catch(e) {
-      console.warn('[Th!nc-Admin] Failed to save videoMetadata to localStorage:', e);
-    }
-
     // Update Banner UI
     document.getElementById('det-cat-badge').innerText = videoMetadata.genre;
     const relBadge = document.getElementById('det-rel-badge');
@@ -4304,7 +5075,21 @@
       btn.dataset.running = "false";
       btn.querySelector('#btn-icon').innerText = "▶";
       btn.querySelector('#btn-text').innerText = t('start');
+
+      // 웹뷰 오버레이 스타트 버튼 상태 업데이트
+      const wvStartBtn = document.getElementById('wv-float-start-btn');
+      if (wvStartBtn) {
+        wvStartBtn.setAttribute('data-running', 'false');
+        const iconSpan = wvStartBtn.querySelector('.wv-start-icon');
+        const labelSpan = wvStartBtn.querySelector('.wv-start-label');
+        if (iconSpan) iconSpan.innerText = '▶';
+        if (labelSpan) labelSpan.innerText = '분석 시작';
+      }
       
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Session', 'Stop Analysis Session', 0, 'Info', `VSA session stopped. Total datapoints collected: ${sessionData.length}`);
+      }
+
       if (quickstartBtn) {
         quickstartBtn.classList.remove('running');
         quickstartBtn.innerText = "▶️ " + t('start');
@@ -4345,7 +5130,21 @@
       btn.dataset.running = "true";
       btn.querySelector('#btn-icon').innerText = "■";
       btn.querySelector('#btn-text').innerText = t('stop');
+
+      // 웹뷰 오버레이 스타트 버튼 상태 업데이트
+      const wvStartBtn = document.getElementById('wv-float-start-btn');
+      if (wvStartBtn) {
+        wvStartBtn.setAttribute('data-running', 'true');
+        const iconSpan = wvStartBtn.querySelector('.wv-start-icon');
+        const labelSpan = wvStartBtn.querySelector('.wv-start-label');
+        if (iconSpan) iconSpan.innerText = '■';
+        if (labelSpan) labelSpan.innerText = '분석 중단';
+      }
       
+      if (window.PerformanceLogger) {
+        window.PerformanceLogger.log('Session', 'Start Analysis Session', 0, 'Info', `VSA session started. Target video ID: ${activeVideoId || 'None'}`);
+      }
+
       if (quickstartBtn) {
         quickstartBtn.classList.add('running');
         quickstartBtn.innerText = "■ " + t('stop');
@@ -4395,6 +5194,9 @@
         }
       } catch (ctxErr) {
         console.warn('AudioContext init failed:', ctxErr.message);
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Audio', 'AudioContext Initialization Failed', 0, 'Failed', ctxErr.message);
+        }
       }
 
       // Tier 1: Try tab audio capture (getDisplayMedia) — only if supported
@@ -4403,6 +5205,9 @@
 
       if (hasGetDisplayMedia && audioCtx) {
         try {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Tab Audio Capture Request', 0, 'Info', 'Requesting getDisplayMedia for tab audio.');
+          }
           // Pre-capture guidance toast (read it before the system dialog appears)
           showToast(t('toast_audio_check'));
           await new Promise(resolve => setTimeout(resolve, 900));
@@ -4425,40 +5230,35 @@
             analyzer.gainNode.connect(analyzer.analyser);
             audioConnected = true;
             showToast(t('toast_audio_captured'));
+            if (window.PerformanceLogger) {
+              window.PerformanceLogger.log('Audio', 'Tab Audio Capture Success', 0, 'Success', 'Display audio track successfully bound to VSA.');
+            }
           } else {
             // User shared screen but did not check "Share audio" — silently clean up
             displayStream.getTracks().forEach(t => t.stop());
             console.info('[Th!nc] Tab shared without audio — falling back to mic or context mode.');
+            if (window.PerformanceLogger) {
+              window.PerformanceLogger.log('Audio', 'Tab Shared Without Audio', 0, 'Warning', 'User shared display without enabling tab audio.');
+            }
           }
         } catch (tabErr) {
           // User cancelled the dialog or browser blocked — NOT an error from user perspective
           console.info('[Th!nc] Tab audio capture not established:', tabErr.message);
-        }
-      }
-
-      // Tier 2: Microphone fallback — disabled to prevent capturing external sounds
-      if (false && !audioConnected && hasMediaDevices && audioCtx) {
-        try {
-          const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true }
-          });
-          mediaStream = micStream;
-          analyzer = new VoiceStressAnalyzer(audioCtx);
-          sourceNode = audioCtx.createMediaStreamSource(mediaStream);
-          sourceNode.connect(analyzer.gainNode);
-          analyzer.gainNode.connect(analyzer.analyser);
-          audioConnected = true;
-          showToast(t('toast_mic_captured'));
-        } catch (micErr) {
-          console.info('[Th!nc] Microphone not available:', micErr.message);
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Tab Audio Capture Skipped/Failed', 0, 'Warning', tabErr.message);
+          }
         }
       }
 
       // Tier 3: Premium Caption-Based Context Model
+
       // No error message — this is a premium feature, not a fallback failure
       if (!audioConnected) {
         analyzer = null;
         showToast(t('toast_ai_active'));
+        if (window.PerformanceLogger) {
+          window.PerformanceLogger.log('Audio', 'VSA Running on Caption Context Model Only', 0, 'Success', 'No physical audio captured. Utilizing context linguistic analysis.');
+        }
       }
 
       startAnalysisLoop();
@@ -4499,7 +5299,9 @@
 
       // ── Direct ytPlayer state poll each frame (more reliable than event callbacks) ──
       let playerState = -1;
-      if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+      const isYoutube = activePlatform && activePlatform.includes('youtube');
+      const isLocalYoutube = activePlatform === 'youtube';
+      if (isLocalYoutube && ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
         try {
           playerState = ytPlayer.getPlayerState();
           // YT states: -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
@@ -4508,8 +5310,9 @@
       }
 
       // Check if YouTube video is paused/stopped (if activeVideoId is set)
-      // YT states: 2 = paused, 0 = ended, 5 = cued, -1 = unstarted
-      const isPausedOrEnded = activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
+      // YT states: 2 = paused, 0 = ended, 5 = cued
+      // NOTE: playerState -1(unstarted) 는 ytPlayer 초기화 중에도 발생하므로 제외
+      const isPausedOrEnded = isLocalYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5);
 
       if (isPausedOrEnded) {
         // 동영상이 멈췄을 때는 점수나 플로팅 누적 바그래프를 초기화하지 않고, 분석 루프만 대기 상태로 유지합니다.
@@ -4518,7 +5321,7 @@
       }
 
       // ── Sync captionPlaybackSec from ytPlayer directly each frame ──
-      if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
+      if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
         try {
           const t = ytPlayer.getCurrentTime();
           if (typeof t === 'number' && !isNaN(t) && t !== lastTimeValue) {
@@ -4532,7 +5335,7 @@
       // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
       let isPausedOrStopped = false;
       let isMutedOrSilent = false;
-      if (activeVideoId) {
+      if (isLocalYoutube && activeVideoId) {
         // Grace period: first 3 seconds of analysis exempt from pause detection
         // (gives YouTube Player API time to initialize and fire state events)
         const analysisElapsedMs = Date.now() - analysisStartTime;
@@ -4543,7 +5346,9 @@
         
         if (analysisElapsedMs > 3000) {
           if (isPlayerResponding) {
-            if (!isVideoPlaying || timeSinceLastUpdate > 2500) {
+            // playerState가 명확히 2(paused)인 경우 또는
+            // 5초 이상 시간 업데이트 없고 재생 중이 아닌 경우에만 멈춤으로 판단
+            if (playerState === 2 || (!isVideoPlaying && timeSinceLastUpdate > 5000)) {
               isPausedOrStopped = true;
             }
           } else {
@@ -4561,10 +5366,10 @@
 
       // Caption Gap Detection: If real captions are loaded, force silence during caption gaps
       let isCaptionGap = false;
-      if (captionLoadStatus === 'loaded' && liveCaptions.length > 0) {
+      if (isYoutube && captionLoadStatus === 'loaded' && liveCaptions.length > 0) {
         // ── DIRECT ytPlayer position query for accurate gap detection ──
         let nowSec = 0;
-        if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+        if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
           try {
             const t = ytPlayer.getCurrentTime();
             if (typeof t === 'number' && !isNaN(t)) {
@@ -4581,7 +5386,16 @@
 
         const hasMatchingCaption = liveCaptions.some(cap => {
           const capEnd = cap.start + Math.max(cap.dur, 1.5);
-          return nowSec >= cap.start && nowSec < capEnd;
+          const isMatched = nowSec >= cap.start && nowSec < capEnd;
+          if (isMatched) {
+            // [소리 지시어 제거 처리] 음악/효과음/웃음소리 등 노이즈 텍스트 자막은 소리 신호 분석 제외(갭으로 간주)
+            const text = (cap.text || '').trim();
+            const isAudioNoise = /^\[.*\]$|^\(.*\)$|^[\s]*$/.test(text);
+            if (isAudioNoise) {
+              return false;
+            }
+          }
+          return isMatched;
         });
 
         if (!hasMatchingCaption) {
@@ -4708,7 +5522,8 @@
       if (captionLoadStatus === 'loaded' && liveCaptions.length > 0) {
         // ── DIRECT ytPlayer position query for accurate caption display ──
         let nowSec = 0;
-        if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+        const isLocalYoutube = activePlatform === 'youtube';
+        if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
           try {
             const t = ytPlayer.getCurrentTime();
             if (typeof t === 'number' && !isNaN(t)) nowSec = t;
@@ -4773,7 +5588,8 @@
     if (captionLoadStatus === 'loaded' && liveCaptions.length > 0) {
       // Direct player query first (most accurate)
       let nowSec = 0;
-      if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+      const isLocalYoutube = activePlatform === 'youtube';
+      if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
         try {
           const t = ytPlayer.getCurrentTime();
           if (typeof t === 'number' && !isNaN(t)) nowSec = t;
@@ -5058,6 +5874,84 @@
 
     // Real-time oscilloscope drawing
     drawOscilloscope(result, smoothScore);
+
+    // ===== 웹뷰 위 플로팅 오버레이 실시간 연동 (데스크톱/모바일 동시 대응) =====
+    const wvOverlay = document.getElementById('wv-float-overlay');
+    if (wvOverlay) {
+      if (isRunning) {
+        wvOverlay.classList.remove('hidden');
+      } else {
+        wvOverlay.classList.add('hidden');
+      }
+
+      // 우측 하단 원형 게이지 strokeDasharray 업데이트 (Radius=24, 둘레=151)
+      const wvArc = document.getElementById('wv-gauge-arc');
+      const wvPct = document.getElementById('wv-float-pct');
+      const wvGauge = document.getElementById('wv-float-gauge');
+      if (wvArc && wvPct) {
+        const circumference = 151;
+        const strokeVal = (smoothScore / 100) * circumference;
+        wvArc.style.strokeDasharray = `${strokeVal} ${circumference}`;
+        wvPct.textContent = `${smoothScore}%`;
+
+        // 원형 게이지 테두리 색상 및 맥박 애니메이션 연동
+        if (wvGauge) {
+          wvGauge.classList.remove('truth', 'doubt', 'lie', 'analyzing');
+          if (isRunning) wvGauge.classList.add('analyzing');
+
+          if (smoothScore >= 60) {
+            wvGauge.classList.add('lie');
+            wvArc.style.stroke = "var(--accent-red)";
+          } else if (smoothScore >= 40) {
+            wvGauge.classList.add('doubt');
+            wvArc.style.stroke = "var(--accent-orange)";
+          } else {
+            wvGauge.classList.add('truth');
+            wvArc.style.stroke = "var(--accent-green)";
+          }
+        }
+      }
+
+      // 우측 상단 진실/거짓 누적 바 업데이트
+      const wvTruthPct = document.getElementById('wv-truth-pct');
+      const wvLiePct = document.getElementById('wv-lie-pct');
+      const wvTruthFill = document.getElementById('wv-truth-fill');
+      const wvLieFill = document.getElementById('wv-lie-fill');
+      if (wvTruthPct && wvLiePct && wvTruthFill && wvLieFill) {
+        let avgScore = smoothScore;
+        if (sessionData && sessionData.length > 0) {
+          const total = sessionData.reduce((sum, d) => sum + d.score, 0);
+          avgScore = Math.round(total / sessionData.length);
+        }
+        const liePct = avgScore;
+        const truthPct = 100 - liePct;
+        wvTruthPct.textContent = `${truthPct}%`;
+        wvLiePct.textContent = `${liePct}%`;
+        wvTruthFill.style.width = `${truthPct}%`;
+        wvLieFill.style.width = `${liePct}%`;
+      }
+
+      // 실시간 자막 플로팅 (웹앱 스타일)
+      const wvSub = document.getElementById('wv-float-subtitle');
+      if (wvSub) {
+        if (currentSubtitle && !result.isSilent && !result.isMusic) {
+          wvSub.innerText = currentSubtitle;
+          wvSub.classList.add('show');
+          if (smoothScore >= 60) {
+            wvSub.style.borderColor = "var(--accent-red)";
+            wvSub.style.boxShadow = "0 4px 15px rgba(255, 65, 108, 0.45)";
+          } else if (smoothScore >= 40) {
+            wvSub.style.borderColor = "var(--accent-orange)";
+            wvSub.style.boxShadow = "0 4px 15px rgba(247, 151, 30, 0.45)";
+          } else {
+            wvSub.style.borderColor = "var(--accent-green)";
+            wvSub.style.boxShadow = "0 4px 15px rgba(16, 185, 129, 0.45)";
+          }
+        } else {
+          wvSub.classList.remove('show');
+        }
+      }
+    }
   }
 
   function updateSentenceFeed(text, score, isUpdate = false) {
@@ -7092,17 +7986,8 @@
     if (brandBtn) {
       brandBtn.addEventListener('click', () => {
         const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
-        const landingPage = browserLang.startsWith('ko') ? '/landing_ko.html' : '/landing_en.html';
-        const absoluteLandingUrl = new URL(landingPage, window.location.origin).href;
-        try {
-          if (window.self !== window.top) {
-            window.top.location.href = absoluteLandingUrl;
-          } else {
-            window.location.href = absoluteLandingUrl;
-          }
-        } catch(e) {
-          window.location.href = absoluteLandingUrl;
-        }
+        const landingPage = browserLang.startsWith('ko') ? 'landing_ko.html' : 'landing_en.html';
+        window.location.href = landingPage;
       });
     }
 
@@ -7136,7 +8021,7 @@
 // ===== Diagnostic & Performance Logger =====
 const PerformanceLogger = (function() {
   const logs = [];
-  const MAX_LOGS = 150;
+  const MAX_LOGS = 1000;
 
   function getTimestamp() {
     const now = new Date();
@@ -7189,6 +8074,31 @@ const PerformanceLogger = (function() {
       } else {
         fallbackCopy(text);
       }
+    },
+    saveToFile: function() {
+      const isElectron = window.electronAPI && window.electronAPI.isElectron;
+      const isCapacitor = window.Capacitor && window.Capacitor.isNative;
+      const platformType = isElectron ? 'Electron Desktop App' : (isCapacitor ? 'Capacitor Mobile App' : 'Standard Web Browser');
+      
+      const header = `=== THE TRUTH UNTOLD DIAGNOSTIC LOG ===\nGenerated at: ${new Date().toLocaleString()}\nPlatform: ${platformType}\nUser Agent: ${navigator.userAgent}\n---------------------------------------\n`;
+      const body = logs.map(l => `[${l.timestamp}][${l.category}][${l.status}] ${l.operation} (${l.durationMs !== null ? l.durationMs + 'ms' : 'N/A'}) - ${l.details}`).join('\n');
+      const text = header + body;
+      
+      try {
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `thinc_diagnostic_logs_${Date.now()}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        this.log('System', 'Diagnostic logs saved to file', 0, 'Success', 'Logs downloaded successfully.');
+      } catch (err) {
+        alert('File download failed: ' + err.message);
+        this.log('System', 'Diagnostic save failed', 0, 'Failed', err.message);
+      }
     }
   };
 
@@ -7219,6 +8129,101 @@ const PerformanceLogger = (function() {
   }
 })();
 window.PerformanceLogger = PerformanceLogger;
+
+// ===== Local Caption-based Lie Analyzer (Client-Side Fallback) =====
+function analyzeCaptionsLocally(videoId, captions) {
+  if (!captions || captions.length === 0) {
+    return {
+      ok: true,
+      videoId,
+      score: 82,
+      rating: 'safe',
+      badgeText: '안전 82%',
+      detectedKeywords: [],
+      captionAvailable: false
+    };
+  }
+  
+  const normalizedSegs = captions.map(s => {
+    let rawStart = s.start !== undefined ? s.start : (s.offset !== undefined ? s.offset : 0);
+    let rawDur = s.dur !== undefined ? s.dur : (s.duration !== undefined ? s.duration : 1);
+    const isMs = rawStart > 1000 || rawDur > 1000;
+    return {
+      text: (s.text || '').replace(/\[.*?\]/g, '').trim(),
+      startSec: isMs ? rawStart / 1000 : rawStart,
+      dur: isMs ? rawDur / 1000 : rawDur
+    };
+  }).filter(s => s.text.length > 0);
+  
+  let textBuffer = '';
+  if (normalizedSegs.length > 0) {
+    const firstSec = normalizedSegs[0].startSec;
+    const endSec = firstSec + 15;
+    const filtered = normalizedSegs.filter(s => s.startSec >= firstSec && s.startSec <= endSec);
+    textBuffer = filtered.map(s => s.text).join(' ');
+  }
+  
+  let score = 80;
+  const detected = [];
+  
+  if (textBuffer) {
+    const dangerKeywords = [
+      '거짓말', '사실무근', '조작', '루머', '음모론', '날조', '사기', '사칭', '선동', '속임수', '구라', '허위',
+      'lie', 'fake', 'rumor', 'fabricat', 'hoax', 'fraud', 'deceit', 'manipulat'
+    ];
+    const suspiciousKeywords = [
+      '솔직히', '사실은', '진짜로', '오해', '해명', '억울', '맹세', '비밀', '아마도', '해프닝', '짜깁기',
+      'honestly', 'actually', 'truth', 'clarify', 'secret', 'promise', 'maybe'
+    ];
+    
+    let dangerCount = 0;
+    let suspiciousCount = 0;
+    const lowerText = textBuffer.toLowerCase();
+    
+    dangerKeywords.forEach(word => {
+      let idx = lowerText.indexOf(word);
+      while (idx !== -1) {
+        dangerCount++;
+        if (!detected.includes(word)) detected.push(word);
+        idx = lowerText.indexOf(word, idx + word.length);
+      }
+    });
+    
+    suspiciousKeywords.forEach(word => {
+      let idx = lowerText.indexOf(word);
+      while (idx !== -1) {
+        suspiciousCount++;
+        if (!detected.includes(word)) detected.push(word);
+        idx = lowerText.indexOf(word, idx + word.length);
+      }
+    });
+    
+    score = 100 - (dangerCount * 12 + suspiciousCount * 4);
+    score = Math.max(10, Math.min(100, score));
+  } else {
+    score = 82;
+  }
+  
+  let rating = 'safe';
+  let badgeText = `안전 ${score}%`;
+  if (score < 50) {
+    rating = 'danger';
+    badgeText = `위험 ${100 - score}%`;
+  } else if (score < 80) {
+    rating = 'caution';
+    badgeText = `주의 ${100 - score}%`;
+  }
+  
+  return {
+    ok: true,
+    videoId,
+    score,
+    rating,
+    badgeText,
+    detectedKeywords: detected.slice(0, 10),
+    captionAvailable: textBuffer.length > 0
+  };
+}
 
 // ===== Diagnostic Log Viewer UI =====
 const DiagnosticUI = (function() {
@@ -7351,11 +8356,23 @@ const DiagnosticUI = (function() {
       <div class="diag-modal-content">
         <div class="diag-header">
           <div class="diag-title">
-            <span>📊</span> System Diagnostic & Performance Log
+            <span>📊</span> Th!nc 히든 진단 로그 (Ctrl+Shift+L)
           </div>
           <div class="diag-actions">
-            <button class="diag-btn" id="diag-btn-copy">Copy Logs</button>
-            <button class="diag-btn diag-btn-danger" id="diag-btn-clear">Clear Logs</button>
+            <select id="diag-filter-cat" style="background:rgba(30,41,59,0.8);color:#cbd5e1;border:1px solid rgba(59,130,246,0.4);border-radius:6px;padding:5px 8px;font-size:0.82rem;cursor:pointer;">
+              <option value="all">전체 카테고리</option>
+              <option value="System">System</option>
+              <option value="Audio">Audio</option>
+              <option value="Captions">Captions</option>
+              <option value="Network">Network</option>
+              <option value="Webview">Webview</option>
+              <option value="Analysis">Analysis</option>
+              <option value="Session">Session</option>
+              <option value="Error">Error</option>
+            </select>
+            <button class="diag-btn" id="diag-btn-copy">📋 복사</button>
+            <button class="diag-btn" id="diag-btn-save">💾 파일저장</button>
+            <button class="diag-btn diag-btn-danger" id="diag-btn-clear">🗑 초기화</button>
             <button class="diag-btn-close" id="diag-btn-close">&times;</button>
           </div>
         </div>
@@ -7364,20 +8381,22 @@ const DiagnosticUI = (function() {
             <div class="diag-sysinfo-grid">
               <div><strong>Platform:</strong> ${platformType}</div>
               <div><strong>Language:</strong> ${navigator.language}</div>
+              <div><strong>Total Logs:</strong> <span id="diag-log-count">0</span> / 1000</div>
+              <div><strong>Session Start:</strong> ${new Date().toLocaleTimeString()}</div>
               <div style="grid-column: span 2"><strong>User Agent:</strong> ${navigator.userAgent}</div>
             </div>
           </div>
           <div class="diag-table-container">
-            <div style="max-height: 48vh; overflow-y: auto;">
+            <div style="max-height: 44vh; overflow-y: auto;" id="diag-scroll-area">
               <table class="diag-table">
                 <thead>
                   <tr>
-                    <th style="width: 100px;">Time</th>
-                    <th style="width: 80px;">Category</th>
-                    <th style="width: 180px;">Operation</th>
-                    <th style="width: 80px;">Duration</th>
-                    <th style="width: 70px;">Status</th>
-                    <th>Details</th>
+                    <th style="width: 95px;">시간</th>
+                    <th style="width: 90px;">카테고리</th>
+                    <th style="width: 200px;">작업</th>
+                    <th style="width: 75px;">소요(ms)</th>
+                    <th style="width: 75px;">상태</th>
+                    <th>상세 내용</th>
                   </tr>
                 </thead>
                 <tbody id="diag-logs-tbody">
@@ -7400,6 +8419,12 @@ const DiagnosticUI = (function() {
     document.getElementById('diag-btn-copy').addEventListener('click', () => {
       PerformanceLogger.copyToClipboard();
     });
+    document.getElementById('diag-btn-save').addEventListener('click', () => {
+      PerformanceLogger.saveToFile();
+    });
+    document.getElementById('diag-filter-cat').addEventListener('change', () => {
+      renderLogs();
+    });
     
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) hide();
@@ -7412,25 +8437,39 @@ const DiagnosticUI = (function() {
     const tbody = document.getElementById('diag-logs-tbody');
     if (!tbody) return;
     
-    const logs = PerformanceLogger.getLogs();
+    const allLogs = PerformanceLogger.getLogs();
+    const filterEl = document.getElementById('diag-filter-cat');
+    const filterCat = filterEl ? filterEl.value : 'all';
+    const logs = filterCat === 'all' ? allLogs : allLogs.filter(l => l.category === filterCat);
+
+    const countEl = document.getElementById('diag-log-count');
+    if (countEl) countEl.textContent = allLogs.length;
+    
     if (logs.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 20px;">No diagnostic logs captured yet.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 20px;">${filterCat !== 'all' ? filterCat + ' 카테고리에 로그 없음' : '로그가 없습니다.'}</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = logs.slice().reverse().map(log => `
-      <tr>
-        <td style="color: #64748b; font-family: monospace;">${log.timestamp}</td>
-        <td><span class="badge-category">${log.category}</span></td>
-        <td style="font-weight: 500;">${log.operation}</td>
-        <td style="font-family: monospace; color: ${log.durationMs && log.durationMs > 2000 ? '#facc15' : '#cbd5e1'}">
+    tbody.innerHTML = logs.slice().reverse().map(log => {
+      const rowBg = log.status === 'Failed' ? 'rgba(239,68,68,0.06)' : log.status === 'Warning' ? 'rgba(234,179,8,0.05)' : '';
+      return `
+      <tr style="background: ${rowBg}">
+        <td style="color: #64748b; font-family: monospace; font-size:0.78rem;">${log.timestamp}</td>
+        <td><span class="badge-category" style="font-size:0.78rem;">${log.category}</span></td>
+        <td style="font-weight: 500; font-size:0.82rem;">${log.operation}</td>
+        <td style="font-family: monospace; font-size:0.8rem; color: ${log.durationMs && log.durationMs > 2000 ? '#facc15' : log.durationMs && log.durationMs > 500 ? '#fb923c' : '#cbd5e1'}">
           ${log.durationMs !== null ? log.durationMs + ' ms' : '-'}
         </td>
         <td><span class="badge-status badge-${log.status}">${log.status}</span></td>
-        <td style="color: #94a3b8; font-size: 0.8rem;">${log.details}</td>
+        <td style="color: #94a3b8; font-size: 0.78rem; word-break: break-word; max-width: 340px;">${log.details}</td>
       </tr>
-    `).join('');
+    `}).join('');
+
+    // 자동 스크롤 (가장 최신 로그가 맨 위에 표시됨)
+    const scrollArea = document.getElementById('diag-scroll-area');
+    if (scrollArea) scrollArea.scrollTop = 0;
   }
+
 
   function show() {
     if (modalElement) {

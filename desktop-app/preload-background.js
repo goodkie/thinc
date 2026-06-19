@@ -118,14 +118,16 @@ async function extractCaptionsAndReturn() {
     const resp = await fetch(backendUrl);
     if (resp.ok) {
       const data = await resp.json();
-      if (data && Array.isArray(data) && data.length > 0) {
-        const segments = data.map(item => ({
+      // 백엔드는 { captions: [...] } 객체를 반환하므로 배열 혹은 객체 내부의 captions 배열을 추출하도록 대응
+      const rawCaptions = Array.isArray(data) ? data : (data?.captions || []);
+      if (rawCaptions && rawCaptions.length > 0) {
+        const segments = rawCaptions.map(item => ({
           offset: Math.round((item.start || 0) * 1000),
           duration: Math.round((item.duration || 1) * 1000),
           text: item.text || ''
         }));
         console.log(`[Th!nc-Background-Preload] Backend fallback success. Loaded ${segments.length} segments.`);
-        ipcRenderer.send('background-captions-result', { ok: true, videoId, lang: 'ko', captions: segments });
+        ipcRenderer.send('background-captions-result', { ok: true, videoId, lang: data.lang || 'ko', captions: segments });
         return;
       }
     }

@@ -3109,13 +3109,11 @@
       const handleScanFailure = async () => {
         const hash = videoId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
         const hashScore = 80 + (hash % 15);
-        const fallbackRating = hashScore < 80 ? 'caution' : 'safe';
-        const fallbackBadge = fallbackRating === 'safe' ? `Safe ${hashScore}%` : `Caution ${100 - hashScore}%`;
         const defaultData = {
           ok: true,
-          rating: fallbackRating,
+          rating: 'caution',
           score: hashScore,
-          badgeText: fallbackBadge
+          badgeText: '스캔중'
         };
         await applyResult(defaultData);
       };
@@ -5388,7 +5386,16 @@
 
         const hasMatchingCaption = liveCaptions.some(cap => {
           const capEnd = cap.start + Math.max(cap.dur, 1.5);
-          return nowSec >= cap.start && nowSec < capEnd;
+          const isMatched = nowSec >= cap.start && nowSec < capEnd;
+          if (isMatched) {
+            // [소리 지시어 제거 처리] 음악/효과음/웃음소리 등 노이즈 텍스트 자막은 소리 신호 분석 제외(갭으로 간주)
+            const text = (cap.text || '').trim();
+            const isAudioNoise = /^\[.*\]$|^\(.*\)$|^[\s]*$/.test(text);
+            if (isAudioNoise) {
+              return false;
+            }
+          }
+          return isMatched;
         });
 
         if (!hasMatchingCaption) {
@@ -8131,7 +8138,7 @@ function analyzeCaptionsLocally(videoId, captions) {
       videoId,
       score: 82,
       rating: 'safe',
-      badgeText: 'Safe 82%',
+      badgeText: '안전 82%',
       detectedKeywords: [],
       captionAvailable: false
     };
@@ -8198,13 +8205,13 @@ function analyzeCaptionsLocally(videoId, captions) {
   }
   
   let rating = 'safe';
-  let badgeText = `Safe ${score}%`;
+  let badgeText = `안전 ${score}%`;
   if (score < 50) {
     rating = 'danger';
-    badgeText = `Danger ${100 - score}%`;
+    badgeText = `위험 ${100 - score}%`;
   } else if (score < 80) {
     rating = 'caution';
-    badgeText = `Caution ${100 - score}%`;
+    badgeText = `주의 ${100 - score}%`;
   }
   
   return {

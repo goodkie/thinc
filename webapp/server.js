@@ -2581,32 +2581,32 @@ async function handleAnalyzeVideoFast(req, res) {
   const isKeyword = sensInfo.matchType === 'keyword';
   const fuzzySuffix = isFuzzy ? ' ~유사' : (isKeyword ? ' (태그)' : '');
 
-  // Caution과 Danger 계산 로직 서로 스왑 적용
+  // Caution과 Danger 등급 판정 논리 정상 복원 및 배지명 한글화 적용
   if (sensInfo.tier === 'high') {
     // 상: 35% ~ 70% 미만의 임의의 값 (35 ~ 69)
     score = 35 + Math.floor(Math.random() * 35);
     if (score < 50) {
-      rating = 'caution'; // 로직 교체: 기존 danger -> caution
-      badgeText = `Caution [상] ${100 - score}%${fuzzySuffix}`;
+      rating = 'danger'; // 위험 판정
+      badgeText = `위험 [상] ${100 - score}%${fuzzySuffix}`;
     } else {
-      rating = 'danger';  // 로직 교체: 기존 caution -> danger
-      badgeText = `Danger [상] ${100 - score}%${fuzzySuffix}`;
+      rating = 'caution'; // 주의 판정
+      badgeText = `주의 [상] ${100 - score}%${fuzzySuffix}`;
     }
   } else if (sensInfo.tier === 'medium') {
     // 중: 70% ~ 85% 의 임의의 값 (70 ~ 85)
     score = 70 + Math.floor(Math.random() * 16);
     if (score < 80) {
-      rating = 'danger';  // 로직 교체: 기존 caution -> danger
-      badgeText = `Danger [중] ${100 - score}%${fuzzySuffix}`;
+      rating = 'caution'; // 주의 판정
+      badgeText = `주의 [중] ${100 - score}%${fuzzySuffix}`;
     } else {
-      rating = 'safe';
-      badgeText = `Safe [중] ${score}%${fuzzySuffix}`;
+      rating = 'safe'; // 안전 판정
+      badgeText = `안전 [중] ${score}%${fuzzySuffix}`;
     }
   } else if (sensInfo.tier === 'low') {
     // 하: 85% ~ 95% 의 임의의 값 (85 ~ 95)
     score = 85 + Math.floor(Math.random() * 11);
     rating = 'safe';
-    badgeText = `Safe [하] ${score}%${fuzzySuffix}`;
+    badgeText = `안전 [하] ${score}%${fuzzySuffix}`;
   } else {
     // DB 미매칭: 무조건 '스캔중' 뱃지 표시
     score = 65 + Math.floor(Math.random() * 16);

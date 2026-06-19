@@ -37,11 +37,12 @@
 html, body {
   width: 100%;
   height: 100%;
-  background-color: var(--bg-color);
+  background-color: transparent; /* transparent로 해야 윈도우 모서리가 투명하게 라운딩됨 */
   color: var(--text-main);
   font-family: var(--font-sans);
   overflow: hidden;
   position: relative;
+  border-radius: 12px;
 }
 
 /* Glassmorphism Background grid */
@@ -219,6 +220,8 @@ body::before {
   z-index: 10;
   position: relative;
   overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--border-glass);
 }
 
 /* ==========================================================================

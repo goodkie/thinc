@@ -4534,7 +4534,16 @@
 
         const hasMatchingCaption = liveCaptions.some(cap => {
           const capEnd = cap.start + Math.max(cap.dur, 1.5);
-          return nowSec >= cap.start && nowSec < capEnd;
+          const isMatched = nowSec >= cap.start && nowSec < capEnd;
+          if (isMatched) {
+            // [소리 지시어 제거 처리] 음악/효과음/웃음소리 등 노이즈 텍스트 자막은 소리 신호 분석 제외(갭으로 간주)
+            const text = (cap.text || '').trim();
+            const isAudioNoise = /^\[.*\]$|^\(.*\)$|^[\s]*$/.test(text);
+            if (isAudioNoise) {
+              return false;
+            }
+          }
+          return isMatched;
         });
 
         if (!hasMatchingCaption) {
