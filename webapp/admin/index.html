@@ -1653,64 +1653,6 @@
             el.innerHTML = `<span class="${classes[sens.tier] || 'status-none'}">⚡ 현재 매칭: ${labels[sens.tier] || sens.tier} &nbsp;|&nbsp; 채널명: "${kws}" &nbsp;|&nbsp; 민감도 ×${sens.multiplier} (${(sens.lang || 'ko').toUpperCase()})</span>`;
           } else {
             el.innerHTML = `<span class="status-idle">● 대기 중 — 앱에서 동영상을 재생하면 자동으로 채널명을 검사합니다</span>`;
-          }
-        } catch(e) {}
-      }');
-              return;
-            }
-            const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.toLowerCase().startsWith('tier'));
-            const db = { high: [], medium: [], low: [] };
-            lines.forEach(line => {
-              const commaIdx = line.indexOf(',');
-              if (commaIdx === -1) return;
-              const tierRaw = line.substring(0, commaIdx).trim().toUpperCase();
-              const kws = line.substring(commaIdx + 1).split(';').map(k => k.trim()).filter(k => k);
-              if (tierRaw === 'HIGH' || tierRaw === '상') db.high = kws;
-              else if (tierRaw === 'MEDIUM' || tierRaw === '중') db.medium = kws;
-              else if (tierRaw === 'LOW' || tierRaw === '하') db.low = kws;
-            });
-
-            document.getElementById('kw-high').value = db.high.join('\n');
-            document.getElementById('kw-medium').value = db.medium.join('\n');
-            document.getElementById('kw-low').value = db.low.join('\n');
-            updateKeywordCounts();
-
-            // 메모리 및 로컬스토리지 즉시 동기화
-            localStorage.setItem(`thinc_keyword_db_${currentEditLang}`, JSON.stringify(db));
-            if (currentEditLang === 'ko') {
-              localStorage.setItem('thinc_keyword_db', JSON.stringify(db));
-            }
-
-            // 시각적 피드백 제공
-            const t = document.getElementById('toast-success');
-            t.innerHTML = `⚡ [${currentEditLang.toUpperCase()}] CSV 텍스트 적용 완료! 상:${db.high.length} 중:${db.medium.length} 하:${db.low.length}개`;
-            t.classList.add('visible');
-            setTimeout(() => {
-              t.classList.remove('visible');
-              setTimeout(() => { t.innerHTML = '<span>✅</span> Settings Saved & Engine Hot-Swapped Successfully!'; }, 400);
-            }, 3000);
-
-          } catch(err) {
-            alert('CSV 적용 오류: ' + err.message);
-          }
-        });
-      }
-
-      // Live match status
-      function refreshMatchStatus() {
-        try {
-          const sens = JSON.parse(localStorage.getItem('thinc_keyword_sensitivity') || '{}');
-          const el = document.getElementById('keyword-match-status');
-          if (!el) return;
-          if (sens && sens.tier && sens.tier !== 'none') {
-            const labels = { high: '🔴 상 (HIGH)', medium: '🟡 중 (MEDIUM)', low: '🟢 하 (LOW)' };
-            const classes = { high: 'status-high', medium: 'status-medium', low: 'status-low' };
-            const kws = (sens.matchedKeywords || []).slice(0, 3).join(', ');
-            el.innerHTML = `<span class="${classes[sens.tier] || 'status-none'}">⚡ 현재 매칭: ${labels[sens.tier] || sens.tier} &nbsp;|&nbsp; 채널명: "${kws}" &nbsp;|&nbsp; 민감도 ×${sens.multiplier} (${(sens.lang || 'ko').toUpperCase()})</span>`;
-          } else {
-            el.innerHTML = '<span class="status-idle">● 대기 중 — 앱에서 동영상을 재생하면 자동으로 채널명을 검사합니다</span>';
-          }
-        } catch(e) {}
       }
 
       setInterval(refreshMatchStatus, 2000);
