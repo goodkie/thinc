@@ -6,7 +6,6 @@ chrome-temp-profile2/
 *.rar
 *.JPG
 *.jpeg
-*.png
 *.pdf
 *.psd
 restore_point_*
