@@ -3650,3 +3650,94 @@ body.right-panel-collapsed .right-panel-toggle-btn {
   border-radius: 8px 3px 3px 8px !important;
 }
 
+/* ==========================================================================
+   CUSTOM TITLEBAR & FRAMELESS ROUNDED CORNERS STYLES
+   ========================================================================== */
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background-color: transparent !important;
+}
+
+.app {
+  padding-top: 32px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.splash {
+  padding-top: 32px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.custom-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 32px;
+  background: #020206;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  -webkit-app-region: drag;
+  user-select: none;
+  z-index: 9999;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  overflow: hidden;
+}
+
+.titlebar-logo {
+  display: flex;
+  align-items: center;
+  padding-left: 14px;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8e8ea8;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.titlebar-logo img {
+  width: 14px;
+  height: 14px;
+}
+
+.titlebar-controls {
+  display: flex;
+  -webkit-app-region: no-drag;
+  height: 100%;
+}
+
+.control-btn {
+  background: transparent;
+  border: none;
+  color: #8e8ea8;
+  width: 44px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.control-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.control-btn.close:hover {
+  background: #e81123;
+  color: #fff;
+}
+

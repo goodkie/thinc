@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   platform: process.platform,
   
+  minimizeWindow: () => ipcRenderer.send('window-minimize'),
+  maximizeWindow: () => ipcRenderer.send('window-maximize'),
+  closeWindow: () => ipcRenderer.send('window-close'),
+  
   // 백그라운드 자막 획득 IPC
   fetchBackgroundCaptions: (videoId) => ipcRenderer.invoke('fetch-background-captions', videoId),
   // 유튜브 로그인 팝업 모달 요청 IPC

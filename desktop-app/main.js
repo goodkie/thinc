@@ -111,7 +111,9 @@ function createMain(serverPort) {
     show: false,
     title: 'The Truth Untold — Th!nc Biometric Analyzer',
     icon: iconPath,
-    backgroundColor: '#0a0a1a',
+    frame: false,
+    transparent: true,
+    hasShadow: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -346,4 +348,20 @@ ipcMain.on('video-playback-started', (event, data) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('video-playback-started', data);
   }
+});
+
+ipcMain.on('window-minimize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+});
+ipcMain.on('window-maximize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+ipcMain.on('window-close', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
 });

@@ -59,6 +59,19 @@
     </div>
   </div>
 
+  <!-- ===== CUSTOM TITLEBAR ===== -->
+  <div class="custom-titlebar">
+    <div class="titlebar-logo">
+      <img src="thinc-logo-new.png" alt="Th!nc Logo">
+      <span class="titlebar-title">The Truth Untold — Th!nc Desktop</span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="control-btn minimize" id="titlebar-minimize" title="최소화">➖</button>
+      <button class="control-btn maximize" id="titlebar-maximize" title="최대화">🔳</button>
+      <button class="control-btn close" id="titlebar-close" title="닫기">❌</button>
+    </div>
+  </div>
+
   <!-- ===== MAIN WRAPPER ===== -->
   <div id="app" class="app hidden">
     <!-- Floating Sidebar Toggle Button -->
@@ -718,5 +731,22 @@
   <script src="dictionary.js?v=3.6.1"></script>
   <script src="analyzer.js?v=3.6.1"></script>
   <script src="desktop.js?v=3.6.1"></script>
+  <!-- Custom Titlebar Event script -->
+  <script>
+    if (window.electronAPI) {
+      document.getElementById('titlebar-minimize').addEventListener('click', () => {
+        window.electronAPI.minimizeWindow();
+      });
+      document.getElementById('titlebar-maximize').addEventListener('click', () => {
+        window.electronAPI.maximizeWindow();
+      });
+      document.getElementById('titlebar-close').addEventListener('click', () => {
+        window.electronAPI.closeWindow();
+      });
+    } else {
+      const tb = document.querySelector('.custom-titlebar');
+      if (tb) tb.style.display = 'none';
+    }
+  </script>
 </body>
 </html>
