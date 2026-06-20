@@ -5529,12 +5529,6 @@
       // NOTE: playerState -1(unstarted) 는 ytPlayer 초기화 중에도 발생하므로 제외
       const isPausedOrEnded = isLocalYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5);
 
-      if (isPausedOrEnded) {
-        // 동영상이 멈췄을 때는 점수나 플로팅 누적 바그래프를 초기화하지 않고, 분석 루프만 대기 상태로 유지합니다.
-        animationId = requestAnimationFrame(loop);
-        return;
-      }
-
       // ── Sync captionPlaybackSec from ytPlayer directly each frame ──
       if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
         try {
@@ -5550,6 +5544,11 @@
       // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
       let isPausedOrStopped = false;
       let isMutedOrSilent = false;
+
+      if (isPausedOrEnded) {
+        isPausedOrStopped = true;
+      }
+
       if (isLocalYoutube && activeVideoId) {
         // Grace period: first 3 seconds of analysis exempt from pause detection
         // (gives YouTube Player API time to initialize and fire state events)
@@ -5566,9 +5565,6 @@
             if (playerState === 2 || (!isVideoPlaying && timeSinceLastUpdate > 5000)) {
               isPausedOrStopped = true;
             }
-          } else {
-            // If player doesn't respond or update is delayed, keep analyzing with Self-Ticking clock fallback
-            isPausedOrStopped = false;
           }
         }
 
@@ -5637,7 +5633,7 @@
       if (analyzer) {
         result = analyzer.analyzeFrame(currentSens, isSpeechActive);
       } else {
-        result = getMockAnalysisFrame(currentSens);
+        result = getMockAnalysisFrame(currentSens, isSpeechActive);
       }
 
       // Update VIP UI Badge
@@ -5792,11 +5788,19 @@
     loop();
   }
 
-  function getMockAnalysisFrame(sensitivity) {
+  function getMockAnalysisFrame(sensitivity, isSpeechActive = false) {
     const now = Date.now();
 
-    // ── GUARD: No video loaded → always silent (nothing to simulate) ──
+    // ── GUARD: No video loaded → always silent ──
     if (!activeVideoId) {
+      return {
+        stressScore: 0, isSilent: true, isMusic: false, aiProbability: 0, gainStatus: 'IDLE',
+        metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', entropy: 0, mti: '0.0000', fi: '0.0000', pdr: '0.0000' }
+      };
+    }
+
+    // ── GUARD: isSpeechActive=false 이면 즉시 silence ──
+    if (!isSpeechActive) {
       return {
         stressScore: 0, isSilent: true, isMusic: false, aiProbability: 0, gainStatus: 'IDLE',
         metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', entropy: 0, mti: '0.0000', fi: '0.0000', pdr: '0.0000' }

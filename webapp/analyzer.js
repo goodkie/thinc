@@ -97,7 +97,7 @@ class VoiceStressAnalyzer {
   }
 
   _startAdminSettingsPolling() {
-    const POLL_MS = 2000; // 2초마다 폴링
+    const POLL_MS = 1000; // 1초마다 폴링 (실시간 어드민 설정 반영)
     const doFetch = async () => {
       try {
         // 백엔드 URL 우선순위: localStorage 설정 > location.origin (동일 서버)
@@ -350,6 +350,19 @@ class VoiceStressAnalyzer {
     }
 
     if (isCORSBlocked) {
+      // isSpeechActive=false(무음/자막 갭/정지/뮤트)이면 랜덤 Mock 생성 없이 즉시 silence 반환
+      if (!isSpeechActive) {
+        return {
+          stressScore: 0,
+          isSilent: true,
+          isMusic: false,
+          aiProbability: 0,
+          gainStatus: 'IDLE',
+          internalGain: 1.0,
+          metrics: { jitter: 0, shimmer: 0, hnr: 0, entropy: 0, mti: 0, fi: 0, pdr: 0 }
+        };
+      }
+
       // Noise Gate Threshold 적용
       let silenceThreshold = 0.005;
       if (this.adminSettings && this.adminSettings.c_silence_thr !== undefined) {
