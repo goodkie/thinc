@@ -1477,6 +1477,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     // Initialize settings & language immediately (for splash translations)
     initSettings();
+    syncAdminSettingsFromServer();
     const splashDesc = document.querySelector('.splash-desc');
     if (splashDesc) {
       splashDesc.innerText = t('splash_desc');
@@ -6816,6 +6817,34 @@
 
     // Run translation sweep on load
     updateAppLanguage();
+  }
+
+  async function syncAdminSettingsFromServer() {
+    try {
+      const backendUrl = localStorage.getItem('thinc_backend_url') || '';
+      const origin = typeof location !== 'undefined' ? location.origin : '';
+      const base = backendUrl || origin;
+      if (!base || base.startsWith('file://')) return;
+
+      const r = await fetch(base + '/api/admin-settings', { cache: 'no-store' });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.ok && data.settings) {
+        const localRaw = localStorage.getItem('thinc_admin_settings');
+        const local = localRaw ? JSON.parse(localRaw) : null;
+        const serverTime = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
+        const localTime = (local && local._updatedAt) ? new Date(local._updatedAt).getTime() : 0;
+        if (serverTime > localTime || !local) {
+          const toStore = { ...data.settings };
+          delete toStore._updatedAt;
+          toStore._updatedAt = data.updatedAt;
+          localStorage.setItem('thinc_admin_settings', JSON.stringify(toStore));
+          console.log('[AdminSync] Startup Settings synced from server:', data.updatedAt);
+        }
+      }
+    } catch (e) {
+      console.warn('[AdminSync] Startup sync failed:', e.message);
+    }
   }
 
   function updateAppLanguage() {
