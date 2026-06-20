@@ -4827,28 +4827,8 @@
     if (window.PerformanceLogger) {
       window.PerformanceLogger.log('Captions', 'Load Captions Started', 0, 'Info', `Video ID: ${videoId}`);
     }
-    
-    // 0. 데스크톱 앱(Electron) 환경의 경우, CORS 제약이 없으므로 브라우저 다이렉트 InnerTube 추출 우선 시도 (초고속 및 캡차 완벽 우회)
-    if (window.electronAPI) {
-      try {
-        console.log(`[loadCaptionsForVideo] Direct browser InnerTube capture started for video: ${videoId}`);
-        const directResult = await getYouTubeTranscriptDirectBrowser(videoId, currentLang);
-        if (directResult && directResult.captions && directResult.captions.length > 0) {
-          liveCaptions = await translateCaptionsIfRequired(directResult.captions, currentLang);
-          captionLoadStatus = 'loaded';
-          const localizedLang = directResult.lang === 'ko' ? (currentLang === 'ko' ? '한국어' : 'Korean') : (currentLang === 'ko' ? '영어' : 'English');
-          showToast(t('toast_captions_loaded').replace('{lang}', localizedLang).replace('{count}', directResult.captions.length));
-          if (window.PerformanceLogger) {
-            window.PerformanceLogger.log('Captions', 'Load Captions Complete', performance.now() - overallStartTime, 'Success', `Source: Electron Direct, Count: ${directResult.captions.length}`);
-          }
-          return;
-        }
-      } catch (directErr) {
-        console.warn('[loadCaptionsForVideo] Electron direct InnerTube capture failed:', directErr.message);
-      }
-    }
 
-    // 1. Try local/online backend first (generous timeout: backend may cascade through multiple fallbacks)
+  // 1. Try local/online backend first (generous timeout: backend may cascade through multiple fallbacks)
     let captionData = null;
     const backendStartTime = performance.now();
     try {
