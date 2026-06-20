@@ -4712,40 +4712,103 @@
           throw new Error('No caption tracks found');
         }
 
-        let targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase() === (lang || 'ko').toLowerCase());
-        if (!targetTrack && lang !== 'ko') targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase() === 'ko');
-        if (!targetTrack) targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase() === 'en');
+        // 언어 트랙 매칭 우선순위 지능형 필터링 (수동 자막 우선순위)
+        let targetTrack = null;
+        const normLang = (lang || 'ko').toLowerCase();
+        
+        // 1순위: 수동 매칭 언어 (ASR 아님)
+        targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase().startsWith(normLang) && t.kind !== 'asr');
+        // 2순위: 자동생성 매칭 언어
+        if (!targetTrack) targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase().startsWith(normLang));
+        // 3순위: 수동 한국어
+        if (!targetTrack && normLang !== 'ko') targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase().startsWith('ko') && t.kind !== 'asr');
+        // 4순위: 자동생성 한국어
+        if (!targetTrack && normLang !== 'ko') targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase().startsWith('ko'));
+        // 5순위: 수동 영어
+        if (!targetTrack && normLang !== 'en') targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase().startsWith('en') && t.kind !== 'asr');
+        // 6순위: 자동생성 영어
+        if (!targetTrack && normLang !== 'en') targetTrack = tracks.find(t => (t.languageCode || '').toLowerCase().startsWith('en'));
+        // 7순위: 첫 번째 사용가능한 트랙
         if (!targetTrack) targetTrack = tracks[0];
 
         if (!targetTrack || !targetTrack.baseUrl) {
           throw new Error('No baseUrl in chosen caption track');
         }
 
-        console.log(`[getYouTubeTranscriptDirectBrowser] Found track: ${targetTrack.languageCode}, url: ${targetTrack.baseUrl}`);
-        const captionResponse = await fetch(targetTrack.baseUrl + '&fmt=json', {
-          signal: getTimeoutSignal(5000)
-        });
+        const selectedLang = targetTrack.languageCode || lang;
+        console.log(`[getYouTubeTranscriptDirectBrowser] Selected track: ${selectedLang} (ASR: ${targetTrack.kind === 'asr'}), url: ${targetTrack.baseUrl}`);
 
-        if (!captionResponse.ok) {
-          throw new Error(`Failed to fetch caption data: ${captionResponse.status}`);
+        // JSON 포맷을 선호하여 &fmt=json 으로 우선 호출
+        let requestUrl = targetTrack.baseUrl;
+        if (requestUrl.includes('fmt=')) {
+          requestUrl = requestUrl.replace(/([&?])fmt=[^&]*/, '$1fmt=json');
+        } else {
+          requestUrl += (requestUrl.includes('?') ? '&' : '?') + 'fmt=json';
+        }
+        
+        let captionResponse = null;
+        let isJsonSuccess = false;
+        try {
+          captionResponse = await fetch(requestUrl, { signal: getTimeoutSignal(5000) });
+          if (captionResponse.ok) {
+            isJsonSuccess = true;
+          } else {
+            console.warn(`[getYouTubeTranscriptDirectBrowser] fmt=json fetch returned status ${captionResponse.status}, trying raw XML fallback`);
+          }
+        } catch (fetchErr) {
+          console.warn('[getYouTubeTranscriptDirectBrowser] fmt=json fetch failed (network/timeout), trying raw XML fallback:', fetchErr.message);
         }
 
-        const captionsJson = await captionResponse.json();
+        if (!isJsonSuccess) {
+          const rawUrl = targetTrack.baseUrl.includes('fmt=')
+            ? targetTrack.baseUrl.replace(/([&?])fmt=[^&]*/, '$1fmt=srv1')
+            : targetTrack.baseUrl + (targetTrack.baseUrl.includes('?') ? '&' : '?') + 'fmt=srv1';
+          
+          try {
+            captionResponse = await fetch(rawUrl, { signal: getTimeoutSignal(5000) });
+            if (!captionResponse.ok) {
+              throw new Error(`Failed to fetch raw XML: ${captionResponse.status}`);
+            }
+          } catch (xmlErr) {
+            throw new Error(`All format attempts failed: ${xmlErr.message}`);
+          }
+        }
+
+        const contentType = captionResponse.headers.get('Content-Type') || '';
+        const responseText = await captionResponse.text();
         const segments = [];
-        if (captionsJson && Array.isArray(captionsJson.events)) {
-          captionsJson.events.forEach(event => {
-            if (!event.segs) return;
-            const text = event.segs.map(s => s.utf8).join('').trim();
-            if (!text) return;
-            const startSec = event.tStartMs ? event.tStartMs / 1000 : 0;
-            const durSec = event.dDurationMs ? event.dDurationMs / 1000 : 1.0;
+
+        if (contentType.includes('json') || responseText.trim().startsWith('{')) {
+          // JSON 포맷 파싱
+          const captionsJson = JSON.parse(responseText);
+          if (captionsJson && Array.isArray(captionsJson.events)) {
+            captionsJson.events.forEach(event => {
+              if (!event.segs) return;
+              const text = event.segs.map(s => s.utf8).join('').trim();
+              if (!text) return;
+              const startSec = event.tStartMs ? event.tStartMs / 1000 : 0;
+              const durSec = event.dDurationMs ? event.dDurationMs / 1000 : 1.0;
+              segments.push({ start: startSec, dur: durSec, text });
+            });
+          }
+        } else {
+          // XML 포맷 파싱 (DOMParser 활용)
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(responseText, "text/xml");
+          const textNodes = xmlDoc.getElementsByTagName("text");
+          for (let i = 0; i < textNodes.length; i++) {
+            const node = textNodes[i];
+            const text = (node.textContent || '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
+            if (!text) continue;
+            const startSec = parseFloat(node.getAttribute("start") || "0");
+            const durSec = parseFloat(node.getAttribute("dur") || "1.0");
             segments.push({ start: startSec, dur: durSec, text });
-          });
+          }
         }
 
         if (segments.length > 0) {
           console.log(`[getYouTubeTranscriptDirectBrowser] Success! Parsed ${segments.length} segments.`);
-          return { lang: targetTrack.languageCode || lang, captions: segments };
+          return { lang: selectedLang, captions: segments };
         } else {
           throw new Error('Parsed captions were empty');
         }
