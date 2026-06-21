@@ -5880,13 +5880,14 @@
     // 지수적 민감도 증폭 수식 적용 (슬라이더 조작 시 더욱 격적이고 빠른 피드백 제공)
     const sensMult = Math.max(0.2, Math.pow(sensitivity / 5, 1.3) * 1.25);
 
-    // Natural 30-second speech variability pattern
+    // Natural 30-second speech variability pattern with soft time-based oscillator
     const patternSec = (now / 1000) % 30;
+    const osc = (Math.sin(now / 1200) * 0.4) + (Math.cos(now / 450) * 0.3) + (Math.sin(now / 150) * 0.1); // -0.8 ~ 0.8
     let stressBase;
-    if      (patternSec < 8)  stressBase = 8  + Math.random() * 22; // calm:     8–30%
-    else if (patternSec < 16) stressBase = 25 + Math.random() * 45; // moderate: 25–70%
-    else if (patternSec < 22) stressBase = 15 + Math.random() * 30; // relaxed:  15–45%
-    else                      stressBase = 45 + Math.random() * 42; // stressed: 45–87%
+    if      (patternSec < 8)  stressBase = 15 + osc * 8;   // calm: 7–23%
+    else if (patternSec < 16) stressBase = 45 + osc * 15;  // moderate: 30–60%
+    else if (patternSec < 22) stressBase = 25 + osc * 10;  // relaxed: 15–35%
+    else                      stressBase = 65 + osc * 18;  // stressed: 47–83%
 
     // Admin Settings Hot-Swap for Mock Frame
     let globalBoost = 1.0;
@@ -5926,22 +5927,22 @@
       };
     }
 
-    // 민감도가 높을수록 요동성(volatility)을 극대화하여 더 삐죽하게 예민하게 실시간 반응
-    const volatility = (sensitivity / 5) * 8.5;
-    const noise = (Math.random() - 0.5) * volatility;
+    // 민감도가 높을수록 요동성(volatility)을 부드럽게 반영하여 더 예민하게 피드백
+    const volatility = (sensitivity / 5) * 10;
+    const noise = osc * volatility + (Math.sin(now / 50) * 1.5); // 아주 부드러운 오실레이션 + 미세 지터
     const scaledStress = Math.min(99, Math.max(5, Math.round((stressBase * sensMult + noise) * globalBoost * lieScale)));
 
-    // Plausible metric values (realistic speech ranges, NOT the inflated ones)
-    const mockJitter  = 0.01 + Math.random() * 0.05;
-    const mockShimmer = 0.02 + Math.random() * 0.07;
-    const mockHnr     = 0.30 + Math.random() * 0.35;
-    const mockMti     = 0.01 + Math.random() * 0.06;
-    const mockFi      = 0.01 + Math.random() * 0.05;
-    const mockPdr     = 0.02 + Math.random() * 0.10;
+    // Plausible metric values (time-based smooth variation, NOT rapid blink)
+    const mockJitter  = 0.012 + Math.abs(osc) * 0.03 + (Math.sin(now / 80) * 0.002);
+    const mockShimmer = 0.025 + Math.abs(osc * 1.2) * 0.04 + (Math.cos(now / 90) * 0.003);
+    const mockHnr     = 0.45 - Math.abs(osc) * 0.15 + (Math.sin(now / 120) * 0.01);
+    const mockMti     = 0.015 + Math.abs(osc) * 0.04 + (Math.cos(now / 70) * 0.002);
+    const mockFi      = 0.012 + Math.abs(osc) * 0.03 + (Math.sin(now / 110) * 0.002);
+    const mockPdr     = 0.022 + Math.abs(osc * 1.5) * 0.06 + (Math.cos(now / 60) * 0.003);
 
-    const aiProb = (mockJitter < 0.03 && mockShimmer < 0.04)
-      ? 60 + Math.floor(Math.random() * 20)
-      : 3  + Math.floor(Math.random() * 18);
+    const aiProb = (mockJitter < 0.025 && mockShimmer < 0.04)
+      ? 60 + Math.floor(Math.abs(osc) * 20)
+      : 3  + Math.floor(Math.abs(osc) * 15);
 
     return {
       stressScore: scaledStress,
@@ -6061,6 +6062,23 @@
         aiBadge.innerText = `NEURAL SCAN: SAFE`;
         aiBadge.classList.remove('ai-alert');
         // document.getElementById('ai-warning').classList.add('hidden');
+      }
+    }
+
+    // 3b. Analysis Source Badge
+    const sourceBadge = document.getElementById('det-source-badge');
+    if (sourceBadge) {
+      const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic;
+      if (isRealAudioActive) {
+        sourceBadge.innerText = "🎙️ AUDIO ACTIVE";
+        sourceBadge.style.backgroundColor = "rgba(16, 185, 129, 0.2)";
+        sourceBadge.style.color = "var(--accent-green)";
+        sourceBadge.style.borderColor = "var(--accent-green)";
+      } else {
+        sourceBadge.innerText = "📝 CAPTION CONTEXT";
+        sourceBadge.style.backgroundColor = "rgba(79, 172, 254, 0.2)";
+        sourceBadge.style.color = "var(--accent-cyan)";
+        sourceBadge.style.borderColor = "var(--accent-cyan)";
       }
     }
 

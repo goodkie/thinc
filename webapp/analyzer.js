@@ -381,22 +381,25 @@ class VoiceStressAnalyzer {
         };
       }
 
-      // Simulate realistic voice data with all 6 metrics
-      const mockJitter   = 0.02 + (Math.random() * 0.05);
-      const mockShimmer  = 0.05 + (Math.random() * 0.1);
-      const mockHnr      = 15 + (Math.random() * 10);
-      const mockEntropy  = 0.4 + (Math.random() * 0.4);
-      const mockMti      = 0.03 + Math.random() * 0.08;
-      const mockFi       = 0.02 + Math.random() * 0.06;
-      const mockPdr      = 0.05 + Math.random() * 0.15;
+      // Simulate realistic voice data with all 6 metrics (time-based smooth variation)
+      const now = Date.now();
+      const osc = (Math.sin(now / 1000) * 0.4) + (Math.cos(now / 380) * 0.3) + (Math.sin(now / 120) * 0.1); // -0.8 ~ 0.8
+      
+      const mockJitter   = 0.012 + Math.abs(osc) * 0.03 + (Math.sin(now / 70) * 0.002);
+      const mockShimmer  = 0.025 + Math.abs(osc * 1.2) * 0.04 + (Math.cos(now / 80) * 0.003);
+      const mockHnr      = 0.45 - Math.abs(osc) * 0.15 + (Math.sin(now / 110) * 0.01);
+      const mockEntropy  = 0.45 + osc * 0.15 + (Math.sin(now / 90) * 0.01);
+      const mockMti      = 0.015 + Math.abs(osc) * 0.04 + (Math.cos(now / 60) * 0.002);
+      const mockFi       = 0.012 + Math.abs(osc) * 0.03 + (Math.sin(now / 100) * 0.002);
+      const mockPdr      = 0.022 + Math.abs(osc * 1.5) * 0.06 + (Math.cos(now / 50) * 0.003);
 
-      const aiScore = (mockJitter > 0.06 && mockShimmer < 0.07) ? 85 : 15 + Math.random() * 20;
-      let baseStress = 30 + (Math.random() * 20);
-      if (mockJitter > 0.05) baseStress += 20;
-      if (mockEntropy > 0.7) baseStress += 15;
-      if (mockMti > 0.07) baseStress += 10;
-      if (mockFi > 0.05) baseStress += 8;
-      if (mockPdr > 0.12) baseStress += 7;
+      const aiScore = (mockJitter > 0.028 && mockShimmer < 0.04) ? 85 : 15 + Math.floor(Math.abs(osc) * 20);
+      let baseStress = 35 + (osc * 18) + (Math.sin(now / 60) * 1.5);
+      if (mockJitter > 0.03) baseStress += 8;
+      if (mockEntropy > 0.55) baseStress += 6;
+      if (mockMti > 0.035) baseStress += 5;
+      if (mockFi > 0.028) baseStress += 4;
+      if (mockPdr > 0.06) baseStress += 4;
 
       // Speaker ID Logic for simulated path
       this.identifySpeaker(mockJitter, mockShimmer, mockPdr);
