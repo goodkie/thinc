@@ -330,12 +330,12 @@ class VoiceStressAnalyzer {
     // If speech is active (video is playing) but RMS is near zero, it is blocked by CORS.
     const isCORSBlocked = (rms < 0.001) && isSpeechActive;
 
-    // Silence detection: RMS below silenceThreshold is treated as silence (noise floor)
+    // Silence detection: RMS below silenceThreshold or hard threshold (0.022) is treated as silence (noise floor)
     let currentSilenceThreshold = this.silenceThreshold;
     if (this.adminSettings && this.adminSettings.c_silence_thr !== undefined) {
       currentSilenceThreshold = this.adminSettings.c_silence_thr;
     }
-    const isTrulySilent = (rms < currentSilenceThreshold) && !isCORSBlocked;
+    const isTrulySilent = (rms < currentSilenceThreshold || rms < 0.022) && !isCORSBlocked;
 
     if (isTrulySilent) {
       return {
@@ -442,6 +442,7 @@ class VoiceStressAnalyzer {
       return {
         stressScore: Math.min(99, Math.max(5, Math.round(finalMockScore))),
         isSilent: false,
+        isCORSBlocked: true,
         aiProbability: Math.round(aiScore),
         gainStatus,
         internalGain: parseFloat(this.fakeGainValue.toFixed(2)),

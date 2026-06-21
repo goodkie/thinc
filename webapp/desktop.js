@@ -5948,6 +5948,7 @@
       stressScore: scaledStress,
       isSilent: false,
       isMusic: false,
+      isCORSBlocked: true,
       aiProbability: aiProb,
       gainStatus: 'OPTIMAL',
       currentSpeakerId: 'Speaker 1',
@@ -6068,7 +6069,7 @@
     // 3b. Analysis Source Badge
     const sourceBadge = document.getElementById('det-source-badge');
     if (sourceBadge) {
-      const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic;
+      const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic && !result.isCORSBlocked;
       if (isRealAudioActive) {
         sourceBadge.innerText = "🎙️ AUDIO ACTIVE";
         sourceBadge.style.backgroundColor = "rgba(16, 185, 129, 0.2)";
@@ -7536,7 +7537,7 @@
       'rgba(255, 65, 108, 0.6)'   // Neon Red
     ];
 
-    const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic;
+    const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic && !result.isCORSBlocked;
 
     if (isRealAudioActive) {
       // 1. Real Audio Waveform
