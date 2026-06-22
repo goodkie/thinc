@@ -4389,8 +4389,8 @@
         }
       }
 
-      // Tier 2: Microphone fallback — disabled to prevent capturing external sounds
-      if (false && !audioConnected && hasMediaDevices && audioCtx) {
+      // Tier 2: Microphone fallback — 활성화하여 탭 공유 실패 시 마이크 오디오 수신 지원
+      if (!audioConnected && hasMediaDevices && audioCtx) {
         try {
           const micStream = await navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: true, noiseSuppression: true }

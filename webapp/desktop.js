@@ -5470,6 +5470,37 @@
         }
       }
 
+      // Tier 2: Microphone fallback — 활성화하여 탭 공유 실패 시 마이크 오디오 수신 지원
+      if (!audioConnected && hasMediaDevices && audioCtx) {
+        try {
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Microphone Capture Request', 0, 'Info', 'Attempting microphone capture as fallback.');
+          }
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          });
+          mediaStream = micStream;
+          analyzer = new VoiceStressAnalyzer(audioCtx);
+          sourceNode = audioCtx.createMediaStreamSource(mediaStream);
+          sourceNode.connect(analyzer.gainNode);
+          analyzer.gainNode.connect(analyzer.analyser);
+          audioConnected = true;
+          showToast(t('toast_mic_captured'));
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Microphone Capture Success', 0, 'Success', 'Microphone audio track bound to VSA.');
+          }
+        } catch (micErr) {
+          console.info('[Th!nc] Microphone fallback not available:', micErr.message);
+          if (window.PerformanceLogger) {
+            window.PerformanceLogger.log('Audio', 'Microphone Capture Failed', 0, 'Warning', micErr.message);
+          }
+        }
+      }
+
       // Tier 3: Premium Caption-Based Context Model
 
       // No error message — this is a premium feature, not a fallback failure
@@ -5916,7 +5947,8 @@
     } catch (e) {}
 
     // Simulate mock RMS and check against dynamic silence threshold
-    const mockRms = 0.01 + (Math.random() * 0.03);
+    // mockRms가 silenceThreshold 미만으로 내려가 무음 감지가 가능하도록 범위를 0.001~0.011로 조정
+    const mockRms = 0.001 + (Math.random() * 0.01);
     const isMockSilent = mockRms < silenceThreshold;
 
     if (isMockSilent) {
