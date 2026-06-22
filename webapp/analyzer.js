@@ -704,24 +704,24 @@ class VoiceStressAnalyzer {
       };
     }
 
-    // Speaker ID Logic
-    this.identifySpeaker(jitter, shimmer, pdr);
-
-    // ── VAD 기반 무음 처리: 음성 활동이 없으면 즉시 stressScore=0 반환 ──────
-    // NO_VOICE 상태(노이즈 플로어 대비 신호 부족)이면 거짓말 분석 불필요 → 게이지 0
-    if (vadStatus === 'NO_VOICE') {
+    // ── VAD GATE: 음성 활동이 없으면 즉시 0 반환 (ambient noise → false positive 방지) ──
+    // VOICE_ACTIVE(+ hangover) 상태가 아닌 경우 스트레스 점수를 계산하지 않고 0 반환
+    if (vadStatus !== 'VOICE_ACTIVE') {
       return {
         stressScore: 0,
         aiProbability: Math.round(smoothAIScore),
-        isSilent: true,
+        isSilent: true,  // NO_VOICE/WEAK_SIGNAL → UI에서 무음으로 처리
         isMusic: false,
         gainStatus,
         internalGain: parseFloat(this.fakeGainValue.toFixed(2)),
         currentSpeakerId: this.currentSpeaker ? `Speaker ${this.currentSpeaker.id}` : 'Scanning...',
         metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', entropy: 0, mti: 0, fi: 0, pdr: 0 },
-        diagnostic: _diag('REAL_AUDIO', 'NO_VOICE', 0)
+        diagnostic: _diag('REAL_AUDIO', vadStatus, 0)
       };
     }
+
+    // Speaker ID Logic
+    this.identifySpeaker(jitter, shimmer, pdr);
 
     let finalScore = score;
     
@@ -732,7 +732,7 @@ class VoiceStressAnalyzer {
 
     return {
       stressScore: finalScore,
-      aiProbability: smoothAIScore,
+      aiProbability: Math.round(smoothAIScore),
       isSilent: false,
       isMusic: false,
       gainStatus,

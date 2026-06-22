@@ -5930,7 +5930,19 @@
     // 민감도가 높을수록 요동성(volatility)을 부드럽게 반영하여 더 예민하게 피드백
     const volatility = (sensitivity / 5) * 10;
     const noise = osc * volatility + (Math.sin(now / 50) * 1.5); // 아주 부드러운 오실레이션 + 미세 지터
-    const scaledStress = Math.min(99, Math.max(5, Math.round((stressBase * sensMult + noise) * globalBoost * lieScale)));
+    // 사전스캔 신뢰도(Reliability)에 기반한 감도 계수 — analyzer.js의 reliabilityMultiplier와 동일 공식
+    let mockReliabilityMult = 1.0;
+    try {
+      const metaRawMock = localStorage.getItem('thinc_video_metadata');
+      if (metaRawMock) {
+        const metaMock = JSON.parse(metaRawMock);
+        if (metaMock && typeof metaMock.reliability === 'number') {
+          // 신뢰도 0% → 2.0배, 50% → 1.0배, 100% → 0.1배 (analyzer.js와 동일 공식)
+          mockReliabilityMult = Math.max(0.1, Math.min(2.5, (100 - metaMock.reliability) / 50));
+        }
+      }
+    } catch(e) { mockReliabilityMult = 1.0; }
+    const scaledStress = Math.min(99, Math.max(5, Math.round((stressBase * sensMult + noise) * globalBoost * lieScale * mockReliabilityMult)));
 
     // Plausible metric values (time-based smooth variation, NOT rapid blink)
     const mockJitter  = 0.012 + Math.abs(osc) * 0.03 + (Math.sin(now / 80) * 0.002);
@@ -7608,13 +7620,6 @@
     const canvas = document.getElementById('wave-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-
-    // ── Canvas 크기를 CSS 실제 표시 크기에 동적으로 맞춤 (픽셀 밀도 불일치 수정) ───
-    const cssW = canvas.offsetWidth;
-    const cssH = canvas.offsetHeight;
-    if (cssW > 0 && canvas.width !== cssW) canvas.width = cssW;
-    if (cssH > 0 && canvas.height !== cssH) canvas.height = cssH;
-
     const width = canvas.width;
     const height = canvas.height;
 
@@ -7636,7 +7641,6 @@
     ctx.strokeStyle = 'rgba(0, 242, 254, 0.12)';
     ctx.beginPath(); ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2); ctx.stroke();
 
-    // ── isSilentMode: isVideoPlaying 의존 제거 → isRunning 기반으로 변경 ────────
     const isSilentMode = result.isSilent || result.isMusic || !isRunning;
     if (isRunning && !isSilentMode) {
       waveFrameCount++;
@@ -7648,9 +7652,10 @@
       'rgba(255, 65, 108, 0.6)'   // Neon Red
     ];
 
-    // ── CORS 시뮬레이션 상태 확인: all-128 timeData(직선) 스케치 방지 ────────
-    const isCORSSimulation = !!(result.diagnostic && result.diagnostic.dataSource === 'CORS_SIMULATION');
-    const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic && !isCORSSimulation;
+    // CORS 시뮬레이션 모드(dataSource='CORS_SIMULATION')에서는 timeData에 실제 오디오 없음
+    // 실제 Real Audio가 있을 때만 Real Waveform 그리기
+    const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic
+        && result.diagnostic && result.diagnostic.dataSource === 'REAL_AUDIO';
 
     if (isRealAudioActive) {
       // 1. Real Audio Waveform
