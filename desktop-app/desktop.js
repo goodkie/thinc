@@ -5948,7 +5948,6 @@
       stressScore: scaledStress,
       isSilent: false,
       isMusic: false,
-      isCORSBlocked: true,
       aiProbability: aiProb,
       gainStatus: 'OPTIMAL',
       currentSpeakerId: 'Speaker 1',
@@ -6069,7 +6068,7 @@
     // 3b. Analysis Source Badge
     const sourceBadge = document.getElementById('det-source-badge');
     if (sourceBadge) {
-      const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic && !result.isCORSBlocked;
+      const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic;
       if (isRealAudioActive) {
         sourceBadge.innerText = "🎙️ AUDIO ACTIVE";
         sourceBadge.style.backgroundColor = "rgba(16, 185, 129, 0.2)";
@@ -6118,6 +6117,10 @@
 
     // Real-time oscilloscope drawing
     drawOscilloscope(result, smoothScore);
+
+    // Advanced Diagnostic HUD update (captures isSpeechActive from outer scope)
+    const _isSpeechActiveForHUD = !result.isSilent && !result.isMusic;
+    updateDiagnosticHUD(result, smoothScore, _isSpeechActiveForHUD);
 
     // ===== 웹뷰 위 플로팅 오버레이 실시간 연동 (데스크톱/모바일 동시 대응) =====
     const wvOverlay = document.getElementById('wv-float-overlay');
@@ -7498,6 +7501,106 @@
     }
   }
 
+  // ===== ADVANCED DIAGNOSTIC HUD =====
+  (function initDiagnosticHUD() {
+    function toggleHUD() {
+      const hud = document.getElementById('diagnostic-hud');
+      if (hud) hud.classList.toggle('hidden');
+    }
+
+    // Ctrl+Shift+D 키보드 단축키
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        toggleHUD();
+      }
+    });
+
+    // DIAG 버튼 클릭
+    const btnDiag = document.getElementById('btn-diag-hud');
+    if (btnDiag) btnDiag.addEventListener('click', toggleHUD);
+
+    // 닫기 버튼 클릭
+    const btnClose = document.getElementById('diag-close-btn');
+    if (btnClose) btnClose.addEventListener('click', () => {
+      const hud = document.getElementById('diagnostic-hud');
+      if (hud) hud.classList.add('hidden');
+    });
+  })();
+
+  function updateDiagnosticHUD(result, smoothScore, isSpeechActive) {
+    // VAD 상태 바 업데이트 (항상)
+    const d = result.diagnostic || {};
+    const vadStatus = d.vadStatus || (analyzer ? analyzer.lastVadStatus : 'N/A');
+    const snrDb = d.snrDb !== undefined ? d.snrDb : (analyzer ? analyzer.frameSNR : null);
+    const confidence = d.confidence !== undefined ? d.confidence : (analyzer ? analyzer.frameConfidence : 0);
+
+    const vadText = document.getElementById('vad-status-text');
+    const snrText = document.getElementById('vad-snr-text');
+    const confText = document.getElementById('vad-conf-text');
+
+    if (vadText) {
+      const vadColors = { 'VOICE_ACTIVE': '#10b981', 'WEAK_SIGNAL': '#f7971e', 'NO_VOICE': '#ff416c', 'N/A': '#888' };
+      vadText.textContent = vadStatus || '--';
+      vadText.style.color = vadColors[vadStatus] || '#00f2fe';
+    }
+    if (snrText) snrText.textContent = snrDb !== null ? `${snrDb} dB` : '-- dB';
+    if (confText) confText.textContent = `${confidence}%`;
+
+    // HUD 패널 (숨겨져 있으면 나머지 업데이트 생략)
+    const hud = document.getElementById('diagnostic-hud');
+    if (!hud || hud.classList.contains('hidden')) return;
+
+    const isRealAnalyzer = !!analyzer;
+    const dataSource = d.dataSource || (isRealAnalyzer ? 'REAL_AUDIO' : 'CAPTION_SIM');
+
+    // === AUDIO SIGNAL ===
+    const setEl = (id, val, color) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = val;
+      if (color) el.style.color = color;
+    };
+
+    // Data Source 컬러 코딩
+    const srcColors = { 'REAL_AUDIO': '#10b981', 'CORS_SIMULATION': '#f7971e', 'CAPTION_SIM': '#a259ff', 'SILENT': '#888' };
+    setEl('diag-source', dataSource, srcColors[dataSource] || '#00f2fe');
+
+    const rmsVal = d.rms !== undefined ? d.rms : (analyzer ? analyzer.frameRms : 0);
+    setEl('diag-rms', rmsVal !== undefined ? rmsVal.toFixed(6) : '--');
+
+    setEl('diag-snr', snrDb !== null ? `${snrDb} dB` : '-- dB');
+
+    const noiseFloor = d.noiseFloor !== undefined ? d.noiseFloor : (analyzer ? analyzer.noiseFloor : null);
+    setEl('diag-noise-floor', noiseFloor !== null ? noiseFloor.toFixed(6) : '--');
+
+    // === VAD ===
+    const vadColors2 = { 'VOICE_ACTIVE': '#10b981', 'WEAK_SIGNAL': '#f7971e', 'NO_VOICE': '#ff416c' };
+    setEl('diag-vad', vadStatus, vadColors2[vadStatus] || '#888');
+    setEl('diag-speech', isSpeechActive ? '✅ TRUE' : '❌ FALSE', isSpeechActive ? '#10b981' : '#ff416c');
+    setEl('diag-confidence', `${confidence}%`, confidence >= 70 ? '#10b981' : confidence >= 40 ? '#f7971e' : '#ff416c');
+
+    const isCalibrating = d.isCalibrating !== undefined ? d.isCalibrating : (analyzer ? analyzer.isCalibrating : false);
+    const calibProgress = d.calibrationProgress !== undefined ? d.calibrationProgress : 0;
+    if (isCalibrating) {
+      setEl('diag-calibration', `CALIBRATING ${calibProgress}%`, '#f7971e');
+    } else {
+      setEl('diag-calibration', '✅ CALIBRATED', '#10b981');
+    }
+
+    // === GAIN CONTROL ===
+    const gainStatusColors = { 'OPTIMAL': '#10b981', 'BOOSTING': '#f7971e', 'REDUCING': '#a259ff', 'LOW_SIGNAL': '#ff416c', 'IDLE': '#888' };
+    setEl('diag-gain-status', result.gainStatus || 'IDLE', gainStatusColors[result.gainStatus] || '#888');
+    setEl('diag-internal-gain', result.internalGain ? `${result.internalGain}x` : '1.0x');
+
+    // === PIPELINE STATE ===
+    const analyzerMode = isRealAnalyzer ? '🎙️ REAL VSA' : '📝 MOCK SIM';
+    setEl('diag-analyzer-mode', analyzerMode, isRealAnalyzer ? '#10b981' : '#f7971e');
+    setEl('diag-caption', typeof captionLoadStatus !== 'undefined' ? captionLoadStatus.toUpperCase() : '--', captionLoadStatus === 'loaded' ? '#10b981' : '#f7971e');
+    const scoreSource = isRealAnalyzer ? 'ACOUSTIC FFT' : (typeof captionLoadStatus !== 'undefined' && captionLoadStatus === 'loaded' ? 'CAPTION CTX' : 'TIME CYCLE');
+    setEl('diag-score-source', scoreSource);
+  }
+
   // ===== REAL-TIME WAVE SCANNER (OSCILLOSCOPE) =====
   let waveFrameCount = 0;
 
@@ -7537,7 +7640,7 @@
       'rgba(255, 65, 108, 0.6)'   // Neon Red
     ];
 
-    const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic && !result.isCORSBlocked;
+    const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic;
 
     if (isRealAudioActive) {
       // 1. Real Audio Waveform
@@ -8266,10 +8369,11 @@
     // Initialize legal disclaimer modal
     initDisclaimerModal();
 
-    // Initialize Diagnostic UI keyboard shortcut
+    // Initialize Diagnostic UI keyboard shortcut (legacy PerformanceLogger UI)
     if (window.DiagnosticUI) {
       window.DiagnosticUI.initShortcut();
     }
+    // Advanced Diagnostic HUD: already auto-initialized via IIFE in REAL-TIME WAVE SCANNER section
 
     // 100% Real-time Admin Settings Hot-Swap Listener
     window.addEventListener('storage', (e) => {

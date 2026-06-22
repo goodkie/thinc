@@ -90,6 +90,15 @@ class VoiceStressAnalyzer {
     // Keyword Sensitivity Multiplier (set by checkKeywordSensitivity in desktop/app.js)
     this.keywordMultiplier = 1.0;
 
+    // ── 노이즈 플로어 추적 (SNR / VAD 계산용) ───────────────────────────────
+    this.noiseFloor = 0.002;          // 초기 노이즈 플로어 추정값
+    this.noiseFloorBuffer = [];       // 조용한 프레임 RMS 샘플 버퍼
+    this.vadHangoverCount = 0;        // VAD 후처리: 발화 후 짧은 잠복 기간 유지
+    this.lastVadStatus = 'NO_VOICE';  // 마지막 VAD 상태
+    this.frameRms = 0;                // 최신 RMS (외부 접근용)
+    this.frameSNR = 0;                // 최신 SNR (외부 접근용)
+    this.frameConfidence = 0;         // 최신 분석 신뢰도 (외부 접근용)
+
     // ── 서버 어드민 설정 폴링 (30초마다 자동 동기화) ────────────────────────
     // 웹/데스크톱/모바일 모두 서버에서 최신 감도 설정을 자동 수신
     this._serverPollInterval = null;
@@ -322,6 +331,57 @@ class VoiceStressAnalyzer {
       rmsSum += val * val;
     }
     const rms = Math.sqrt(rmsSum / this.bufferLength);
+    this.frameRms = rms;
+
+    // ── 적응형 노이즈 플로어 추정 ────────────────────────────────────────────
+    // 신호가 매우 조용할 때(노이즈 레벨) 샘플을 수집하여 SNR 계산 기준 확보
+    if (rms < 0.015) {
+      this.noiseFloorBuffer.push(rms);
+      if (this.noiseFloorBuffer.length > 200) this.noiseFloorBuffer.shift();
+      if (this.noiseFloorBuffer.length >= 30) {
+        // 하위 20%의 RMS를 노이즈 플로어로 사용 (조용한 환경 추정)
+        const sorted = [...this.noiseFloorBuffer].sort((a, b) => a - b);
+        const p20idx = Math.floor(sorted.length * 0.2);
+        this.noiseFloor = Math.max(0.0005, sorted[p20idx]);
+      }
+    }
+
+    // ── SNR 계산 (dB) ───────────────────────────────────────────────────────
+    const snrLinear = rms / (this.noiseFloor + 1e-9);
+    const snrDb = 20 * Math.log10(Math.max(snrLinear, 1e-9));
+    this.frameSNR = parseFloat(snrDb.toFixed(1));
+
+    // ── VAD (Voice Activity Detection) ──────────────────────────────────────
+    // 노이즈 플로어 대비 신호 강도로 음성 활동 판단
+    const VAD_ONSET_RATIO  = 4.0;   // 노이즈 플로어 × 4 이상 = 음성 활성
+    const VAD_OFFSET_RATIO = 2.0;   // 노이즈 플로어 × 2 미만 = 음성 없음
+    const vadOnsetThreshold  = this.noiseFloor * VAD_ONSET_RATIO;
+    const vadOffsetThreshold = this.noiseFloor * VAD_OFFSET_RATIO;
+    const HANGOVER_FRAMES = 8;  // 음성 종료 후 8프레임 유지 (잘림 방지)
+
+    let vadStatus;
+    if (rms >= vadOnsetThreshold) {
+      this.vadHangoverCount = HANGOVER_FRAMES;
+      vadStatus = 'VOICE_ACTIVE';
+    } else if (this.vadHangoverCount > 0) {
+      this.vadHangoverCount--;
+      vadStatus = 'VOICE_ACTIVE'; // 후처리 구간
+    } else if (rms >= vadOffsetThreshold) {
+      vadStatus = 'WEAK_SIGNAL';
+    } else {
+      vadStatus = 'NO_VOICE';
+    }
+    this.lastVadStatus = vadStatus;
+
+    // ── 분석 신뢰도 계산 ────────────────────────────────────────────────────
+    // SNR, 캘리브레이션 상태, 음성 활동을 종합한 신뢰도 점수 (0~100%)
+    let confidence = 0;
+    if (vadStatus === 'VOICE_ACTIVE') {
+      const snrScore = Math.min(1.0, Math.max(0, (snrDb - 3) / 27)); // 3dB=0%, 30dB=100%
+      const calibScore = this.isCalibrating ? (this.baseline.count / 150) * 0.5 : 1.0;
+      confidence = Math.round(snrScore * calibScore * 100);
+    }
+    this.frameConfidence = confidence;
 
     // Internal Volume Optimizer - UI GRAPHIC ONLY
     const gainStatus = this.optimizeGain(rms);
@@ -330,12 +390,24 @@ class VoiceStressAnalyzer {
     // If speech is active (video is playing) but RMS is near zero, it is blocked by CORS.
     const isCORSBlocked = (rms < 0.001) && isSpeechActive;
 
-    // Silence detection: RMS below silenceThreshold or hard threshold (0.022) is treated as silence (noise floor)
+    // Silence detection: RMS below silenceThreshold is treated as silence (noise floor)
     let currentSilenceThreshold = this.silenceThreshold;
     if (this.adminSettings && this.adminSettings.c_silence_thr !== undefined) {
       currentSilenceThreshold = this.adminSettings.c_silence_thr;
     }
-    const isTrulySilent = (rms < currentSilenceThreshold || rms < 0.022) && !isCORSBlocked;
+    const isTrulySilent = (rms < currentSilenceThreshold) && !isCORSBlocked;
+
+    // 공통 diagnostic 헬퍼
+    const _diag = (dataSource, vad, conf) => ({
+      dataSource,
+      rms: parseFloat(rms.toFixed(6)),
+      snrDb: this.frameSNR,
+      noiseFloor: parseFloat(this.noiseFloor.toFixed(6)),
+      vadStatus: vad || vadStatus,
+      confidence: conf !== undefined ? conf : confidence,
+      isCalibrating: this.isCalibrating,
+      calibrationProgress: Math.min(100, Math.round((this.baseline.count / 150) * 100))
+    });
 
     if (isTrulySilent) {
       return {
@@ -345,7 +417,8 @@ class VoiceStressAnalyzer {
         aiProbability: 0,
         gainStatus: 'IDLE',
         internalGain: 1.0,
-        metrics: { jitter: 0, shimmer: 0, hnr: 0, entropy: 0, mti: 0, fi: 0, pdr: 0 }
+        metrics: { jitter: 0, shimmer: 0, hnr: 0, entropy: 0, mti: 0, fi: 0, pdr: 0 },
+        diagnostic: _diag('REAL_AUDIO', 'NO_VOICE', 0)
       };
     }
 
@@ -359,7 +432,8 @@ class VoiceStressAnalyzer {
           aiProbability: 0,
           gainStatus: 'IDLE',
           internalGain: 1.0,
-          metrics: { jitter: 0, shimmer: 0, hnr: 0, entropy: 0, mti: 0, fi: 0, pdr: 0 }
+          metrics: { jitter: 0, shimmer: 0, hnr: 0, entropy: 0, mti: 0, fi: 0, pdr: 0 },
+          diagnostic: _diag('CORS_SIMULATION', 'NO_VOICE', 0)
         };
       }
 
@@ -442,7 +516,6 @@ class VoiceStressAnalyzer {
       return {
         stressScore: Math.min(99, Math.max(5, Math.round(finalMockScore))),
         isSilent: false,
-        isCORSBlocked: true,
         aiProbability: Math.round(aiScore),
         gainStatus,
         internalGain: parseFloat(this.fakeGainValue.toFixed(2)),
@@ -455,7 +528,8 @@ class VoiceStressAnalyzer {
           mti:     parseFloat(mockMti.toFixed(4)),
           fi:      parseFloat(mockFi.toFixed(4)),
           pdr:     parseFloat(mockPdr.toFixed(4))
-        }
+        },
+        diagnostic: _diag('CORS_SIMULATION', 'VOICE_ACTIVE', 25) // 시뮬레이션 신뢰도 25% 고정
       };
     }
 
@@ -534,7 +608,7 @@ class VoiceStressAnalyzer {
           console.log(`[Th!nc VoiceStressAnalyzer] Calibration complete. Dynamic Silence Threshold set to: ${this.silenceThreshold.toFixed(5)} (avgRms: ${avgRms.toFixed(5)}, stdDev: ${stdDev.toFixed(5)})`);
         }
       }
-      return { stressScore: 0, aiProbability: 0, isSilent: false, isCalibrating: true, gainStatus, internalGain: parseFloat(this.fakeGainValue.toFixed(2)), metrics: {} };
+      return { stressScore: 0, aiProbability: 0, isSilent: false, isCalibrating: true, gainStatus, internalGain: parseFloat(this.fakeGainValue.toFixed(2)), metrics: {}, diagnostic: _diag('REAL_AUDIO', vadStatus, confidence) };
     }
 
     // ── STRESS (HYPER-AMPLIFIED) ──
@@ -625,7 +699,8 @@ class VoiceStressAnalyzer {
           mti: 0,
           fi: 0,
           pdr: 0
-        }
+        },
+        diagnostic: _diag('REAL_AUDIO', 'NO_VOICE', 0)
       };
     }
 
@@ -650,7 +725,8 @@ class VoiceStressAnalyzer {
       metrics: {
         jitter: jitter.toFixed(4), shimmer: shimmer.toFixed(4), hnr: hnr.toFixed(2), entropy: normEntropy,
         mti: parseFloat(mti.toFixed(4)), fi: parseFloat(fi.toFixed(4)), pdr: parseFloat(pdr.toFixed(4))
-      }
+      },
+      diagnostic: _diag('REAL_AUDIO', vadStatus, confidence)
     };
   }
 

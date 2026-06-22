@@ -14,7 +14,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#050510">
   <meta name="description" content="Th!nc — AI 기반 유튜브 실시간 거짓말 탐지기 데스크톱 대시보드 버전.">
-  <title>The Truth Untold — Th!nc Desktop v1.5.66</title>
+  <title>The Truth Untold — Th!nc Desktop v1.5.67</title>
   <link rel="icon" href="thinc-logo-new.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,7 +63,7 @@
   <div class="custom-titlebar">
     <div class="titlebar-logo">
       <img src="thinc-logo-new.png" alt="Th!nc Logo">
-      <span class="titlebar-title">The Truth Untold — Th!nc Desktop v1.5.66</span>
+      <span class="titlebar-title">The Truth Untold — Th!nc Desktop v1.5.67</span>
     </div>
     <div class="titlebar-controls">
       <button class="control-btn minimize" id="titlebar-minimize" title="최소화">➖</button>
@@ -309,10 +309,22 @@
 
               <!-- Real-time Oscilloscope Waveform -->
               <div class="wave-card">
-                <div class="wave-title">실시간 음향 파형 스캔</div>
+                <div class="wave-title">
+                  실시간 음향 파형 스캔
+                  <button id="btn-diag-hud" title="진단 패널 열기 (Ctrl+Shift+D)" style="float:right;background:rgba(0,242,254,0.1);border:1px solid rgba(0,242,254,0.3);color:#00f2fe;font-size:10px;padding:2px 7px;border-radius:4px;cursor:pointer;font-family:inherit;">🔬 DIAG</button>
+                </div>
                 <div class="canvas-wrap">
                   <!-- We can mock spectral canvas drawings here dynamically -->
                   <canvas id="wave-canvas" width="400" height="150"></canvas>
+                </div>
+                <!-- VAD Status Bar (shows voice activity state) -->
+                <div id="vad-status-bar" style="display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:10px;font-family:'Roboto Mono',monospace;">
+                  <span style="opacity:0.5;">VAD:</span>
+                  <span id="vad-status-text" style="color:#00f2fe;font-weight:700;">--</span>
+                  <span style="opacity:0.5;margin-left:auto;">SNR:</span>
+                  <span id="vad-snr-text" style="color:#a259ff;">-- dB</span>
+                  <span style="opacity:0.5;">CONF:</span>
+                  <span id="vad-conf-text" style="color:#10b981;">--%</span>
                 </div>
                 <!-- Expert Pitch deviation bar / Risk bar -->
                 <div class="risk-bar-container">
@@ -322,6 +334,55 @@
                   </div>
                 </div>
               </div>
+            </div>
+
+            <!-- ===== ADVANCED DIAGNOSTIC HUD ===== -->
+            <div id="diagnostic-hud" class="hidden" style="
+              background: rgba(5,5,20,0.97);
+              border: 1px solid rgba(0,242,254,0.25);
+              border-radius: 10px;
+              padding: 14px 16px;
+              margin: 0 0 14px 0;
+              font-family: 'Roboto Mono', monospace;
+              font-size: 10.5px;
+              position: relative;
+            ">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div style="color:#00f2fe;font-weight:700;font-size:11px;letter-spacing:1px;">🔬 VOICE PIPELINE DIAGNOSTIC v1.5.67</div>
+                <button id="diag-close-btn" style="background:rgba(255,65,108,0.15);border:1px solid rgba(255,65,108,0.3);color:#ff416c;padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;">✕ CLOSE</button>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <!-- Audio Signal Section -->
+                <div style="background:rgba(0,242,254,0.04);border:1px solid rgba(0,242,254,0.1);border-radius:6px;padding:8px;">
+                  <div style="color:#00f2fe;font-size:9px;letter-spacing:1.5px;margin-bottom:6px;opacity:0.8;">AUDIO SIGNAL</div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="opacity:0.6;">Data Source</span><span id="diag-source" style="color:#00f2fe;font-weight:700;">--</span></div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="opacity:0.6;">RMS Energy</span><span id="diag-rms" style="color:#4facfe;">--</span></div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="opacity:0.6;">SNR</span><span id="diag-snr" style="color:#a259ff;">--</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span style="opacity:0.6;">Noise Floor</span><span id="diag-noise-floor" style="color:#f7971e;">--</span></div>
+                </div>
+                <!-- VAD Section -->
+                <div style="background:rgba(16,185,129,0.04);border:1px solid rgba(16,185,129,0.12);border-radius:6px;padding:8px;">
+                  <div style="color:#10b981;font-size:9px;letter-spacing:1.5px;margin-bottom:6px;opacity:0.8;">VOICE ACTIVITY (VAD)</div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="opacity:0.6;">VAD Status</span><span id="diag-vad" style="color:#10b981;font-weight:700;">--</span></div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="opacity:0.6;">Speech Flag</span><span id="diag-speech" style="color:#ffd700;">--</span></div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="opacity:0.6;">Confidence</span><span id="diag-confidence" style="color:#10b981;">--</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span style="opacity:0.6;">Calibration</span><span id="diag-calibration" style="color:#ff416c;">--</span></div>
+                </div>
+                <!-- Gain Control Section -->
+                <div style="background:rgba(162,89,255,0.04);border:1px solid rgba(162,89,255,0.12);border-radius:6px;padding:8px;">
+                  <div style="color:#a259ff;font-size:9px;letter-spacing:1.5px;margin-bottom:6px;opacity:0.8;">GAIN CONTROL</div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="opacity:0.6;">Gain Status</span><span id="diag-gain-status" style="color:#a259ff;">--</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span style="opacity:0.6;">Internal Gain</span><span id="diag-internal-gain" style="color:#f7971e;">--</span></div>
+                </div>
+                <!-- Pipeline State Section -->
+                <div style="background:rgba(255,65,108,0.04);border:1px solid rgba(255,65,108,0.1);border-radius:6px;padding:8px;">
+                  <div style="color:#ff416c;font-size:9px;letter-spacing:1.5px;margin-bottom:6px;opacity:0.8;">PIPELINE STATE</div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="opacity:0.6;">Analyzer Mode</span><span id="diag-analyzer-mode" style="color:#ff416c;font-weight:700;">--</span></div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="opacity:0.6;">Caption Status</span><span id="diag-caption" style="color:#ffd700;">--</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span style="opacity:0.6;">Score Source</span><span id="diag-score-source" style="color:#00f2fe;">--</span></div>
+                </div>
+              </div>
+              <div style="margin-top:8px;text-align:center;opacity:0.4;font-size:9px;letter-spacing:0.5px;">Ctrl+Shift+D 토글 · 실시간 파이프라인 모니터</div>
             </div>
 
             <!-- Expert Metrics Grid -->
