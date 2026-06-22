@@ -707,6 +707,22 @@ class VoiceStressAnalyzer {
     // Speaker ID Logic
     this.identifySpeaker(jitter, shimmer, pdr);
 
+    // ── VAD 기반 무음 처리: 음성 활동이 없으면 즉시 stressScore=0 반환 ──────
+    // NO_VOICE 상태(노이즈 플로어 대비 신호 부족)이면 거짓말 분석 불필요 → 게이지 0
+    if (vadStatus === 'NO_VOICE') {
+      return {
+        stressScore: 0,
+        aiProbability: Math.round(smoothAIScore),
+        isSilent: true,
+        isMusic: false,
+        gainStatus,
+        internalGain: parseFloat(this.fakeGainValue.toFixed(2)),
+        currentSpeakerId: this.currentSpeaker ? `Speaker ${this.currentSpeaker.id}` : 'Scanning...',
+        metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', entropy: 0, mti: 0, fi: 0, pdr: 0 },
+        diagnostic: _diag('REAL_AUDIO', 'NO_VOICE', 0)
+      };
+    }
+
     let finalScore = score;
     
     // Apply 10% bias if speaker is deemed unreliable early on

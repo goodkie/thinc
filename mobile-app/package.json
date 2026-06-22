@@ -1,7 +1,7 @@
 {
   "name": "the-truth-untold-mobile",
-  "version": "1.5.68",
-  "description": "Th!nc Biometric Lie Detector — Mobile Edition (Capacitor)",
+  "version": "1.5.69",
+  "description": "Th!nc Biometric Lie Detector ??Mobile Edition (Capacitor)",
   "private": true,
   "scripts": {
     "build": "echo 'Copy www assets then run: npx cap sync'",

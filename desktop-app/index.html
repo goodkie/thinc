@@ -2,19 +2,17 @@
 <html lang="ko">
 <head>
   <script>
-    // Electron 환경 감지 - webSecurity:false 덕분에 CORS 없이 YouTube 직접 접근 가능
-    window.__IS_ELECTRON__ = !!(window.electronAPI || window.process);
+    // Electron ?�경 감�? - webSecurity:false ?�분??CORS ?�이 YouTube 직접 ?�근 가??    window.__IS_ELECTRON__ = !!(window.electronAPI || window.process);
     if (window.__IS_ELECTRON__) {
       console.log('[Th!nc Desktop] Running in Electron - CORS bypass active, direct YouTube access enabled');
-      // 백엔드 서버 불필요 - Electron은 직접 YouTube API 호출 가능
-      window.__ELECTRON_PLATFORM__ = (window.electronAPI && window.electronAPI.platform) || 'unknown';
+      // 백엔???�버 불필??- Electron?� 직접 YouTube API ?�출 가??      window.__ELECTRON_PLATFORM__ = (window.electronAPI && window.electronAPI.platform) || 'unknown';
     }
   </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#050510">
-  <meta name="description" content="Th!nc — AI 기반 유튜브 실시간 거짓말 탐지기 데스크톱 대시보드 버전.">
-  <title>The Truth Untold — Th!nc Desktop v1.5.68</title>
+  <meta name="description" content="Th!nc ??AI 기반 ?�튜�??�시�?거짓�??��?�??�스?�톱 ?�?�보??버전.">
+  <title>The Truth Untold ??Th!nc Desktop v1.5.69</title>
   <link rel="icon" href="thinc-logo-new.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,16 +24,16 @@
   <!-- ===== LEGAL DISCLAIMER MODAL ===== -->
   <div id="disclaimer-modal" class="disclaimer-modal hidden">
     <div class="disclaimer-modal-content">
-      <div class="disclaimer-icon">⚖️</div>
-      <h2 id="disclaimer-title">이용 규칙 및 면책 고지</h2>
+      <div class="disclaimer-icon">?�️</div>
+      <h2 id="disclaimer-title">?�용 규칙 �?면책 고�?</h2>
       <div class="disclaimer-body" id="disclaimer-text"></div>
       <div class="disclaimer-agree-wrap">
         <label class="disclaimer-checkbox-label">
           <input type="checkbox" id="chk-disclaimer-agree">
-          <span id="disclaimer-agree-label">위 면책 고지 사항을 완전히 이해하고 동의합니다.</span>
+          <span id="disclaimer-agree-label">??면책 고�? ?�항???�전???�해?�고 ?�의?�니??</span>
         </label>
       </div>
-      <button class="disclaimer-close-btn" id="btn-disclaimer-close" disabled>동의하고 닫기</button>
+      <button class="disclaimer-close-btn" id="btn-disclaimer-close" disabled>?�의?�고 ?�기</button>
     </div>
   </div>
 
@@ -51,8 +49,8 @@
         </div>
       </div>
       <div class="splash-title">Th<span class="exclamation">!</span>nc</div>
-      <div class="splash-ai-tag">AI ALPHA — v3.5 DESKTOP</div>
-      <div class="splash-desc">유튜브 실시간 음성 거짓말 탐지기</div>
+      <div class="splash-ai-tag">AI ALPHA ??v3.5 DESKTOP</div>
+      <div class="splash-desc">?�튜�??�시�??�성 거짓�??��?�?/div>
       <div class="splash-loader">
         <div class="splash-loader-bar"></div>
       </div>
@@ -63,19 +61,19 @@
   <div class="custom-titlebar">
     <div class="titlebar-logo">
       <img src="thinc-logo-new.png" alt="Th!nc Logo">
-      <span class="titlebar-title">The Truth Untold — Th!nc Desktop v1.5.68</span>
+      <span class="titlebar-title">The Truth Untold ??Th!nc Desktop v1.5.69</span>
     </div>
     <div class="titlebar-controls">
-      <button class="control-btn minimize" id="titlebar-minimize" title="최소화">➖</button>
-      <button class="control-btn maximize" id="titlebar-maximize" title="최대화">🔳</button>
-      <button class="control-btn close" id="titlebar-close" title="닫기">❌</button>
+      <button class="control-btn minimize" id="titlebar-minimize" title="최소??>??/button>
+      <button class="control-btn maximize" id="titlebar-maximize" title="최�???>?��</button>
+      <button class="control-btn close" id="titlebar-close" title="?�기">??/button>
     </div>
   </div>
 
   <!-- ===== MAIN WRAPPER ===== -->
   <div id="app" class="app hidden">
     <!-- Floating Sidebar Toggle Button -->
-    <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" aria-label="사이드바 토글">◀</button>
+    <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" aria-label="?�이?�바 ?��?">?�</button>
     
     <!-- ===== SIDEBAR NAVIGATION ===== -->
     <aside class="sidebar">
@@ -94,14 +92,14 @@
           <span class="menu-icon-wrap">
             <img class="tab-detector-icon" src="icon-detector-active.svg" data-active="icon-detector-active.svg" data-inactive="icon-detector-inactive.svg" alt="Detector">
           </span>
-          <span class="menu-label">탐지기</span>
+          <span class="menu-label">?��?�?/span>
         </button>
         
         <button class="menu-btn" data-tab="report" id="tab-report">
           <span class="menu-icon-wrap">
             <img class="tab-report-icon" src="icon-report-inactive.svg" data-active="icon-report-active.svg" data-inactive="icon-report-inactive.svg" alt="Report">
           </span>
-          <span class="menu-label">리포트</span>
+          <span class="menu-label">리포??/span>
         </button>
 
         <button class="menu-btn" data-tab="history" id="tab-history">
@@ -112,13 +110,13 @@
         </button>
 
         <button class="menu-btn" data-tab="settings" id="tab-settings-nav">
-          <span class="menu-icon-wrap">⚙️</span>
-          <span class="menu-label">설정</span>
+          <span class="menu-icon-wrap">?�️</span>
+          <span class="menu-label">?�정</span>
         </button>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="footer-title">소셜 거짓말 탐지기</div>
+        <div class="footer-title">?�셜 거짓�??��?�?/div>
         <div class="footer-v">v3.5 Premium</div>
       </div>
     </aside>
@@ -127,32 +125,32 @@
     <main class="main-layout">
       <!-- Online Warning Banner for HTTPS/Mixed Content restrictions -->
       <div id="online-warning-banner" class="online-warning-banner hidden">
-        <span class="warning-text">⚠️ <b>브라우저 보안 공지 (Mixed Content):</b> 온라인 배포 사이트(HTTPS)에서는 보안 규정상 로컬 백엔드 서버(http://localhost:8080) 호출이 차단됩니다. 자막 연동 및 음성 분석 기능을 사용하려면 데스크톱 앱을 사용해주세요.</span>
+        <span class="warning-text">?�️ <b>브라?��? 보안 공�? (Mixed Content):</b> ?�라??배포 ?�이??HTTPS)?�서??보안 규정??로컬 백엔???�버(http://localhost:8080) ?�출??차단?�니?? ?�막 ?�동 �??�성 분석 기능???�용?�려�??�스?�톱 ?�을 ?�용?�주?�요.</span>
       </div>
 
       <!-- LEFT PANEL: INTEGRATED MULTI-SOCIAL WEBVIEW -->
       <section class="left-panel">
         <div class="platform-tabs-header">
           <div class="platform-tabs">
-            <button class="platform-tab active" data-platform="youtube">📺 YouTube</button>
-            <button class="platform-tab" data-platform="facebook">👥 Facebook</button>
-            <button class="platform-tab" data-platform="instagram">📸 Instagram</button>
-            <button class="platform-tab" data-platform="tiktok">🎵 TikTok</button>
+            <button class="platform-tab active" data-platform="youtube">?�� YouTube</button>
+            <button class="platform-tab" data-platform="facebook">?�� Facebook</button>
+            <button class="platform-tab" data-platform="instagram">?�� Instagram</button>
+            <button class="platform-tab" data-platform="tiktok">?�� TikTok</button>
           </div>
-          <button class="platform-login-btn" id="btn-platform-login">🔑 YouTube 로그인</button>
+          <button class="platform-login-btn" id="btn-platform-login">?�� YouTube 로그??/button>
         </div>
 
         <div class="url-navigator-bar">
-          <button class="nav-btn" id="btn-nav-prev">◀</button>
-          <button class="nav-btn" id="btn-nav-next">▶</button>
-          <button class="nav-btn" id="btn-nav-reload">↺</button>
+          <button class="nav-btn" id="btn-nav-prev">?�</button>
+          <button class="nav-btn" id="btn-nav-next">??/button>
+          <button class="nav-btn" id="btn-nav-reload">??/button>
           <div class="url-search-bar">
-            <span class="url-search-icon">🔍</span>
+            <span class="url-search-icon">?��</span>
             <input type="text" id="yt-url-input" class="url-search-input" 
-                   placeholder="주소 또는 검색어 입력 후 Enter..." 
+                   placeholder="주소 ?�는 검?�어 ?�력 ??Enter..." 
                    autocomplete="off" autocorrect="off" spellcheck="false">
             <button class="url-go-btn" id="btn-yt-go">GO</button>
-            <button class="bg-scan-btn" id="btn-bg-scan" style="display: none !important;">🔍 거짓 스캔</button>
+            <button class="bg-scan-btn" id="btn-bg-scan" style="display: none !important;">?�� 거짓 ?�캔</button>
           </div>
         </div>
 
@@ -183,10 +181,10 @@
             autoplay-policy="document-user-activation-required"
             allowpopups></webview>
 
-          <!-- ===== 웹뷰 위 플로팅 분석 오버레이 ===== -->
+          <!-- ===== ?�뷰 ???�로??분석 ?�버?�이 ===== -->
           <div id="wv-float-overlay" class="wv-float-overlay hidden">
 
-            <!-- 우측 상단: 진실/거짓 누적 바 -->
+            <!-- ?�측 ?�단: 진실/거짓 ?�적 �?-->
             <div id="wv-float-truth-bar" class="wv-float-truth-bar">
               <div class="wv-truth-labels">
                 <span class="wv-truth-label-t">T <span id="wv-truth-pct">100%</span></span>
@@ -198,13 +196,13 @@
               </div>
             </div>
 
-            <!-- 우측 상단: 분석 시작/중단 버튼 -->
+            <!-- ?�측 ?�단: 분석 ?�작/중단 버튼 -->
             <button id="wv-float-start-btn" class="wv-float-start-btn" data-running="false">
-              <span class="wv-start-icon">▶</span>
-              <span class="wv-start-label">분석 시작</span>
+              <span class="wv-start-icon">??/span>
+              <span class="wv-start-label">분석 ?�작</span>
             </button>
 
-            <!-- 우측 하단: 원형 게이지 (거짓 퍼센트) -->
+            <!-- ?�측 ?�단: ?�형 게이지 (거짓 ?�센?? -->
             <div id="wv-float-gauge" class="wv-float-gauge truth">
               <div class="wv-float-gauge-pulse"></div>
               <svg viewBox="0 0 60 60" class="wv-gauge-svg">
@@ -229,7 +227,7 @@
               </div>
             </div>
 
-            <!-- 현재 자막 표시 -->
+            <!-- ?�재 ?�막 ?�시 -->
             <div id="wv-float-subtitle" class="wv-float-subtitle"></div>
 
           </div><!-- /wv-float-overlay -->
@@ -237,7 +235,7 @@
       </section>
 
       <!-- Floating Right Panel Toggle Button -->
-      <button id="btn-right-panel-toggle" class="right-panel-toggle-btn" aria-label="분석패널 토글">▶</button>
+      <button id="btn-right-panel-toggle" class="right-panel-toggle-btn" aria-label="분석?�널 ?��?">??/button>
 
       <!-- RIGHT PANEL: CONTROLS & METRICS TABBED VIEWS -->
       <section class="right-panel">
@@ -245,13 +243,13 @@
         <!-- TAB 1: DETECTOR HUD -->
         <div class="tab-content active" id="tab-content-detector">
           <div class="scroll-wrapper">
-            <div class="panel-section-title" id="sec-detector-title">실시간 분석 콘솔</div>
+            <div class="panel-section-title" id="sec-detector-title">?�시�?분석 콘솔</div>
 
             <!-- Status Banner -->
             <div class="detector-status-banner" id="detector-banner">
               <div class="banner-left">
                 <div class="banner-dot" id="banner-dot"></div>
-                <span id="banner-text">대기 중</span>
+                <span id="banner-text">?��?�?/span>
               </div>
               <div class="banner-badges">
                 <div class="det-badge" id="det-cat-badge">GENERAL</div>
@@ -266,7 +264,7 @@
               <!-- Circular Gauge & Controls -->
               <div class="gauge-card">
                 <div class="speaker-row" id="speaker-row">
-                  <div class="speaker-badge" id="speaker-badge">음성 스캔 중..</div>
+                  <div class="speaker-badge" id="speaker-badge">?�성 ?�캔 �?.</div>
                   <div class="music-badge hidden" id="music-badge">MUSIC/FX</div>
                 </div>
 
@@ -288,7 +286,7 @@
                             transform="rotate(-90 60 60)"
                             id="gauge-arc" class="gauge-arc-circle"/>
                     <text x="60" y="55" text-anchor="middle" class="gauge-pct-text" id="gauge-pct">0%</text>
-                    <text x="60" y="72" text-anchor="middle" class="gauge-label-text" id="gauge-sub-label">거짓 확률</text>
+                    <text x="60" y="72" text-anchor="middle" class="gauge-label-text" id="gauge-sub-label">거짓 ?�률</text>
                   </svg>
                   <div class="gauge-ring-outer"></div>
                 </div>
@@ -296,11 +294,11 @@
                 <!-- Controls & Slider -->
                 <div class="controls-row">
                   <button class="start-stop-btn" id="btn-toggle" data-running="false">
-                    <span class="btn-icon" id="btn-icon">▶</span>
-                    <span class="btn-text" id="btn-text">분석 시작</span>
+                    <span class="btn-icon" id="btn-icon">??/span>
+                    <span class="btn-text" id="btn-text">분석 ?�작</span>
                   </button>
                   <div class="sens-row">
-                    <span class="sens-label">민감도</span>
+                    <span class="sens-label">민감??/span>
                     <input type="range" id="sens-slider" class="sens-slider" min="1" max="10" value="5">
                     <span class="sens-val" id="sens-val">5</span>
                   </div>
@@ -310,8 +308,8 @@
               <!-- Real-time Oscilloscope Waveform -->
               <div class="wave-card">
                 <div class="wave-title">
-                  실시간 음향 파형 스캔
-                  <button id="btn-diag-hud" title="진단 패널 열기 (Ctrl+Shift+D)" style="float:right;background:rgba(0,242,254,0.1);border:1px solid rgba(0,242,254,0.3);color:#00f2fe;font-size:10px;padding:2px 7px;border-radius:4px;cursor:pointer;font-family:inherit;">🔬 DIAG</button>
+                  ?�시�??�향 ?�형 ?�캔
+                  <button id="btn-diag-hud" title="진단 ?�널 ?�기 (Ctrl+Shift+D)" style="float:right;background:rgba(0,242,254,0.1);border:1px solid rgba(0,242,254,0.3);color:#00f2fe;font-size:10px;padding:2px 7px;border-radius:4px;cursor:pointer;font-family:inherit;">?�� DIAG</button>
                 </div>
                 <div class="canvas-wrap">
                   <!-- We can mock spectral canvas drawings here dynamically -->
@@ -348,8 +346,8 @@
               position: relative;
             ">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-                <div style="color:#00f2fe;font-weight:700;font-size:11px;letter-spacing:1px;">🔬 VOICE PIPELINE DIAGNOSTIC v1.5.68</div>
-                <button id="diag-close-btn" style="background:rgba(255,65,108,0.15);border:1px solid rgba(255,65,108,0.3);color:#ff416c;padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;">✕ CLOSE</button>
+                <div style="color:#00f2fe;font-weight:700;font-size:11px;letter-spacing:1px;">?�� VOICE PIPELINE DIAGNOSTIC v1.5.69</div>
+                <button id="diag-close-btn" style="background:rgba(255,65,108,0.15);border:1px solid rgba(255,65,108,0.3);color:#ff416c;padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;">??CLOSE</button>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                 <!-- Audio Signal Section -->
@@ -382,12 +380,12 @@
                   <div style="display:flex;justify-content:space-between;"><span style="opacity:0.6;">Score Source</span><span id="diag-score-source" style="color:#00f2fe;">--</span></div>
                 </div>
               </div>
-              <div style="margin-top:8px;text-align:center;opacity:0.4;font-size:9px;letter-spacing:0.5px;">Ctrl+Shift+D 토글 · 실시간 파이프라인 모니터</div>
+              <div style="margin-top:8px;text-align:center;opacity:0.4;font-size:9px;letter-spacing:0.5px;">Ctrl+Shift+D ?��? · ?�시�??�이?�라??모니??/div>
             </div>
 
             <!-- Expert Metrics Grid -->
             <div class="expert-metrics-section">
-              <div class="section-sub-title">실시간 세부 음성 매개변수</div>
+              <div class="section-sub-title">?�시�??��? ?�성 매개변??/div>
               <div class="expert-grid" id="expert-grid">
                 <div class="exp-card">
                   <div class="exp-label">JITTER</div>
@@ -422,7 +420,7 @@
 
             <!-- 6-Channel Visualizers -->
             <div class="multichart-container" id="multichart-container">
-              <div class="chart-header">실시간 6채널 분석 레코더</div>
+              <div class="chart-header">?�시�?6채널 분석 ?�코??/div>
               <div class="multichart-grid">
                 <div class="minichart-wrap">
                   <div class="minichart-label" style="color:#00f2fe">LIE%</div>
@@ -453,9 +451,9 @@
 
             <!-- Subtitle Log Feed -->
             <div class="subtitle-feed" id="subtitle-feed">
-              <div class="feed-header">실시간 자막 오디오 로그</div>
+              <div class="feed-header">?�시�??�막 ?�디??로그</div>
               <div class="sentence-list" id="sentence-list">
-                <div class="feed-placeholder">분석이 시작되면 자막 정보가 여기에 스트리밍됩니다...</div>
+                <div class="feed-placeholder">분석???�작?�면 ?�막 ?�보가 ?�기???�트리밍?�니??..</div>
               </div>
             </div>
 
@@ -466,8 +464,7 @@
                   <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                   <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
                 </svg>
-                진실을 알려라
-              </button>
+                진실???�려??              </button>
               <div class="shot-count-ctrl">
                 <button class="shot-ctrl-btn" id="btn-shot-minus">-</button>
                 <span id="shot-count-display">3</span>
@@ -481,29 +478,29 @@
         <div class="tab-content" id="tab-content-report">
           <div class="scroll-wrapper">
             <div class="report-header-card">
-              <div class="report-title-label">심층 분석 리포트</div>
-              <div class="report-session-id" id="report-session-id">세션 없음</div>
-              <div class="report-empty-msg" id="report-empty-msg">분석을 실행한 후 리포트가 생성됩니다</div>
+              <div class="report-title-label">?�층 분석 리포??/div>
+              <div class="report-session-id" id="report-session-id">?�션 ?�음</div>
+              <div class="report-empty-msg" id="report-empty-msg">분석???�행????리포?��? ?�성?�니??/div>
             </div>
 
             <div class="report-body hidden" id="report-body">
               <!-- Session Chart -->
               <div class="report-card">
-                <div class="report-card-title">음성 & 인지 분석 타임라인</div>
+                <div class="report-card-title">?�성 & ?��? 분석 ?�?�라??/div>
                 <div class="report-chart-wrap">
                   <canvas id="report-timeline-chart" height="120"></canvas>
                 </div>
                 <div class="report-stats-grid">
                   <div class="report-stat">
-                    <div class="stat-label">평균 스트레스</div>
+                    <div class="stat-label">?�균 ?�트?�스</div>
                     <div class="stat-val" id="rpt-avg">-</div>
                   </div>
                   <div class="report-stat">
-                    <div class="stat-label">최고 스트레스</div>
+                    <div class="stat-label">최고 ?�트?�스</div>
                     <div class="stat-val red" id="rpt-peak">-</div>
                   </div>
                   <div class="report-stat">
-                    <div class="stat-label">안정성</div>
+                    <div class="stat-label">?�정??/div>
                     <div class="stat-val cyan" id="rpt-stability">-</div>
                   </div>
                 </div>
@@ -522,30 +519,30 @@
 
               <!-- Context Audit -->
               <div class="report-card">
-                <div class="report-card-title">문맥 & 메타데이터 감사 결과</div>
-                <div class="audit-row"><span>장르</span><span id="rpt-genre">-</span></div>
-                <div class="audit-row"><span>신뢰도</span><span id="rpt-reliability">-</span></div>
-                <div class="audit-row"><span>무결성 지수</span><span id="rpt-integrity">-</span></div>
+                <div class="report-card-title">문맥 & 메�??�이??감사 결과</div>
+                <div class="audit-row"><span>?�르</span><span id="rpt-genre">-</span></div>
+                <div class="audit-row"><span>?�뢰??/span><span id="rpt-reliability">-</span></div>
+                <div class="audit-row"><span>무결??지??/span><span id="rpt-integrity">-</span></div>
                 <div class="verdict-box">
-                  <div class="verdict-label">종합 판정</div>
+                  <div class="verdict-label">종합 ?�정</div>
                   <div class="verdict-text" id="rpt-verdict">-</div>
                 </div>
               </div>
 
               <!-- Neural Psych Grid -->
               <div class="report-card">
-                <div class="report-card-title">신경 및 심리 감정 보고서</div>
+                <div class="report-card-title">?�경 �??�리 감정 보고??/div>
                 <div class="psy-grid">
                   <div class="psy-item">
-                    <div class="psy-label">동요도 (TEO)</div>
+                    <div class="psy-label">?�요??(TEO)</div>
                     <div class="psy-val red" id="rpt-agitation">-</div>
                   </div>
                   <div class="psy-item">
-                    <div class="psy-label">인지 부하</div>
+                    <div class="psy-label">?��? 부??/div>
                     <div class="psy-val orange" id="rpt-cog-load">-</div>
                   </div>
                   <div class="psy-item">
-                    <div class="psy-label">기만 밀도</div>
+                    <div class="psy-label">기만 밀??/div>
                     <div class="psy-val cyan" id="rpt-density">-</div>
                   </div>
                 </div>
@@ -553,19 +550,19 @@
 
               <!-- Deceptive Events Log -->
               <div class="report-card">
-                <div class="report-card-title red-title">기만 이벤트 로그 (거짓 > 60%)</div>
-                <div class="lies-list" id="rpt-lies-list">탐지된 기만 없음</div>
+                <div class="report-card-title red-title">기만 ?�벤??로그 (거짓 > 60%)</div>
+                <div class="lies-list" id="rpt-lies-list">?��???기만 ?�음</div>
               </div>
 
               <!-- Full Data Sheet -->
               <div class="report-card">
-                <div class="report-card-title">자막 감사 데이터 시트</div>
+                <div class="report-card-title">?�막 감사 ?�이???�트</div>
                 <div class="data-sheet-wrap">
                   <table class="data-table">
                     <thead>
                       <tr>
-                        <th>시간</th>
-                        <th>자막 내용</th>
+                        <th>?�간</th>
+                        <th>?�막 ?�용</th>
                         <th>거짓%</th>
                         <th>AI%</th>
                       </tr>
@@ -577,8 +574,8 @@
 
               <!-- Action buttons -->
               <div class="report-actions">
-                <button class="rpt-btn rpt-btn-green" id="btn-export-csv">📊 CSV 내보내기</button>
-                <button class="rpt-btn rpt-btn-red" id="btn-share-report">📤 리포트 공유</button>
+                <button class="rpt-btn rpt-btn-green" id="btn-export-csv">?�� CSV ?�보?�기</button>
+                <button class="rpt-btn rpt-btn-red" id="btn-share-report">?�� 리포??공유</button>
               </div>
             </div>
           </div>
@@ -588,11 +585,11 @@
         <div class="tab-content" id="tab-content-history">
           <div class="scroll-wrapper">
             <div class="history-header">
-              <div class="history-title">세션 기록 관리자</div>
-              <button class="history-clear-btn" id="btn-clear-history">전체 삭제</button>
+              <div class="history-title">?�션 기록 관리자</div>
+              <button class="history-clear-btn" id="btn-clear-history">?�체 ??��</button>
             </div>
             <div class="history-list" id="history-list">
-              <div class="history-empty">저장된 세션이 없습니다</div>
+              <div class="history-empty">?�?�된 ?�션???�습?�다</div>
             </div>
           </div>
         </div>
@@ -600,11 +597,11 @@
         <!-- TAB 4: SETTINGS PANEL -->
         <div class="tab-content" id="tab-content-settings">
           <div class="scroll-wrapper">
-            <div class="panel-section-title">시스템 환경 설정</div>
+            <div class="panel-section-title">?�스???�경 ?�정</div>
             
             <div class="settings-container">
               <div class="setting-group">
-                <div class="setting-label">표시 언어 설정 (Display Language)</div>
+                <div class="setting-label">?�시 ?�어 ?�정 (Display Language)</div>
                 <div class="lang-chip-grid" id="lang-grid">
                   <button class="lang-chip active" data-lang="ko">KO</button>
                   <button class="lang-chip" data-lang="en">EN</button>
@@ -618,7 +615,7 @@
               </div>
 
               <div class="setting-group">
-                <div class="setting-label">기만 감지 시 자동 캡처 수</div>
+                <div class="setting-label">기만 감�? ???�동 캡처 ??/div>
                 <div class="shots-row">
                   <button class="shot-ctrl-btn" id="set-shot-minus">-</button>
                   <span id="set-shot-display">3</span>
@@ -627,7 +624,7 @@
               </div>
 
               <div class="setting-group setting-inline">
-                <div class="setting-label">기만 감지 시 리포트 자동 표시</div>
+                <div class="setting-label">기만 감�? ??리포???�동 ?�시</div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="toggle-autoshow" checked>
                   <span class="toggle-knob"></span>
@@ -635,8 +632,8 @@
               </div>
 
               <div class="settings-actions">
-                <button class="settings-btn settings-btn-save" id="btn-save-settings">저장 (Save)</button>
-                <button class="settings-btn settings-btn-reset" id="btn-reset-settings">초기화 (Reset)</button>
+                <button class="settings-btn settings-btn-save" id="btn-save-settings">?�??(Save)</button>
+                <button class="settings-btn settings-btn-reset" id="btn-reset-settings">초기??(Reset)</button>
               </div>
 
               <div class="settings-info-card">
@@ -659,20 +656,20 @@
   <div class="truth-modal hidden" id="truth-modal">
     <div class="truth-modal-content">
       <button class="truth-close-btn" id="btn-close-modal">×</button>
-      <div class="truth-modal-title" id="modal-title">분석 완료</div>
-      <div class="truth-modal-sub" id="modal-sub">결과를 기기에 저장하거나 공유하세요</div>
+      <div class="truth-modal-title" id="modal-title">분석 ?�료</div>
+      <div class="truth-modal-sub" id="modal-sub">결과�?기기???�?�하거나 공유?�세??/div>
       <div class="truth-modal-actions">
-        <button class="truth-btn-primary" id="btn-modal-go-report">📊 최종 리포트 확인</button>
-        <button class="truth-btn-secondary" id="btn-modal-bottom-close">닫기</button>
+        <button class="truth-btn-primary" id="btn-modal-go-report">?�� 최종 리포???�인</button>
+        <button class="truth-btn-secondary" id="btn-modal-bottom-close">?�기</button>
       </div>
     </div>
   </div>
 
   <!-- ===== AI WARNING OVERLAY ===== -->
   <div class="ai-warning hidden" id="ai-warning">
-    <div class="ai-warn-icon">⚠️</div>
-    <div class="ai-warn-title">AI 합성 음성 감지됨</div>
-    <div class="ai-warn-sub">분석 불가: 합성된 목소리가 감지되었습니다.</div>
+    <div class="ai-warn-icon">?�️</div>
+    <div class="ai-warn-title">AI ?�성 ?�성 감�???/div>
+    <div class="ai-warn-sub">분석 불�?: ?�성??목소리�? 감�??�었?�니??</div>
   </div>
 
   <!-- ===== TOAST ===== -->
@@ -680,7 +677,7 @@
 
   <!-- ===== DRAG CAPTURE TEMPLATES ===== -->
   <div id="capture-mask" class="capture-mask hidden">
-    <div class="capture-guide">드래그하여 캡처 영역을 선택하세요 (마우스 휠 스크롤 가능)</div>
+    <div class="capture-guide">?�래그하??캡처 ?�역???�택?�세??(마우?????�크�?가??</div>
   </div>
   <div id="capture-box" class="capture-box hidden"></div>
 
@@ -688,15 +685,15 @@
   <div class="social-modal hidden" id="social-share-modal">
     <div class="social-modal-content">
       <button class="social-close-btn" id="btn-close-social-modal">×</button>
-      <div class="social-modal-title">AI 분석 결과 소셜 공유 대시보드</div>
-      <div class="social-modal-sub">자동 캡처된 이미지를 확인하고, 업로드할 소셜 미디어를 선택하세요</div>
+      <div class="social-modal-title">AI 분석 결과 ?�셜 공유 ?�?�보??/div>
+      <div class="social-modal-sub">?�동 캡처???��?지�??�인?�고, ?�로?�할 ?�셜 미디?��? ?�택?�세??/div>
       
       <div class="social-split-layout">
         <!-- Left: Image Preview -->
         <div class="social-preview-panel">
           <div class="social-preview-title">
-            캡처 영역 미리보기 
-            <span class="save-status-badge">캡처 이미지 로컬 저장 완료</span>
+            캡처 ?�역 미리보기 
+            <span class="save-status-badge">캡처 ?��?지 로컬 ?�???�료</span>
           </div>
           <div class="social-image-wrap">
             <img id="social-preview-img" alt="Captured Area Preview">
@@ -705,12 +702,12 @@
         
         <!-- Right: Social Channels Multi-Select -->
         <div class="social-control-panel">
-          <div class="channel-select-label">업로드할 SNS 매체 선택 (다중 선택 가능)</div>
+          <div class="channel-select-label">?�로?�할 SNS 매체 ?�택 (?�중 ?�택 가??</div>
           
           <div class="social-channel-chips" id="social-channel-chips">
             <label class="channel-chip active" data-channel="x">
               <input type="checkbox" checked id="chk-social-x" class="chk-channel" value="x">
-              <span class="chip-label">𝕏 (Twitter)</span>
+              <span class="chip-label">?�� (Twitter)</span>
             </label>
             <label class="channel-chip active" data-channel="instagram">
               <input type="checkbox" checked id="chk-social-instagram" class="chk-channel" value="instagram">
@@ -727,11 +724,11 @@
           </div>
           
           <div class="social-action-note">
-            * "포스팅 시작"을 클릭하면 선택된 매체별 포스팅 위젯이 차례대로 열리며 포스팅이 순차적으로 자동 완성 및 전송됩니다.
+            * "?�스???�작"???�릭?�면 ?�택??매체�??�스???�젯??차�??��??�리�??�스?�이 ?�차?�으�??�동 ?�성 �??�송?�니??
           </div>
 
           <button class="social-post-btn" id="btn-social-post-start">
-            🚀 선택한 매체로 순차 포스팅 시작
+            ?? ?�택??매체�??�차 ?�스???�작
           </button>
         </div>
       </div>
@@ -742,14 +739,14 @@
   <div class="social-modal hidden" id="social-widget-modal">
     <div class="widget-modal-content">
       <div class="widget-header">
-        <div class="widget-channel-icon" id="widget-channel-icon">𝕏</div>
-        <div class="widget-title" id="widget-title">𝕏 (Twitter) Posting Widget</div>
+        <div class="widget-channel-icon" id="widget-channel-icon">?��</div>
+        <div class="widget-title" id="widget-title">?�� (Twitter) Posting Widget</div>
       </div>
       
       <div class="widget-body">
         <!-- User Profile Row -->
         <div class="widget-user-row">
-          <div class="widget-user-avatar" id="widget-user-avatar">👤</div>
+          <div class="widget-user-avatar" id="widget-user-avatar">?��</div>
           <div class="widget-user-info">
             <div class="widget-user-name" id="widget-user-name">Truth Seeker</div>
             <div class="widget-user-handle" id="widget-user-handle">@truth_seeker_99</div>
@@ -760,18 +757,18 @@
           <img id="widget-preview-img" alt="Posting Preview">
         </div>
         <div class="widget-input-area">
-          <label for="widget-share-text" id="lbl-widget-share-text">자동 완성된 포스트 본문 (수정 가능)</label>
+          <label for="widget-share-text" id="lbl-widget-share-text">?�동 ?�성???�스??본문 (?�정 가??</label>
           <textarea id="widget-share-text" rows="4"></textarea>
         </div>
       </div>
       
       <div class="widget-footer">
         <div id="social-widget-container" class="social-widget-container" style="margin-bottom: 12px; display: flex; justify-content: center; gap: 10px; min-height: 40px; align-items: center;"></div>
-        <button class="widget-publish-btn" id="btn-widget-publish">🚀 포스트 게시하기 (Publish)</button>
+        <button class="widget-publish-btn" id="btn-widget-publish">?? ?�스??게시?�기 (Publish)</button>
 
         <div class="upload-progress-wrap hidden" id="widget-progress-wrap">
           <div class="progress-labels">
-            <span class="progress-status" id="widget-status-text">업로드 대기 중...</span>
+            <span class="progress-status" id="widget-status-text">?�로???��?�?..</span>
             <span class="progress-pct" id="widget-pct-text">0%</span>
           </div>
           <div class="progress-bar-bg">

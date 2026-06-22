@@ -7569,6 +7569,13 @@
     const canvas = document.getElementById('wave-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
+
+    // ── Canvas 크기를 CSS 실제 표시 크기에 동적으로 맞춤 (픽셀 밀도 불일치 수정) ───
+    const cssW = canvas.offsetWidth;
+    const cssH = canvas.offsetHeight;
+    if (cssW > 0 && canvas.width !== cssW) canvas.width = cssW;
+    if (cssH > 0 && canvas.height !== cssH) canvas.height = cssH;
+
     const width = canvas.width;
     const height = canvas.height;
 
@@ -7590,8 +7597,10 @@
     ctx.strokeStyle = 'rgba(0, 242, 254, 0.12)';
     ctx.beginPath(); ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2); ctx.stroke();
 
-    const isSilentMode = result.isSilent || result.isMusic || !isRunning || !isVideoPlaying;
-    if (isVideoPlaying && !isSilentMode) {
+    // ── isSilentMode: isVideoPlaying 의존 제거 → isRunning 기반으로 변경 ────────
+    // isVideoPlaying이 YouTube API 문제로 false일 때도 파형이 멈쳐있던 버그 수정
+    const isSilentMode = result.isSilent || result.isMusic || !isRunning;
+    if (isRunning && !isSilentMode) {
       waveFrameCount++;
     }
 
@@ -7601,7 +7610,10 @@
       'rgba(255, 65, 108, 0.6)'   // Neon Red
     ];
 
-    const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic;
+    // ── CORS 시뮬레이션 상태 확인: all-128 timeData(직선) 스케치 방지 ────────
+    // CORS 차단 시 analyzer가 있어도 timeData가 all-128이라 직선이 그려집니다
+    const isCORSSimulation = !!(result.diagnostic && result.diagnostic.dataSource === 'CORS_SIMULATION');
+    const isRealAudioActive = analyzer && !result.isSilent && !result.isMusic && !isCORSSimulation;
 
     if (isRealAudioActive) {
       // 1. Real Audio Waveform
