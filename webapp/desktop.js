@@ -5271,6 +5271,10 @@
       grade: grade
     };
 
+    try {
+      localStorage.setItem('thinc_video_metadata', JSON.stringify(videoMetadata));
+    } catch(e) {}
+
     // Update Banner UI
     document.getElementById('det-cat-badge').innerText = videoMetadata.genre;
     const relBadge = document.getElementById('det-rel-badge');

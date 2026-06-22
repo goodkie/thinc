@@ -98,6 +98,7 @@ class VoiceStressAnalyzer {
     this.frameRms = 0;                // 최신 RMS (외부 접근용)
     this.frameSNR = 0;                // 최신 SNR (외부 접근용)
     this.frameConfidence = 0;         // 최신 분석 신뢰도 (외부 접근용)
+    this.hasReceivedRealAudio = false; // Add real audio flag
 
     // ── 서버 어드민 설정 폴링 (30초마다 자동 동기화) ────────────────────────
     // 웹/데스크톱/모바일 모두 서버에서 최신 감도 설정을 자동 수신
@@ -333,6 +334,10 @@ class VoiceStressAnalyzer {
     const rms = Math.sqrt(rmsSum / this.bufferLength);
     this.frameRms = rms;
 
+    if (rms > 0.001) {
+      this.hasReceivedRealAudio = true;
+    }
+
     // ── 적응형 노이즈 플로어 추정 ────────────────────────────────────────────
     // 신호가 매우 조용할 때(노이즈 레벨) 샘플을 수집하여 SNR 계산 기준 확보
     if (rms < 0.015) {
@@ -388,7 +393,8 @@ class VoiceStressAnalyzer {
 
     // CORS/Simulation detection
     // If speech is active (video is playing) but RMS is near zero, it is blocked by CORS.
-    const isCORSBlocked = (rms < 0.001) && isSpeechActive;
+    const isElectron = typeof window !== 'undefined' && window.__IS_ELECTRON__;
+    const isCORSBlocked = !isElectron && !this.hasReceivedRealAudio && (this.adminFrameCount > 30) && (rms < 0.001) && isSpeechActive;
 
     // Silence detection: RMS below silenceThreshold is treated as silence (noise floor)
     let currentSilenceThreshold = this.silenceThreshold;
