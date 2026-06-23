@@ -5271,6 +5271,10 @@
       grade: grade
     };
 
+    try {
+      localStorage.setItem('thinc_video_metadata', JSON.stringify(videoMetadata));
+    } catch(e) {}
+
     // Update Banner UI
     document.getElementById('det-cat-badge').innerText = videoMetadata.genre;
     const relBadge = document.getElementById('det-rel-badge');
@@ -5800,7 +5804,7 @@
       };
     }
 
-    // ── GUARD: isSpeechActive=false 이면 즉시 silence (CORS 차단 Mock 경로에서도 동일하게 자막 기반으로 판단) ──
+    // ── GUARD: isSpeechActive=false 이면 즉시 silence ──
     if (!isSpeechActive) {
       return {
         stressScore: 0, isSilent: true, isMusic: false, aiProbability: 0, gainStatus: 'IDLE',
@@ -6130,7 +6134,7 @@
     // Real-time oscilloscope drawing
     drawOscilloscope(result, smoothScore);
 
-    // Advanced Diagnostic HUD update (captures isSpeechActive from outer scope)
+    // Advanced Diagnostic HUD update
     const _isSpeechActiveForHUD = !result.isSilent && !result.isMusic;
     updateDiagnosticHUD(result, smoothScore, _isSpeechActiveForHUD);
 
@@ -7519,20 +7523,11 @@
       const hud = document.getElementById('diagnostic-hud');
       if (hud) hud.classList.toggle('hidden');
     }
-
-    // Ctrl+Shift+D 키보드 단축키
     document.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-        e.preventDefault();
-        toggleHUD();
-      }
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') { e.preventDefault(); toggleHUD(); }
     });
-
-    // DIAG 버튼 클릭
     const btnDiag = document.getElementById('btn-diag-hud');
     if (btnDiag) btnDiag.addEventListener('click', toggleHUD);
-
-    // 닫기 버튼 클릭
     const btnClose = document.getElementById('diag-close-btn');
     if (btnClose) btnClose.addEventListener('click', () => {
       const hud = document.getElementById('diagnostic-hud');
@@ -7541,16 +7536,13 @@
   })();
 
   function updateDiagnosticHUD(result, smoothScore, isSpeechActive) {
-    // VAD 상태 바 업데이트 (항상)
     const d = result.diagnostic || {};
     const vadStatus = d.vadStatus || (analyzer ? analyzer.lastVadStatus : 'N/A');
     const snrDb = d.snrDb !== undefined ? d.snrDb : (analyzer ? analyzer.frameSNR : null);
     const confidence = d.confidence !== undefined ? d.confidence : (analyzer ? analyzer.frameConfidence : 0);
-
     const vadText = document.getElementById('vad-status-text');
     const snrText = document.getElementById('vad-snr-text');
     const confText = document.getElementById('vad-conf-text');
-
     if (vadText) {
       const vadColors = { 'VOICE_ACTIVE': '#10b981', 'WEAK_SIGNAL': '#f7971e', 'NO_VOICE': '#ff416c', 'N/A': '#888' };
       vadText.textContent = vadStatus || '--';
@@ -7558,56 +7550,29 @@
     }
     if (snrText) snrText.textContent = snrDb !== null ? `${snrDb} dB` : '-- dB';
     if (confText) confText.textContent = `${confidence}%`;
-
-    // HUD 패널 (숨겨져 있으면 나머지 업데이트 생략)
     const hud = document.getElementById('diagnostic-hud');
     if (!hud || hud.classList.contains('hidden')) return;
-
     const isRealAnalyzer = !!analyzer;
     const dataSource = d.dataSource || (isRealAnalyzer ? 'REAL_AUDIO' : 'CAPTION_SIM');
-
-    // === AUDIO SIGNAL ===
-    const setEl = (id, val, color) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.textContent = val;
-      if (color) el.style.color = color;
-    };
-
-    // Data Source 컬러 코딩
+    const setEl = (id, val, color) => { const el = document.getElementById(id); if (!el) return; el.textContent = val; if (color) el.style.color = color; };
     const srcColors = { 'REAL_AUDIO': '#10b981', 'CORS_SIMULATION': '#f7971e', 'CAPTION_SIM': '#a259ff', 'SILENT': '#888' };
     setEl('diag-source', dataSource, srcColors[dataSource] || '#00f2fe');
-
     const rmsVal = d.rms !== undefined ? d.rms : (analyzer ? analyzer.frameRms : 0);
     setEl('diag-rms', rmsVal !== undefined ? rmsVal.toFixed(6) : '--');
-
     setEl('diag-snr', snrDb !== null ? `${snrDb} dB` : '-- dB');
-
     const noiseFloor = d.noiseFloor !== undefined ? d.noiseFloor : (analyzer ? analyzer.noiseFloor : null);
     setEl('diag-noise-floor', noiseFloor !== null ? noiseFloor.toFixed(6) : '--');
-
-    // === VAD ===
     const vadColors2 = { 'VOICE_ACTIVE': '#10b981', 'WEAK_SIGNAL': '#f7971e', 'NO_VOICE': '#ff416c' };
     setEl('diag-vad', vadStatus, vadColors2[vadStatus] || '#888');
     setEl('diag-speech', isSpeechActive ? '✅ TRUE' : '❌ FALSE', isSpeechActive ? '#10b981' : '#ff416c');
     setEl('diag-confidence', `${confidence}%`, confidence >= 70 ? '#10b981' : confidence >= 40 ? '#f7971e' : '#ff416c');
-
     const isCalibrating = d.isCalibrating !== undefined ? d.isCalibrating : (analyzer ? analyzer.isCalibrating : false);
     const calibProgress = d.calibrationProgress !== undefined ? d.calibrationProgress : 0;
-    if (isCalibrating) {
-      setEl('diag-calibration', `CALIBRATING ${calibProgress}%`, '#f7971e');
-    } else {
-      setEl('diag-calibration', '✅ CALIBRATED', '#10b981');
-    }
-
-    // === GAIN CONTROL ===
+    setEl('diag-calibration', isCalibrating ? `CALIBRATING ${calibProgress}%` : '✅ CALIBRATED', isCalibrating ? '#f7971e' : '#10b981');
     const gainStatusColors = { 'OPTIMAL': '#10b981', 'BOOSTING': '#f7971e', 'REDUCING': '#a259ff', 'LOW_SIGNAL': '#ff416c', 'IDLE': '#888' };
     setEl('diag-gain-status', result.gainStatus || 'IDLE', gainStatusColors[result.gainStatus] || '#888');
     setEl('diag-internal-gain', result.internalGain ? `${result.internalGain}x` : '1.0x');
-
-    // === PIPELINE STATE ===
-    const analyzerMode = isRealAnalyzer ? '🎙️ REAL VSA' : '📝 MOCK SIM';
-    setEl('diag-analyzer-mode', analyzerMode, isRealAnalyzer ? '#10b981' : '#f7971e');
+    setEl('diag-analyzer-mode', isRealAnalyzer ? '🎙️ REAL VSA' : '📝 MOCK SIM', isRealAnalyzer ? '#10b981' : '#f7971e');
     setEl('diag-caption', typeof captionLoadStatus !== 'undefined' ? captionLoadStatus.toUpperCase() : '--', captionLoadStatus === 'loaded' ? '#10b981' : '#f7971e');
     const scoreSource = isRealAnalyzer ? 'ACOUSTIC FFT' : (typeof captionLoadStatus !== 'undefined' && captionLoadStatus === 'loaded' ? 'CAPTION CTX' : 'TIME CYCLE');
     setEl('diag-score-source', scoreSource);
@@ -7639,6 +7604,8 @@
 
     // Center baseline
     ctx.strokeStyle = 'rgba(0, 242, 254, 0.12)';
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
     ctx.beginPath(); ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2); ctx.stroke();
 
     const isSilentMode = result.isSilent || result.isMusic || !isRunning;
@@ -7672,8 +7639,9 @@
       let x = 0;
 
       for (let i = 0; i < bufferLength; i++) {
-        const v = timeData[i] / 128.0;
-        const y = v * height / 2;
+        // 무음값(128) 편차를 계산해 3.5배 증폭하여 그리기 (미세 톤 파형 시각화 개선)
+        const deviation = (timeData[i] - 128) / 128.0;
+        const y = Math.max(2, Math.min(height - 2, (height / 2) + deviation * (height / 2) * 3.5));
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
         x += sliceWidth;
@@ -7685,12 +7653,13 @@
       ctx.lineWidth = 1.2;
       ctx.strokeStyle = colors[1];
       ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
       ctx.beginPath();
       x = 0;
       for (let i = 0; i < bufferLength; i++) {
         const shiftedIdx = (i + 5) % bufferLength;
-        const v = timeData[shiftedIdx] / 128.0;
-        const y = (v * height / 2) + (Math.sin(i * 0.04 + waveFrameCount * 0.1) * 3);
+        const deviation = (timeData[shiftedIdx] - 128) / 128.0;
+        const y = Math.max(2, Math.min(height - 2, (height / 2) + (deviation * (height / 2) * 3.5) + (Math.sin(i * 0.04 + waveFrameCount * 0.1) * 3)));
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
         x += sliceWidth;
@@ -8384,11 +8353,10 @@
     // Initialize legal disclaimer modal
     initDisclaimerModal();
 
-    // Initialize Diagnostic UI keyboard shortcut (legacy PerformanceLogger UI)
+    // Initialize Diagnostic UI keyboard shortcut
     if (window.DiagnosticUI) {
       window.DiagnosticUI.initShortcut();
     }
-    // Advanced Diagnostic HUD: already auto-initialized via IIFE in REAL-TIME WAVE SCANNER section
 
     // 100% Real-time Admin Settings Hot-Swap Listener
     window.addEventListener('storage', (e) => {

@@ -5470,37 +5470,6 @@
         }
       }
 
-      // Tier 2: Microphone fallback — 활성화하여 탭 공유 실패 시 마이크 오디오 수신 지원
-      if (!audioConnected && hasMediaDevices && audioCtx) {
-        try {
-          if (window.PerformanceLogger) {
-            window.PerformanceLogger.log('Audio', 'Microphone Capture Request', 0, 'Info', 'Attempting microphone capture as fallback.');
-          }
-          const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true
-            }
-          });
-          mediaStream = micStream;
-          analyzer = new VoiceStressAnalyzer(audioCtx);
-          sourceNode = audioCtx.createMediaStreamSource(mediaStream);
-          sourceNode.connect(analyzer.gainNode);
-          analyzer.gainNode.connect(analyzer.analyser);
-          audioConnected = true;
-          showToast(t('toast_mic_captured'));
-          if (window.PerformanceLogger) {
-            window.PerformanceLogger.log('Audio', 'Microphone Capture Success', 0, 'Success', 'Microphone audio track bound to VSA.');
-          }
-        } catch (micErr) {
-          console.info('[Th!nc] Microphone fallback not available:', micErr.message);
-          if (window.PerformanceLogger) {
-            window.PerformanceLogger.log('Audio', 'Microphone Capture Failed', 0, 'Warning', micErr.message);
-          }
-        }
-      }
-
       // Tier 3: Premium Caption-Based Context Model
 
       // No error message — this is a premium feature, not a fallback failure
@@ -5947,8 +5916,7 @@
     } catch (e) {}
 
     // Simulate mock RMS and check against dynamic silence threshold
-    // mockRms가 silenceThreshold 미만으로 내려가 무음 감지가 가능하도록 범위를 0.001~0.011로 조정
-    const mockRms = 0.001 + (Math.random() * 0.01);
+    const mockRms = 0.01 + (Math.random() * 0.03);
     const isMockSilent = mockRms < silenceThreshold;
 
     if (isMockSilent) {
@@ -7636,6 +7604,8 @@
 
     // Center baseline
     ctx.strokeStyle = 'rgba(0, 242, 254, 0.12)';
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
     ctx.beginPath(); ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2); ctx.stroke();
 
     const isSilentMode = result.isSilent || result.isMusic || !isRunning;
@@ -7669,8 +7639,9 @@
       let x = 0;
 
       for (let i = 0; i < bufferLength; i++) {
-        const v = timeData[i] / 128.0;
-        const y = v * height / 2;
+        // 무음값(128) 편차를 계산해 3.5배 증폭하여 그리기 (미세 톤 파형 시각화 개선)
+        const deviation = (timeData[i] - 128) / 128.0;
+        const y = Math.max(2, Math.min(height - 2, (height / 2) + deviation * (height / 2) * 3.5));
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
         x += sliceWidth;
@@ -7682,12 +7653,13 @@
       ctx.lineWidth = 1.2;
       ctx.strokeStyle = colors[1];
       ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
       ctx.beginPath();
       x = 0;
       for (let i = 0; i < bufferLength; i++) {
         const shiftedIdx = (i + 5) % bufferLength;
-        const v = timeData[shiftedIdx] / 128.0;
-        const y = (v * height / 2) + (Math.sin(i * 0.04 + waveFrameCount * 0.1) * 3);
+        const deviation = (timeData[shiftedIdx] - 128) / 128.0;
+        const y = Math.max(2, Math.min(height - 2, (height / 2) + (deviation * (height / 2) * 3.5) + (Math.sin(i * 0.04 + waveFrameCount * 0.1) * 3)));
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
         x += sliceWidth;

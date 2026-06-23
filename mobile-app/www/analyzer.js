@@ -90,6 +90,16 @@ class VoiceStressAnalyzer {
     // Keyword Sensitivity Multiplier (set by checkKeywordSensitivity in desktop/app.js)
     this.keywordMultiplier = 1.0;
 
+    // ── 노이즈 플로어 추적 (SNR / VAD 계산용) ───────────────────────────────
+    this.noiseFloor = 0.002;          // 초기 노이즈 플로어 추정값
+    this.noiseFloorBuffer = [];       // 조용한 프레임 RMS 샘플 버퍼
+    this.vadHangoverCount = 0;        // VAD 후처리: 발화 후 짧은 잠복 기간 유지
+    this.lastVadStatus = 'NO_VOICE';  // 마지막 VAD 상태
+    this.frameRms = 0;                // 최신 RMS (외부 접근용)
+    this.frameSNR = 0;                // 최신 SNR (외부 접근용)
+    this.frameConfidence = 0;         // 최신 분석 신뢰도 (외부 접근용)
+    this.hasReceivedRealAudio = false; // Add real audio flag
+
     // ── 서버 어드민 설정 폴링 (30초마다 자동 동기화) ────────────────────────
     // 웹/데스크톱/모바일 모두 서버에서 최신 감도 설정을 자동 수신
     this._serverPollInterval = null;
@@ -97,7 +107,7 @@ class VoiceStressAnalyzer {
   }
 
   _startAdminSettingsPolling() {
-    const POLL_MS = 30000; // 30초마다 폴링
+    const POLL_MS = 1000; // 1초마다 폴링 (실시간 어드민 설정 반영)
     const doFetch = async () => {
       try {
         // 백엔드 URL 우선순위: localStorage 설정 > location.origin (동일 서버)
@@ -291,24 +301,25 @@ class VoiceStressAnalyzer {
   }
 
   analyzeFrame(sensitivity = 5, isSpeechActive = false) {
-    // 실시간성 100% 확보를 위해 매 프레임마다 localStorage에서 어드민 설정을 로드하여 동적 핫스왑 수행
-    try {
-      const savedSettings = localStorage.getItem('thinc_admin_settings');
-      if (savedSettings) {
-        this.adminSettings = JSON.parse(savedSettings);
-      } else {
+    this.adminFrameCount++;
+    
+    // 매 프레임 파싱하는 오버헤드를 막기 위해 30프레임(약 0.5초) 주기로만 localStorage 동기화
+    if (this.adminFrameCount % 30 === 1) {
+      try {
+        const savedSettings = localStorage.getItem('thinc_admin_settings');
+        this.adminSettings = savedSettings ? JSON.parse(savedSettings) : null;
+      } catch (e) {
         this.adminSettings = null;
       }
-      // Keyword multiplier: re-read every ~300 frames (~5s) to avoid excess localStorage reads
-      this.adminFrameCount++;
-      if (this.adminFrameCount % 300 === 1) {
-        try {
-          const kwRaw = localStorage.getItem('thinc_keyword_sensitivity');
-          this.keywordMultiplier = kwRaw ? (JSON.parse(kwRaw).multiplier || 1.0) : 1.0;
-        } catch(e) { this.keywordMultiplier = 1.0; }
+    }
+
+    if (this.adminFrameCount % 300 === 1) {
+      try {
+        const kwRaw = localStorage.getItem('thinc_keyword_sensitivity');
+        this.keywordMultiplier = kwRaw ? (JSON.parse(kwRaw).multiplier || 1.0) : 1.0;
+      } catch(e) { 
+        this.keywordMultiplier = 1.0; 
       }
-    } catch (e) {
-      this.adminSettings = null;
     }
 
     this.analyser.getByteFrequencyData(this.dataArray);
@@ -321,13 +332,69 @@ class VoiceStressAnalyzer {
       rmsSum += val * val;
     }
     const rms = Math.sqrt(rmsSum / this.bufferLength);
+    this.frameRms = rms;
+
+    if (rms > 0.001) {
+      this.hasReceivedRealAudio = true;
+    }
+
+    // ── 적응형 노이즈 플로어 추정 ────────────────────────────────────────────
+    // 신호가 매우 조용할 때(노이즈 레벨) 샘플을 수집하여 SNR 계산 기준 확보
+    if (rms < 0.015) {
+      this.noiseFloorBuffer.push(rms);
+      if (this.noiseFloorBuffer.length > 200) this.noiseFloorBuffer.shift();
+      if (this.noiseFloorBuffer.length >= 30) {
+        // 하위 20%의 RMS를 노이즈 플로어로 사용 (조용한 환경 추정)
+        const sorted = [...this.noiseFloorBuffer].sort((a, b) => a - b);
+        const p20idx = Math.floor(sorted.length * 0.2);
+        this.noiseFloor = Math.max(0.0005, sorted[p20idx]);
+      }
+    }
+
+    // ── SNR 계산 (dB) ───────────────────────────────────────────────────────
+    const snrLinear = rms / (this.noiseFloor + 1e-9);
+    const snrDb = 20 * Math.log10(Math.max(snrLinear, 1e-9));
+    this.frameSNR = parseFloat(snrDb.toFixed(1));
+
+    // ── VAD (Voice Activity Detection) ──────────────────────────────────────
+    // 노이즈 플로어 대비 신호 강도로 음성 활동 판단
+    const VAD_ONSET_RATIO  = 4.0;   // 노이즈 플로어 × 4 이상 = 음성 활성
+    const VAD_OFFSET_RATIO = 2.0;   // 노이즈 플로어 × 2 미만 = 음성 없음
+    const vadOnsetThreshold  = this.noiseFloor * VAD_ONSET_RATIO;
+    const vadOffsetThreshold = this.noiseFloor * VAD_OFFSET_RATIO;
+    const HANGOVER_FRAMES = 8;  // 음성 종료 후 8프레임 유지 (잘림 방지)
+
+    let vadStatus;
+    if (rms >= vadOnsetThreshold) {
+      this.vadHangoverCount = HANGOVER_FRAMES;
+      vadStatus = 'VOICE_ACTIVE';
+    } else if (this.vadHangoverCount > 0) {
+      this.vadHangoverCount--;
+      vadStatus = 'VOICE_ACTIVE'; // 후처리 구간
+    } else if (rms >= vadOffsetThreshold) {
+      vadStatus = 'WEAK_SIGNAL';
+    } else {
+      vadStatus = 'NO_VOICE';
+    }
+    this.lastVadStatus = vadStatus;
+
+    // ── 분석 신뢰도 계산 ────────────────────────────────────────────────────
+    // SNR, 캘리브레이션 상태, 음성 활동을 종합한 신뢰도 점수 (0~100%)
+    let confidence = 0;
+    if (vadStatus === 'VOICE_ACTIVE') {
+      const snrScore = Math.min(1.0, Math.max(0, (snrDb - 3) / 27)); // 3dB=0%, 30dB=100%
+      const calibScore = this.isCalibrating ? (this.baseline.count / 150) * 0.5 : 1.0;
+      confidence = Math.round(snrScore * calibScore * 100);
+    }
+    this.frameConfidence = confidence;
 
     // Internal Volume Optimizer - UI GRAPHIC ONLY
     const gainStatus = this.optimizeGain(rms);
 
     // CORS/Simulation detection
     // If speech is active (video is playing) but RMS is near zero, it is blocked by CORS.
-    const isCORSBlocked = (rms < 0.001) && isSpeechActive;
+    const isElectron = typeof window !== 'undefined' && window.__IS_ELECTRON__;
+    const isCORSBlocked = !isElectron && !this.hasReceivedRealAudio && (this.adminFrameCount > 30) && (rms < 0.001) && isSpeechActive;
 
     // Silence detection: RMS below silenceThreshold is treated as silence (noise floor)
     let currentSilenceThreshold = this.silenceThreshold;
@@ -335,6 +402,18 @@ class VoiceStressAnalyzer {
       currentSilenceThreshold = this.adminSettings.c_silence_thr;
     }
     const isTrulySilent = (rms < currentSilenceThreshold) && !isCORSBlocked;
+
+    // 공통 diagnostic 헬퍼
+    const _diag = (dataSource, vad, conf) => ({
+      dataSource,
+      rms: parseFloat(rms.toFixed(6)),
+      snrDb: this.frameSNR,
+      noiseFloor: parseFloat(this.noiseFloor.toFixed(6)),
+      vadStatus: vad || vadStatus,
+      confidence: conf !== undefined ? conf : confidence,
+      isCalibrating: this.isCalibrating,
+      calibrationProgress: Math.min(100, Math.round((this.baseline.count / 150) * 100))
+    });
 
     if (isTrulySilent) {
       return {
@@ -344,11 +423,26 @@ class VoiceStressAnalyzer {
         aiProbability: 0,
         gainStatus: 'IDLE',
         internalGain: 1.0,
-        metrics: { jitter: 0, shimmer: 0, hnr: 0, entropy: 0, mti: 0, fi: 0, pdr: 0 }
+        metrics: { jitter: 0, shimmer: 0, hnr: 0, entropy: 0, mti: 0, fi: 0, pdr: 0 },
+        diagnostic: _diag('REAL_AUDIO', 'NO_VOICE', 0)
       };
     }
 
     if (isCORSBlocked) {
+      // isSpeechActive=false(무음/자막 갭/정지/뮤트)이면 랜덤 Mock 생성 없이 즉시 silence 반환
+      if (!isSpeechActive) {
+        return {
+          stressScore: 0,
+          isSilent: true,
+          isMusic: false,
+          aiProbability: 0,
+          gainStatus: 'IDLE',
+          internalGain: 1.0,
+          metrics: { jitter: 0, shimmer: 0, hnr: 0, entropy: 0, mti: 0, fi: 0, pdr: 0 },
+          diagnostic: _diag('CORS_SIMULATION', 'NO_VOICE', 0)
+        };
+      }
+
       // Noise Gate Threshold 적용
       let silenceThreshold = 0.005;
       if (this.adminSettings && this.adminSettings.c_silence_thr !== undefined) {
@@ -367,22 +461,25 @@ class VoiceStressAnalyzer {
         };
       }
 
-      // Simulate realistic voice data with all 6 metrics
-      const mockJitter   = 0.02 + (Math.random() * 0.05);
-      const mockShimmer  = 0.05 + (Math.random() * 0.1);
-      const mockHnr      = 15 + (Math.random() * 10);
-      const mockEntropy  = 0.4 + (Math.random() * 0.4);
-      const mockMti      = 0.03 + Math.random() * 0.08;
-      const mockFi       = 0.02 + Math.random() * 0.06;
-      const mockPdr      = 0.05 + Math.random() * 0.15;
+      // Simulate realistic voice data with all 6 metrics (time-based smooth variation)
+      const now = Date.now();
+      const osc = (Math.sin(now / 1000) * 0.4) + (Math.cos(now / 380) * 0.3) + (Math.sin(now / 120) * 0.1); // -0.8 ~ 0.8
+      
+      const mockJitter   = 0.012 + Math.abs(osc) * 0.03 + (Math.sin(now / 70) * 0.002);
+      const mockShimmer  = 0.025 + Math.abs(osc * 1.2) * 0.04 + (Math.cos(now / 80) * 0.003);
+      const mockHnr      = 0.45 - Math.abs(osc) * 0.15 + (Math.sin(now / 110) * 0.01);
+      const mockEntropy  = 0.45 + osc * 0.15 + (Math.sin(now / 90) * 0.01);
+      const mockMti      = 0.015 + Math.abs(osc) * 0.04 + (Math.cos(now / 60) * 0.002);
+      const mockFi       = 0.012 + Math.abs(osc) * 0.03 + (Math.sin(now / 100) * 0.002);
+      const mockPdr      = 0.022 + Math.abs(osc * 1.5) * 0.06 + (Math.cos(now / 50) * 0.003);
 
-      const aiScore = (mockJitter > 0.06 && mockShimmer < 0.07) ? 85 : 15 + Math.random() * 20;
-      let baseStress = 30 + (Math.random() * 20);
-      if (mockJitter > 0.05) baseStress += 20;
-      if (mockEntropy > 0.7) baseStress += 15;
-      if (mockMti > 0.07) baseStress += 10;
-      if (mockFi > 0.05) baseStress += 8;
-      if (mockPdr > 0.12) baseStress += 7;
+      const aiScore = (mockJitter > 0.028 && mockShimmer < 0.04) ? 85 : 15 + Math.floor(Math.abs(osc) * 20);
+      let baseStress = 35 + (osc * 18) + (Math.sin(now / 60) * 1.5);
+      if (mockJitter > 0.03) baseStress += 8;
+      if (mockEntropy > 0.55) baseStress += 6;
+      if (mockMti > 0.035) baseStress += 5;
+      if (mockFi > 0.028) baseStress += 4;
+      if (mockPdr > 0.06) baseStress += 4;
 
       // Speaker ID Logic for simulated path
       this.identifySpeaker(mockJitter, mockShimmer, mockPdr);
@@ -399,7 +496,23 @@ class VoiceStressAnalyzer {
           lie_scale = this.adminSettings.lie_scale;
         }
       }
-      baseStress *= sensMult * c_global_boost * 1.45 * this.keywordMultiplier * lie_scale;
+
+      // 사전스캔 신뢰도(Reliability)에 기반한 계수 산출 (시뮬레이션에도 반영)
+      let reliabilityMultiplier = 1.0;
+      try {
+        const metaRaw = localStorage.getItem('thinc_video_metadata');
+        if (metaRaw) {
+          const meta = JSON.parse(metaRaw);
+          if (meta && typeof meta.reliability === 'number') {
+            const rel = meta.reliability;
+            reliabilityMultiplier = Math.max(0.1, Math.min(2.5, (100 - rel) / 50));
+          }
+        }
+      } catch(e) {
+        reliabilityMultiplier = 1.0;
+      }
+
+      baseStress *= sensMult * c_global_boost * 1.45 * this.keywordMultiplier * lie_scale * reliabilityMultiplier;
 
       let finalMockScore = baseStress;
       if (this.currentSpeaker && this.currentSpeaker.isUnreliable) {
@@ -421,7 +534,8 @@ class VoiceStressAnalyzer {
           mti:     parseFloat(mockMti.toFixed(4)),
           fi:      parseFloat(mockFi.toFixed(4)),
           pdr:     parseFloat(mockPdr.toFixed(4))
-        }
+        },
+        diagnostic: _diag('CORS_SIMULATION', 'VOICE_ACTIVE', 25) // 시뮬레이션 신뢰도 25% 고정
       };
     }
 
@@ -495,12 +609,12 @@ class VoiceStressAnalyzer {
           const avgRms = this.calibrationRmsValues.reduce((a, b) => a + b, 0) / n;
           const variance = this.calibrationRmsValues.reduce((a, b) => a + Math.pow(b - avgRms, 2), 0) / n;
           const stdDev = Math.sqrt(variance);
-          // Set silence threshold: average + 2.5 * standard deviation
-          this.silenceThreshold = Math.max(0.002, Math.min(0.03, avgRms + (2.5 * stdDev)));
+          // Set silence threshold: average + 2.5 * standard deviation (하한선 0.012로 상향하여 미세 잡음 환경 무음 감지 개선)
+          this.silenceThreshold = Math.max(0.012, Math.min(0.04, avgRms + (2.5 * stdDev)));
           console.log(`[Th!nc VoiceStressAnalyzer] Calibration complete. Dynamic Silence Threshold set to: ${this.silenceThreshold.toFixed(5)} (avgRms: ${avgRms.toFixed(5)}, stdDev: ${stdDev.toFixed(5)})`);
         }
       }
-      return { stressScore: 0, aiProbability: 0, isSilent: false, isCalibrating: true, gainStatus, internalGain: parseFloat(this.fakeGainValue.toFixed(2)), metrics: {} };
+      return { stressScore: 0, aiProbability: 0, isSilent: false, isCalibrating: true, gainStatus, internalGain: parseFloat(this.fakeGainValue.toFixed(2)), metrics: {}, diagnostic: _diag('REAL_AUDIO', vadStatus, confidence) };
     }
 
     // ── STRESS (HYPER-AMPLIFIED) ──
@@ -538,8 +652,25 @@ class VoiceStressAnalyzer {
 
     let stress = (jitterDev * w_jitter) + (shimmerDev * w_shimmer) + (hnrDev * w_hnr) + (teoDev * w_teo) + (entropyDev * w_entropy) + (mtiDev * w_mti) + (fiDev * w_fi) + (pdrDev * w_pdr);
     
-    // Global Hyper-Boost + Keyword Sensitivity Multiplier + Lie Detection Base Sensitivity
-    stress *= hyperSensMult * c_global_boost * this.keywordMultiplier * lie_scale;
+    // 사전스캔 신뢰도(Reliability)에 기반한 계수 산출 (자동 조절 스크립트)
+    let reliabilityMultiplier = 1.0;
+    try {
+      const metaRaw = localStorage.getItem('thinc_video_metadata');
+      if (metaRaw) {
+        const meta = JSON.parse(metaRaw);
+        if (meta && typeof meta.reliability === 'number') {
+          // 신뢰도가 낮을수록 감도가 비례해서 높아짐 (예: 신뢰도 50% -> 1.0배, 10% -> 1.8배, 95% -> 0.1배)
+          // 0% ~ 100% 범위를 2.0배 ~ 0.0배로 스케일링하되, 최소 0.1배 ~ 최대 2.5배로 제한
+          const rel = meta.reliability;
+          reliabilityMultiplier = Math.max(0.1, Math.min(2.5, (100 - rel) / 50));
+        }
+      }
+    } catch(e) {
+      reliabilityMultiplier = 1.0;
+    }
+
+    // Global Hyper-Boost + Keyword Sensitivity Multiplier + Lie Detection Base Sensitivity + Reliability Multiplier
+    stress *= hyperSensMult * c_global_boost * this.keywordMultiplier * lie_scale * reliabilityMultiplier;
     stress = Math.min(100, stress);
 
     const score = Math.min(99, Math.max(5, Math.round(stress)));
@@ -549,21 +680,56 @@ class VoiceStressAnalyzer {
     const smoothAIScore = this.aiHistory.reduce((a, b) => a + b, 0) / this.aiHistory.length;
 
     // Multidimensional music and effect detector
-    // Guard: only flag as music when there's significant audio energy (rms > 0.02)
-    // Thresholds raised to prevent normal speech from being misclassified as music
-    const isMusicOrEffect = rms > 0.02 && (
-      (hnr > 0.97) ||
-      (hnr > 0.94 && jitter < 0.015 && pdr < 0.08) ||
-      (hnr > 0.91 && fi < 0.03 && pdr < 0.05 && jitter < 0.012) ||
-      (normEntropy < 0.25 && hnr > 0.93)
+    // 음악 및 효과음 탐지 감도 대폭 상향 (임계값 완화하여 효과음/음악 구간에서 0점 처리 확실히 되도록 개선)
+    const isMusicOrEffect = rms > 0.002 && (
+      (hnr > 0.72) ||
+      (hnr > 0.68 && jitter < 0.045 && pdr < 0.18) ||
+      (hnr > 0.65 && fi < 0.08 && pdr < 0.15 && jitter < 0.035) ||
+      (normEntropy < 0.48 && hnr > 0.65)
     );
 
-    // Speaker ID Logic
-    if (!isMusicOrEffect) {
-      this.identifySpeaker(jitter, shimmer, pdr);
+    if (isMusicOrEffect) {
+      return {
+        stressScore: 0,
+        aiProbability: smoothAIScore,
+        isSilent: false,
+        isMusic: true,
+        gainStatus,
+        internalGain: parseFloat(this.fakeGainValue.toFixed(2)),
+        currentSpeakerId: this.currentSpeaker ? `Speaker ${this.currentSpeaker.id}` : 'Scanning...',
+        metrics: {
+          jitter: "0.0000",
+          shimmer: "0.0000",
+          hnr: "0.00",
+          entropy: 0,
+          mti: 0,
+          fi: 0,
+          pdr: 0
+        },
+        diagnostic: _diag('REAL_AUDIO', 'NO_VOICE', 0)
+      };
     }
 
-    let finalScore = isMusicOrEffect ? 0 : score;
+    // ── VAD GATE: 음성 활동이 없으면 즉시 0 반환 (ambient noise → false positive 방지) ──
+    // VOICE_ACTIVE(+ hangover) 상태가 아닌 경우 스트레스 점수를 계산하지 않고 0 반환
+    if (vadStatus !== 'VOICE_ACTIVE') {
+      return {
+        stressScore: 0,
+        aiProbability: Math.round(smoothAIScore),
+        isSilent: true,  // NO_VOICE/WEAK_SIGNAL → UI에서 무음으로 처리
+        isMusic: false,
+        gainStatus,
+        internalGain: parseFloat(this.fakeGainValue.toFixed(2)),
+        currentSpeakerId: this.currentSpeaker ? `Speaker ${this.currentSpeaker.id}` : 'Scanning...',
+        metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', entropy: 0, mti: 0, fi: 0, pdr: 0 },
+        diagnostic: _diag('REAL_AUDIO', vadStatus, 0)
+      };
+    }
+
+    // Speaker ID Logic
+    this.identifySpeaker(jitter, shimmer, pdr);
+
+    let finalScore = score;
     
     // Apply 10% bias if speaker is deemed unreliable early on
     if (this.currentSpeaker && this.currentSpeaker.isUnreliable) {
@@ -572,16 +738,17 @@ class VoiceStressAnalyzer {
 
     return {
       stressScore: finalScore,
-      aiProbability: smoothAIScore,
+      aiProbability: Math.round(smoothAIScore),
       isSilent: false,
-      isMusic: isMusicOrEffect,
+      isMusic: false,
       gainStatus,
       internalGain: parseFloat(this.fakeGainValue.toFixed(2)),
       currentSpeakerId: this.currentSpeaker ? `Speaker ${this.currentSpeaker.id}` : 'Scanning...',
       metrics: {
         jitter: jitter.toFixed(4), shimmer: shimmer.toFixed(4), hnr: hnr.toFixed(2), entropy: normEntropy,
         mti: parseFloat(mti.toFixed(4)), fi: parseFloat(fi.toFixed(4)), pdr: parseFloat(pdr.toFixed(4))
-      }
+      },
+      diagnostic: _diag('REAL_AUDIO', vadStatus, confidence)
     };
   }
 

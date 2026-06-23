@@ -334,8 +334,7 @@ class VoiceStressAnalyzer {
     const rms = Math.sqrt(rmsSum / this.bufferLength);
     this.frameRms = rms;
 
-    // 0.00015 이상(아주 미세한 노이즈 이상)의 소리가 감지되면 실제 오디오 수신으로 확정
-    if (rms > 0.00015) {
+    if (rms > 0.001) {
       this.hasReceivedRealAudio = true;
     }
 
@@ -393,18 +392,16 @@ class VoiceStressAnalyzer {
     const gainStatus = this.optimizeGain(rms);
 
     // CORS/Simulation detection
-    // 초기에 180프레임(약 3초) 이상 충분히 대기하여 버퍼를 수집하고, 극도로 낮은 소리 신호(0.00015 미만)가 지속되며,
-    // 자막이 나오고 있음에도 실제 오디오 수신 flag가 거짓일 때만 CORS 차단으로 판정
+    // If speech is active (video is playing) but RMS is near zero, it is blocked by CORS.
     const isElectron = typeof window !== 'undefined' && window.__IS_ELECTRON__;
-    const isCORSBlocked = !isElectron && !this.hasReceivedRealAudio && (this.adminFrameCount > 180) && (rms < 0.00015) && isSpeechActive;
+    const isCORSBlocked = !isElectron && !this.hasReceivedRealAudio && (this.adminFrameCount > 30) && (rms < 0.001) && isSpeechActive;
 
-    // Silence detection: RMS가 노이즈 게이트(silenceThreshold) 미만이면 실제 무음 상태로 판정
+    // Silence detection: RMS below silenceThreshold is treated as silence (noise floor)
     let currentSilenceThreshold = this.silenceThreshold;
     if (this.adminSettings && this.adminSettings.c_silence_thr !== undefined) {
       currentSilenceThreshold = this.adminSettings.c_silence_thr;
     }
-    // CORS 차단 여부와 무관하게 실제 오디오 에너지가 임계치 미만이면 무조건 즉시 무음 처리
-    const isTrulySilent = (rms < currentSilenceThreshold);
+    const isTrulySilent = (rms < currentSilenceThreshold) && !isCORSBlocked;
 
     // 공통 diagnostic 헬퍼
     const _diag = (dataSource, vad, conf) => ({
@@ -451,8 +448,7 @@ class VoiceStressAnalyzer {
       if (this.adminSettings && this.adminSettings.c_silence_thr !== undefined) {
         silenceThreshold = this.adminSettings.c_silence_thr;
       }
-      // mockRms가 silenceThreshold 미만으로 내려가 무음 감지가 활성화될 수 있도록 범위를 0.001~0.011로 조정
-      const mockRms = 0.001 + (Math.random() * 0.01);
+      const mockRms = 0.01 + (Math.random() * 0.03);
       if (mockRms < silenceThreshold) {
         return {
           stressScore: 0,

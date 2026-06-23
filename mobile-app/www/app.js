@@ -4692,7 +4692,7 @@
       if (analyzer) {
         result = analyzer.analyzeFrame(currentSens, isSpeechActive);
       } else {
-        result = getMockAnalysisFrame(currentSens);
+        result = getMockAnalysisFrame(currentSens, isSpeechActive);
       }
 
       // Update VIP UI Badge
@@ -4961,11 +4961,19 @@
     }
   }
 
-  function getMockAnalysisFrame(sensitivity) {
+  function getMockAnalysisFrame(sensitivity, isSpeechActive = false) {
     const now = Date.now();
 
     // ── GUARD: No video loaded → always silent (nothing to simulate) ──
     if (!activeVideoId) {
+      return {
+        stressScore: 0, isSilent: true, isMusic: false, aiProbability: 0, gainStatus: 'IDLE',
+        metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', entropy: 0, mti: '0.0000', fi: '0.0000', pdr: '0.0000' }
+      };
+    }
+
+    // ── GUARD: isSpeechActive=false 이면 즉시 silence ──
+    if (!isSpeechActive) {
       return {
         stressScore: 0, isSilent: true, isMusic: false, aiProbability: 0, gainStatus: 'IDLE',
         metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', entropy: 0, mti: '0.0000', fi: '0.0000', pdr: '0.0000' }
@@ -5091,7 +5099,21 @@
     // 민감도가 높을수록 요동성(volatility)을 극대화하여 더 삐죽하게 예민하게 실시간 반응
     const volatility = (sensitivity / 5) * 8.5;
     const noise = (Math.random() - 0.5) * volatility;
-    const scaledStress = Math.min(99, Math.max(5, Math.round((stressBase * sensMult + noise) * globalBoost * lieScale)));
+    
+    // 사전스캔 신뢰도(Reliability)에 기반한 감도 계수 — analyzer.js의 reliabilityMultiplier와 동일 공식
+    let mockReliabilityMult = 1.0;
+    try {
+      const metaRawMock = localStorage.getItem('thinc_video_metadata');
+      if (metaRawMock) {
+        const metaMock = JSON.parse(metaRawMock);
+        if (metaMock && typeof metaMock.reliability === 'number') {
+          // 신뢰도 0% → 2.0배, 50% → 1.0배, 100% → 0.1배 (analyzer.js와 동일 공식)
+          mockReliabilityMult = Math.max(0.1, Math.min(2.5, (100 - metaMock.reliability) / 50));
+        }
+      }
+    } catch(e) { mockReliabilityMult = 1.0; }
+
+    const scaledStress = Math.min(99, Math.max(5, Math.round((stressBase * sensMult + noise) * globalBoost * lieScale * mockReliabilityMult)));
 
     // Plausible metric values (realistic speech ranges, NOT the inflated ones)
     const mockJitter  = 0.01 + Math.random() * 0.05;
