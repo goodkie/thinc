@@ -691,7 +691,7 @@ class VoiceStressAnalyzer {
     if (isMusicOrEffect) {
       return {
         stressScore: 0,
-        aiProbability: smoothAIScore,
+        aiProbability: 0,
         isSilent: false,
         isMusic: true,
         gainStatus,
@@ -715,7 +715,7 @@ class VoiceStressAnalyzer {
     if (vadStatus !== 'VOICE_ACTIVE') {
       return {
         stressScore: 0,
-        aiProbability: Math.round(smoothAIScore),
+        aiProbability: 0,
         isSilent: true,  // NO_VOICE/WEAK_SIGNAL → UI에서 무음으로 처리
         isMusic: false,
         gainStatus,
