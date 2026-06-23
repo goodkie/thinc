@@ -4464,6 +4464,12 @@
       // YT states: 2 = paused, 0 = ended, 5 = cued, -1 = unstarted
       const isPausedOrEnded = activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
 
+      if (isPausedOrEnded) {
+        // 동영상이 멈췄을 때는 점수나 플로팅 누적 바그래프를 초기화하지 않고, 분석 루프만 대기 상태로 유지합니다.
+        animationId = requestAnimationFrame(loop);
+        return;
+      }
+
       // ── Sync captionPlaybackSec from ytPlayer directly each frame ──
       if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
         try {
@@ -4479,10 +4485,6 @@
       // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
       let isPausedOrStopped = false;
       let isMutedOrSilent = false;
-
-      if (isPausedOrEnded) {
-        isPausedOrStopped = true;
-      }
       if (activeVideoId) {
         // Grace period: first 3 seconds of analysis exempt from pause detection
         // (gives YouTube Player API time to initialize and fire state events)
@@ -4584,8 +4586,8 @@
         displayedScore = 0;
         targetScore = 0;
         result.stressScore = 0;
-        result.aiProbability = 0; // force AI probability to 0 when silent/paused/gap
         result.isSilent = true; // force silent flag for UI metrics reset
+        result.aiProbability = 0; // force AI probability to 0 when silent/paused
         // If it's a caption gap or silent, make sure metrics inside result are zeroed
         if (result.metrics) {
           result.metrics.jitter = '0.0000';
