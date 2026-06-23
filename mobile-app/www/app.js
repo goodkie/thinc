@@ -4597,8 +4597,7 @@
 
       // Check if YouTube video is paused/stopped (if activeVideoId is set)
       // YT states: 2 = paused, 0 = ended, 5 = cued, -1 = unstarted
-      // NOTE: Treat unstarted (-1) or non-playing states as paused during active analysis
-      const isPausedOrEnded = activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1 || !isVideoPlaying);
+      const isPausedOrEnded = activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || !isVideoPlaying);
 
       // ── Sync captionPlaybackSec from ytPlayer directly each frame ──
       if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
@@ -4612,28 +4611,34 @@
         } catch(e) {}
       }
 
-      // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
+      // ── PAUSE / STOP / MUTE DETECTION ──
       let isPausedOrStopped = false;
       let isMutedOrSilent = false;
 
+      // 1. Direct playerState check: paused(2), ended(0), cued(5), or isVideoPlaying=false
       if (isPausedOrEnded) {
         isPausedOrStopped = true;
+        // Snap displayedScore to 0 immediately on pause/stop (no lerp delay)
+        displayedScore = 0;
+        targetScore = 0;
       }
 
       if (activeVideoId) {
-        // Grace period: first 3 seconds of analysis exempt from pause detection
-        // (gives YouTube Player API time to initialize and fire state events)
         const analysisElapsedMs = Date.now() - analysisStartTime;
         const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
-        
+
         if (analysisElapsedMs > 3000) {
-          // If state is not actively playing (1) or buffering (3), stop immediately
+          // If state is not actively playing (1) or buffering (3), stop
           if (playerState !== 1 && playerState !== 3) {
             isPausedOrStopped = true;
+            displayedScore = 0;
+            targetScore = 0;
           }
-          // If timeline playback position has frozen for more than 3 seconds, stop immediately
-          if (timeSinceLastUpdate > 3000) {
+          // Fallback: if playback time has frozen >3s while claiming to play
+          if (timeSinceLastUpdate > 3000 && !isVideoPlaying) {
             isPausedOrStopped = true;
+            displayedScore = 0;
+            targetScore = 0;
           }
         }
 
