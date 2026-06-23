@@ -5654,6 +5654,7 @@
         displayedScore = 0;
         targetScore = 0;
         result.stressScore = 0;
+        result.aiProbability = 0; // force AI probability to 0 when silent/paused/gap
         result.isSilent = true; // force silent flag for UI metrics reset
         // If it's a caption gap or silent, make sure metrics inside result are zeroed
         if (result.metrics) {
