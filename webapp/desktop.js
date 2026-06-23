@@ -4633,6 +4633,97 @@
 
   // CORS 차단이 없는 Electron 환경용 초고속 브라우저 InnerTube 자막 추출 함수
   async function getYouTubeTranscriptDirectBrowser(videoId, lang = 'ko') {
+    let htmlCaptions = null;
+    try {
+      console.log(`[Th!nc-Extension] Trying HTML watch page scraping for ${videoId}`);
+      const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
+        },
+        signal: getTimeoutSignal(5000)
+      });
+      const html = await res.text();
+      let captionTracks = null;
+      
+      const responseMark = 'ytInitialPlayerResponse = ';
+      const responseIdx = html.indexOf(responseMark);
+      if (responseIdx !== -1) {
+        const endIdx = html.indexOf('};', responseIdx);
+        if (endIdx !== -1) {
+          const rawResponse = html.substring(responseIdx + responseMark.length, endIdx + 1);
+          try {
+            const parsed = JSON.parse(rawResponse);
+            captionTracks = parsed?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+          } catch(e) {}
+        }
+      }
+      
+      if (!captionTracks) {
+        const marker = '"captions":';
+        const startIdx = html.indexOf(marker);
+        if (startIdx !== -1) {
+          let bracketsCount = 0;
+          let jsonStart = startIdx + marker.length;
+          let jsonEnd = -1;
+          for (let i = jsonStart; i < html.length; i++) {
+            if (html[i] === '{') bracketsCount++;
+            else if (html[i] === '}') {
+              bracketsCount--;
+              if (bracketsCount === 0) {
+                jsonEnd = i + 1;
+                break;
+              }
+            }
+          }
+          if (jsonEnd !== -1) {
+            try {
+              const captionsJson = JSON.parse(html.substring(jsonStart, jsonEnd));
+              captionTracks = captionsJson?.playerCaptionsTracklistRenderer?.captionTracks;
+            } catch(e) {}
+          }
+        }
+      }
+
+      if (captionTracks && captionTracks.length > 0) {
+        let targetTrack = captionTracks.find(t => (t.languageCode || '').toLowerCase().startsWith((lang || 'ko').toLowerCase()) && t.kind !== 'asr');
+        if (!targetTrack) targetTrack = captionTracks.find(t => (t.languageCode || '').toLowerCase().startsWith((lang || 'ko').toLowerCase()));
+        if (!targetTrack && lang !== 'ko') targetTrack = captionTracks.find(t => (t.languageCode || '').toLowerCase().startsWith('ko'));
+        if (!targetTrack) targetTrack = captionTracks.find(t => (t.languageCode || '').toLowerCase().startsWith('en'));
+        if (!targetTrack) targetTrack = captionTracks[0];
+
+        if (targetTrack && targetTrack.baseUrl) {
+          console.log(`[Th!nc-Extension] Found track via HTML scrape: ${targetTrack.languageCode}`);
+          let requestUrl = targetTrack.baseUrl;
+          if (requestUrl.includes('fmt=')) requestUrl = requestUrl.replace(/([&?])fmt=[^&]*/, '$1fmt=json3');
+          else requestUrl += (requestUrl.includes('?') ? '&' : '?') + 'fmt=json3';
+
+          const trackRes = await fetch(requestUrl, { signal: getTimeoutSignal(5000) });
+          const trackText = await trackRes.text();
+          if (trackText && trackText.includes('events')) {
+            const data = JSON.parse(trackText);
+            const segments = [];
+            if (data && Array.isArray(data.events)) {
+              for (const ev of data.events) {
+                if (!ev.segs) continue;
+                const text = ev.segs.map(s => s.utf8).join('').trim();
+                if (!text) continue;
+                const startSec = ev.startMs / 1000;
+                const durSec = (ev.durationMs || 1000) / 1000;
+                segments.push({ start: startSec, dur: durSec, text });
+              }
+            }
+            if (segments.length > 0) {
+              console.log(`[Th!nc-Extension] HTML scrape parse success: ${segments.length} segments`);
+              return { lang: targetTrack.languageCode, captions: segments };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Th!nc-Extension] HTML watch page scraping failed:', e.message);
+    }
+
     const clientSignatures = [
       {
         name: 'MWEB',
