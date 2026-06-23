@@ -5531,8 +5531,8 @@
 
       // Check if YouTube video is paused/stopped (if activeVideoId is set)
       // YT states: 2 = paused, 0 = ended, 5 = cued
-      // NOTE: playerState -1(unstarted) 는 ytPlayer 초기화 중에도 발생하므로 제외
-      const isPausedOrEnded = isLocalYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5);
+      // NOTE: Treat unstarted (-1) or non-playing states as paused during active analysis
+      const isPausedOrEnded = isLocalYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1 || !isVideoPlaying);
 
       // ── Sync captionPlaybackSec from ytPlayer directly each frame ──
       if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
@@ -5560,16 +5560,14 @@
         const analysisElapsedMs = Date.now() - analysisStartTime;
         const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
         
-        // Check if YouTube Player API is responding properly
-        const isPlayerResponding = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && timeSinceLastUpdate < 5000);
-        
         if (analysisElapsedMs > 3000) {
-          if (isPlayerResponding) {
-            // playerState가 명확히 2(paused)인 경우 또는
-            // 5초 이상 시간 업데이트 없고 재생 중이 아닌 경우에만 멈춤으로 판단
-            if (playerState === 2 || (!isVideoPlaying && timeSinceLastUpdate > 5000)) {
-              isPausedOrStopped = true;
-            }
+          // If state is not actively playing (1) or buffering (3), stop immediately
+          if (playerState !== 1 && playerState !== 3) {
+            isPausedOrStopped = true;
+          }
+          // If timeline playback position has frozen for more than 3 seconds, stop immediately
+          if (timeSinceLastUpdate > 3000) {
+            isPausedOrStopped = true;
           }
         }
 
