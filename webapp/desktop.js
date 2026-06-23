@@ -5531,7 +5531,8 @@
 
       // Check if YouTube video is paused/stopped (if activeVideoId is set)
       // YT states: 2 = paused, 0 = ended, 5 = cued
-      const isPausedOrEnded = isLocalYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || !isVideoPlaying);
+      // NOTE: playerState -1(unstarted) 는 ytPlayer 초기화 중에도 발생하므로 제외
+      const isPausedOrEnded = isLocalYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5);
 
       // ── Sync captionPlaybackSec from ytPlayer directly each frame ──
       if (isLocalYoutube && ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && isVideoPlaying) {
@@ -5545,34 +5546,30 @@
         } catch(e) {}
       }
 
-      // ── PAUSE / STOP / MUTE DETECTION ──
+      // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
       let isPausedOrStopped = false;
       let isMutedOrSilent = false;
 
-      // 1. Direct playerState check: paused(2), ended(0), cued(5), or isVideoPlaying=false
       if (isPausedOrEnded) {
         isPausedOrStopped = true;
-        // Snap displayedScore to 0 immediately on pause/stop (no lerp delay)
-        displayedScore = 0;
-        targetScore = 0;
       }
 
       if (isLocalYoutube && activeVideoId) {
+        // Grace period: first 3 seconds of analysis exempt from pause detection
+        // (gives YouTube Player API time to initialize and fire state events)
         const analysisElapsedMs = Date.now() - analysisStartTime;
         const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
-
+        
+        // Check if YouTube Player API is responding properly
+        const isPlayerResponding = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && timeSinceLastUpdate < 5000);
+        
         if (analysisElapsedMs > 3000) {
-          // If state is not actively playing (1) or buffering (3), stop
-          if (playerState !== 1 && playerState !== 3) {
-            isPausedOrStopped = true;
-            displayedScore = 0;
-            targetScore = 0;
-          }
-          // Fallback: if playback time has frozen >3s while claiming to play
-          if (timeSinceLastUpdate > 3000 && !isVideoPlaying) {
-            isPausedOrStopped = true;
-            displayedScore = 0;
-            targetScore = 0;
+          if (isPlayerResponding) {
+            // playerState가 명확히 2(paused)인 경우 또는
+            // 5초 이상 시간 업데이트 없고 재생 중이 아닌 경우에만 멈춤으로 판단
+            if (playerState === 2 || (!isVideoPlaying && timeSinceLastUpdate > 5000)) {
+              isPausedOrStopped = true;
+            }
           }
         }
 
@@ -5658,19 +5655,6 @@
         targetScore = 0;
         result.stressScore = 0;
         result.isSilent = true; // force silent flag for UI metrics reset
-        result.aiProbability = 0; // force AI probability to 0 when silent/paused
-        
-        // Ensure result.diagnostic values are zeroed/silenced
-        if (!result.diagnostic) {
-          result.diagnostic = {};
-        }
-        result.diagnostic.vadStatus = 'NO_VOICE';
-        result.diagnostic.snrDb = 0;
-        result.diagnostic.confidence = 0;
-        result.diagnostic.rms = 0;
-        result.diagnostic.noiseFloor = 0;
-        result.diagnostic.dataSource = 'SILENT';
-
         // If it's a caption gap or silent, make sure metrics inside result are zeroed
         if (result.metrics) {
           result.metrics.jitter = '0.0000';
