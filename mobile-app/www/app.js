@@ -4706,6 +4706,7 @@
         targetScore = 0;
         result.stressScore = 0;
         result.isSilent = true; // force silent flag for UI metrics reset
+        result.aiProbability = 0; // force AI probability to 0 when silent/paused
         // If it's a caption gap or silent, make sure metrics inside result are zeroed
         if (result.metrics) {
           result.metrics.jitter = '0.0000';

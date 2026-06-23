@@ -5653,6 +5653,19 @@
         targetScore = 0;
         result.stressScore = 0;
         result.isSilent = true; // force silent flag for UI metrics reset
+        result.aiProbability = 0; // force AI probability to 0 when silent/paused
+        
+        // Ensure result.diagnostic values are zeroed/silenced
+        if (!result.diagnostic) {
+          result.diagnostic = {};
+        }
+        result.diagnostic.vadStatus = 'NO_VOICE';
+        result.diagnostic.snrDb = 0;
+        result.diagnostic.confidence = 0;
+        result.diagnostic.rms = 0;
+        result.diagnostic.noiseFloor = 0;
+        result.diagnostic.dataSource = 'SILENT';
+
         // If it's a caption gap or silent, make sure metrics inside result are zeroed
         if (result.metrics) {
           result.metrics.jitter = '0.0000';
