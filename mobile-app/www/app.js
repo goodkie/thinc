@@ -2770,6 +2770,11 @@
     altVideo.addEventListener('pause', () => {
       isVideoPlaying = false;
       isPausedOrStopped = true;
+      targetScore = 0;
+      displayedScore = 0;
+      if (typeof updateDetectorUI === 'function') {
+        updateDetectorUI({ isSilent: true, stressScore: 0, aiProbability: 0, metrics: { lvp: 0, microT: 0, spectral: 0, jitter: '0.0000', shimmer: '0.0000', hnr: '0.0000', pdr: '0.0000' } }, 0);
+      }
     });
 
     altVideo.addEventListener('ended', () => {
@@ -4289,6 +4294,16 @@
   function onPlayerStateChange(event) {
     // 1: PLAYING, 3: BUFFERING
     isVideoPlaying = (event.data === 1 || event.data === 3);
+    if (event.data === 2 || event.data === 0) { // PAUSED or ENDED
+      isPausedOrStopped = true;
+      targetScore = 0;
+      displayedScore = 0;
+      if (typeof updateDetectorUI === 'function') {
+        updateDetectorUI({ isSilent: true, stressScore: 0, aiProbability: 0, metrics: { lvp: 0, microT: 0, spectral: 0, jitter: '0.0000', shimmer: '0.0000', hnr: '0.0000', pdr: '0.0000' } }, 0);
+      }
+    } else if (isVideoPlaying) {
+      isPausedOrStopped = false;
+    }
     if (isVideoPlaying && ytBlockedTimer) {
       clearTimeout(ytBlockedTimer);
       const blockedOverlay = document.getElementById('yt-blocked-overlay');
