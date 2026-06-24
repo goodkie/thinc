@@ -4493,13 +4493,10 @@
       
       let isYtPausedOrEnded = false;
       if (activeVideoId && !isAltPlayerActive) {
-        if (isPlayerResponding) {
-          isYtPausedOrEnded = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
-        } else {
-          // 우회 플레이어(Invidious, Piped 등)나 API 반응 없을 때는
-          // unstarted(-1)나 cued(5)를 일시정지로 판정하지 않고, 명시적 멈춤(2)이나 종료(0)만 멈춤으로 인정
-          isYtPausedOrEnded = (playerState === 2 || playerState === 0);
-        }
+        // playerState가 명시적으로 2(paused), 0(ended), 5(cued), -1(unstarted)이거나
+        // API 상태가 정상 응답하지 않으면서 재생 중이 아닌 경우 일시정지/멈춤으로 신속하게 판정
+        const isYtApiPaused = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
+        isYtPausedOrEnded = isYtApiPaused || (!isVideoPlaying && timeSinceLastUpdate > 3000);
       }
 
       const isPausedOrEnded = isYtPausedOrEnded || isAltPausedOrEnded;
@@ -5058,8 +5055,9 @@
     }
 
     // 2. Expert metrics display
-    if (viewMode === 'expert') {
-      document.getElementById('exp-jitter').innerText = result.metrics.jitter || '0.0000';
+    const expJitter = document.getElementById('exp-jitter');
+    if (expJitter) {
+      expJitter.innerText = result.metrics.jitter || '0.0000';
       document.getElementById('exp-shimmer').innerText = result.metrics.shimmer || '0.0000';
       document.getElementById('exp-hnr').innerText = result.metrics.hnr || '0.00';
       document.getElementById('exp-ai').innerText = `${Math.round(result.aiProbability || 0)}%`;
