@@ -5562,7 +5562,6 @@
         // 동영상이 일시정지되거나 끝나면 모든 분석 기능도 일시정지되고 0으로 후퇴시킵니다.
         displayedScore = 0;
         targetScore = 0;
-        finalScore = 0;
         currentSubtitle = "";
         
         const zeroResult = {
