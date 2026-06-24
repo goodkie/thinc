@@ -2787,7 +2787,7 @@
       targetScore = 0;
       displayedScore = 0;
       if (typeof updateDetectorUI === 'function') {
-        updateDetectorUI({ isSilent: true, stressScore: 0, aiProbability: 0, isMusic: false, gainStatus: 'IDLE', metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', mti: '0.0000', fi: '0.0000', pdr: '0.0000' } }, 0);
+        updateDetectorUI({ isSilent: true, stressScore: 0, aiProbability: 0, metrics: { lvp: 0, microT: 0, spectral: 0, jitter: '0.0000', shimmer: '0.0000', hnr: '0.0000', pdr: '0.0000' } }, 0);
       }
     });
 
@@ -4619,21 +4619,40 @@
         } catch(e) {}
       }
 
-      // Check if YouTube video is paused/stopped (if activeVideoId is set)
-      // YT states: 2 = paused, 0 = ended, 5 = cued, -1 = unstarted
-      const isPausedOrEnded = activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
+      // Check if video is paused/stopped (both YouTube and local video player)
+      const altVideo = document.getElementById('alt-player');
+      const isAltPausedOrEnded = isAltPlayerActive && altVideo && (altVideo.paused || altVideo.ended);
+      const isPausedOrEnded = (activeVideoId && !isAltPlayerActive && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1)) || isAltPausedOrEnded;
 
       if (isPausedOrEnded) {
-        // ── 동영상 일시정지/종료 → 모든 분석 즉시 중단 + 지표 0 초기화 ──
-        targetScore = 0;
+        // 동영상이 일시정지되거나 끝나면 모든 분석 기능도 일시정지되고 0으로 후퇴시킵니다.
         displayedScore = 0;
-        if (typeof updateDetectorUI === 'function') {
-          updateDetectorUI({
-            isSilent: true, stressScore: 0, aiProbability: 0, isMusic: false,
-            gainStatus: 'IDLE',
-            metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', mti: '0.0000', fi: '0.0000', pdr: '0.0000' }
-          }, 0);
-        }
+        targetScore = 0;
+        finalScore = 0;
+        currentSubtitle = "";
+        
+        const zeroResult = {
+          stressScore: 0,
+          isSilent: true,
+          isMusic: false,
+          aiProbability: 0,
+          gainStatus: 'IDLE',
+          metrics: {
+            jitter: '0.0000',
+            shimmer: '0.0000',
+            hnr: '0.00',
+            entropy: 0,
+            mti: 0.0000,
+            fi: 0.0000,
+            pdr: 0.0000
+          }
+        };
+
+        updateDetectorUI(zeroResult, 0);
+        drawHistoryCharts(zeroResult, 0);
+        drawLiveReliabilityBar();
+        updateLiveTruthBar();
+
         animationId = requestAnimationFrame(loop);
         return;
       }
