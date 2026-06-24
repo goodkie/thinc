@@ -5640,10 +5640,24 @@
         } catch(e) {}
       }
 
+      // Check if YouTube Player API is responding properly
+      const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
+      const isPlayerResponding = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && timeSinceLastUpdate < 5000);
+
       // Check if video is paused/stopped (both YouTube and local video player)
       const altVideo = document.getElementById('alt-player');
       const isAltPausedOrEnded = isAltPlayerActive && altVideo && (altVideo.paused || altVideo.ended);
-      const isPausedOrEnded = (isLocalYoutube && activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1)) || isAltPausedOrEnded;
+      
+      let isYtPausedOrEnded = false;
+      if (isLocalYoutube && activeVideoId) {
+        if (isPlayerResponding) {
+          isYtPausedOrEnded = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
+        } else {
+          isYtPausedOrEnded = (playerState === 2 || playerState === 0);
+        }
+      }
+
+      const isPausedOrEnded = isYtPausedOrEnded || isAltPausedOrEnded;
 
       if (isPausedOrEnded) {
         // 동영상이 일시정지되거나 끝나면 모든 분석 기능도 일시정지되고 0으로 후퇴시킵니다.
