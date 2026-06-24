@@ -328,7 +328,7 @@
               position: relative;
             ">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-                <div style="color:#00f2fe;font-weight:700;font-size:11px;letter-spacing:1px;">🔬 VOICE PIPELINE DIAGNOSTIC v1.5.81</div>
+                <div style="color:#00f2fe;font-weight:700;font-size:11px;letter-spacing:1px;">🔬 VOICE PIPELINE DIAGNOSTIC v1.5.80</div>
                 <button id="diag-close-btn" style="background:rgba(255,65,108,0.15);border:1px solid rgba(255,65,108,0.3);color:#ff416c;padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;">✕ CLOSE</button>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -606,6 +606,22 @@
                 <div class="setting-label">기만 감지 시 리포트 자동 표시</div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="toggle-autoshow" checked>
+                  <span class="toggle-knob"></span>
+                </label>
+              </div>
+
+              <div class="setting-group setting-inline">
+                <div class="setting-label" id="label-toggle-vsa">음성 파동 분석 (VSA)</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="toggle-vsa" checked>
+                  <span class="toggle-knob"></span>
+                </label>
+              </div>
+
+              <div class="setting-group setting-inline">
+                <div class="setting-label" id="label-toggle-caption">자막 텍스트 분석 (Linguistic)</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="toggle-caption">
                   <span class="toggle-knob"></span>
                 </label>
               </div>

@@ -12,9 +12,13 @@
   let currentLang = 'en';
   let screenshotCount = 3;
   let autoShow = true;
+  let enableVSA = true;
+  let enableCaption = false;
   let tempLang = 'en';
   let tempScreenshotCount = 3;
   let tempAutoShow = true;
+  let tempEnableVSA = true;
+  let tempEnableCaption = false;
   
   // Real-time analysis variables
   let audioCtx = null;
@@ -5665,6 +5669,20 @@
 
       // ── SILENCE / MUSIC / PAUSED / MUTED / CAPTION GAP: immediate zero ──
       const isSilentOrMusicOrPaused = result.isSilent || result.isMusic || isPausedOrStopped || isMutedOrSilent || isCaptionGap;
+      
+      // VSA Toggle Check: if VSA is disabled, force stressScore and metrics to 0
+      if (!enableVSA) {
+        result.stressScore = 0;
+        if (result.metrics) {
+          result.metrics.jitter = '0.0000';
+          result.metrics.shimmer = '0.0000';
+          result.metrics.hnr = '0.00';
+          result.metrics.mti = 0.0000;
+          result.metrics.fi = 0.0000;
+          result.metrics.pdr = 0.0000;
+        }
+      }
+
       if (isSilentOrMusicOrPaused) {
         displayedScore = 0;
         targetScore = 0;
@@ -5688,7 +5706,7 @@
 
       // PSYCHOLINGUISTIC ANALYSIS MODULE (PLM)
       let linguisticBias = 0;
-      if (currentSubtitle && !isSilentOrMusicOrPaused) {
+      if (enableCaption && currentSubtitle && !isSilentOrMusicOrPaused) {
         const text = currentSubtitle.toLowerCase();
         
         // 1. Self-Reference Reduction (Linguistic Distancing)
@@ -5725,7 +5743,18 @@
       // Add reliability bias
       const relBias = ((videoMetadata.reliability || 70) - 50) * 0.05;
 
-      let finalScore = isSilentOrMusicOrPaused ? 0 : Math.min(99, Math.max(5, Math.round(displayedScore + linguisticBias - relBias)));
+      let finalScore = 0;
+      if (!isSilentOrMusicOrPaused) {
+        if (!enableVSA && !enableCaption) {
+          finalScore = 0;
+        } else if (!enableVSA) {
+          finalScore = Math.min(99, Math.max(0, Math.round(linguisticBias - relBias)));
+        } else if (!enableCaption) {
+          finalScore = Math.min(99, Math.max(5, Math.round(displayedScore - relBias)));
+        } else {
+          finalScore = Math.min(99, Math.max(5, Math.round(displayedScore + linguisticBias - relBias)));
+        }
+      }
       mockTick++;
 
       // ===== REAL-TIME CAPTION FEED ENGINE =====
@@ -6744,10 +6773,14 @@
         currentLang = savedSettings.language || detectBrowserLanguage() || 'en';
         screenshotCount = savedSettings.screenshotCount !== undefined ? savedSettings.screenshotCount : 3;
         autoShow = savedSettings.autoShow !== undefined ? savedSettings.autoShow : true;
+        enableVSA = savedSettings.enableVSA !== undefined ? savedSettings.enableVSA : true;
+        enableCaption = savedSettings.enableCaption !== undefined ? savedSettings.enableCaption : false;
       } catch (e) {
         currentLang = detectBrowserLanguage() || 'en';
         screenshotCount = 3;
         autoShow = true;
+        enableVSA = true;
+        enableCaption = false;
       }
     } else {
       // Compatibility fallback
@@ -6761,6 +6794,8 @@
     tempLang = currentLang;
     tempScreenshotCount = screenshotCount;
     tempAutoShow = autoShow;
+    tempEnableVSA = enableVSA;
+    tempEnableCaption = enableCaption;
 
     // Helper functions for UI sync
     function syncSettingsUI() {
@@ -6781,6 +6816,12 @@
       // Autoshow toggle
       const toggleAutoshow = document.getElementById('toggle-autoshow');
       if (toggleAutoshow) toggleAutoshow.checked = tempAutoShow;
+
+      const toggleVSA = document.getElementById('toggle-vsa');
+      if (toggleVSA) toggleVSA.checked = tempEnableVSA;
+
+      const toggleCaption = document.getElementById('toggle-caption');
+      if (toggleCaption) toggleCaption.checked = tempEnableCaption;
     }
 
     function syncMainUI() {
@@ -6810,6 +6851,20 @@
       });
     }
 
+    const toggleVSA = document.getElementById('toggle-vsa');
+    if (toggleVSA) {
+      toggleVSA.addEventListener('change', (e) => {
+        tempEnableVSA = e.target.checked;
+      });
+    }
+
+    const toggleCaption = document.getElementById('toggle-caption');
+    if (toggleCaption) {
+      toggleCaption.addEventListener('change', (e) => {
+        tempEnableCaption = e.target.checked;
+      });
+    }
+
     // Screenshot count settings buttons (temp selection only)
     const setShotMinus = document.getElementById('set-shot-minus');
     const setShotPlus = document.getElementById('set-shot-plus');
@@ -6835,12 +6890,16 @@
         currentLang = tempLang;
         screenshotCount = tempScreenshotCount;
         autoShow = tempAutoShow;
+        enableVSA = tempEnableVSA;
+        enableCaption = tempEnableCaption;
 
         // Persist to local storage
         localStorage.setItem('thinc_settings', JSON.stringify({
           language: currentLang,
           screenshotCount: screenshotCount,
-          autoShow: autoShow
+          autoShow: autoShow,
+          enableVSA: enableVSA,
+          enableCaption: enableCaption
         }));
 
         // Synchronize main view UI elements
@@ -7446,7 +7505,9 @@
     localStorage.setItem('thinc_settings', JSON.stringify({
       language: currentLang,
       screenshotCount: screenshotCount,
-      autoShow: autoShow
+      autoShow: autoShow,
+      enableVSA: enableVSA,
+      enableCaption: enableCaption
     }));
 
     document.getElementById('shot-count-display').innerText = screenshotCount;
