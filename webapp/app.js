@@ -4484,24 +4484,16 @@
         } catch(e) {}
       }
 
-      // Check if YouTube Player API is responding properly
-      const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
-      const isPlayerResponding = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && timeSinceLastUpdate < 5000);
-
       // Check if video is paused/stopped (both YouTube and local video player)
+      // NOTE: playerState -1(unstarted) and 5(cued) are loading states, NOT paused.
+      // Only treat 0(ended) and 2(paused) as explicit stop states.
       const altVideo = document.getElementById('alt-player');
       const isAltPausedOrEnded = isAltPlayerActive && altVideo && (altVideo.paused || altVideo.ended);
       
-      let isYtPausedOrEnded = false;
-      if (activeVideoId && !isAltPlayerActive) {
-        if (isPlayerResponding) {
-          isYtPausedOrEnded = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
-        } else {
-          // 우회 플레이어(Invidious, Piped 등)나 API 반응 없을 때는
-          // unstarted(-1)나 cued(5)를 일시정지로 판정하지 않고, 명시적 멈춤(2)이나 종료(0)만 멈춤으로 인정
-          isYtPausedOrEnded = (playerState === 2 || playerState === 0);
-        }
-      }
+      // isYtPausedOrEnded: only fired when YouTube player explicitly paused(2) or ended(0)
+      const isYtPausedOrEnded = (activeVideoId && !isAltPlayerActive)
+        ? (playerState === 2 || playerState === 0)
+        : false;
 
       const isPausedOrEnded = isYtPausedOrEnded || isAltPausedOrEnded;
 

@@ -5553,22 +5553,16 @@
         } catch(e) {}
       }
 
-      // Check if YouTube Player API is responding properly
-      const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
-      const isPlayerResponding = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && timeSinceLastUpdate < 5000);
-
       // Check if video is paused/stopped (both YouTube and local video player)
+      // NOTE: playerState -1(unstarted) and 5(cued) are loading states, NOT paused.
+      // Only treat 0(ended) and 2(paused) as explicit stop states.
       const altVideo = document.getElementById('alt-player');
       const isAltPausedOrEnded = isAltPlayerActive && altVideo && (altVideo.paused || altVideo.ended);
       
-      let isYtPausedOrEnded = false;
-      if (isLocalYoutube && activeVideoId) {
-        if (isPlayerResponding) {
-          isYtPausedOrEnded = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
-        } else {
-          isYtPausedOrEnded = (playerState === 2 || playerState === 0);
-        }
-      }
+      // isYtPausedOrEnded: only fired when YouTube player explicitly paused(2) or ended(0)
+      const isYtPausedOrEnded = (isLocalYoutube && activeVideoId)
+        ? (playerState === 2 || playerState === 0)
+        : false;
 
       const isPausedOrEnded = isYtPausedOrEnded || isAltPausedOrEnded;
 
