@@ -1309,13 +1309,7 @@ async function fetchYoutubeTimedTextOfficialBackend(videoId) {
   
   let listXml = '';
   try {
-    listXml = await new Promise((resolve, reject) => {
-      https.get(listUrl, options, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(data));
-      }).on('error', reject);
-    });
+    listXml = await fetchWithBackendProxy(listUrl, options);
   } catch (e) {
     console.warn("Failed to fetch timedtext list on backend:", e.message);
   }
@@ -1357,13 +1351,7 @@ async function fetchYoutubeTimedTextOfficialBackend(videoId) {
 
   for (const url of subUrls) {
     try {
-      const xml = await new Promise((resolve, reject) => {
-        https.get(url, options, (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => resolve(data));
-        }).on('error', reject);
-      });
+      const xml = await fetchWithBackendProxy(url, options);
 
       if (xml && xml.includes('<text')) {
         const regex = /<text\s+start="([\d.]+)"\s+dur="([\d.]+)"[^>]*>([\s\S]*?)<\/text>/gi;
@@ -1928,6 +1916,57 @@ async function fetchInvidiousCaptionsFallback(videoId) {
   }
 }
 
+const BACKEND_CORS_PROXIES = [
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  url => `https://proxy.corsfix.com/?${url}`
+];
+
+async function fetchWithBackendProxy(targetUrl, options = {}) {
+  // 1순위: 다이렉트 fetch 시도
+  try {
+    const data = await new Promise((resolve, reject) => {
+      const req = https.get(targetUrl, options, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => resolve(body));
+      });
+      req.on('error', reject);
+      req.setTimeout(4000, () => { req.destroy(); reject(new Error('Timeout')); });
+    });
+    if (data && data.length > 50 && !data.includes('pricing') && !data.includes('Access Denied')) {
+      return data;
+    }
+    console.warn(`[Backend Proxy] Direct fetch returned invalid data (length: ${data ? data.length : 0})`);
+  } catch (err) {
+    console.warn(`[Backend Proxy] Direct fetch failed for ${targetUrl}:`, err.message);
+  }
+
+  // 2순위: 백엔드 프록시 순회
+  for (const getProxyUrl of BACKEND_CORS_PROXIES) {
+    try {
+      const proxyUrl = getProxyUrl(targetUrl);
+      console.log(`[Backend Proxy] Trying proxy: ${proxyUrl}`);
+      const data = await new Promise((resolve, reject) => {
+        const req = https.get(proxyUrl, { timeout: 5000 }, (res) => {
+          let body = '';
+          res.on('data', chunk => body += chunk);
+          res.on('end', () => resolve(body));
+        });
+        req.on('error', reject);
+        req.setTimeout(5000, () => { req.destroy(); reject(new Error('Proxy Timeout')); });
+      });
+      if (data && data.length > 50 && !data.includes('pricing') && !data.includes('Access Denied')) {
+        return data;
+      }
+      console.warn(`[Backend Proxy] Proxy returned invalid data (length: ${data ? data.length : 0})`);
+    } catch (err) {
+      console.warn(`[Backend Proxy] Proxy failed:`, err.message);
+    }
+  }
+  throw new Error("All backend proxy attempts failed");
+}
+
 async function getYouTubeTranscriptDirect(videoId, lang) {
   const pageUrl = `https://www.youtube.com/watch?v=${videoId}`;
   const headers = {
@@ -2173,13 +2212,7 @@ async function getYouTubeTranscriptDirect(videoId, lang) {
   const jsonUrl = track.baseUrl + (track.baseUrl.includes('?') ? '&' : '?') + 'fmt=json3';
   let jsonText = '';
   try {
-    jsonText = await new Promise((resolve, reject) => {
-      https.get(jsonUrl, { headers: downloadHeaders }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(data));
-      }).on('error', reject);
-    });
+    jsonText = await fetchWithBackendProxy(jsonUrl, { headers: downloadHeaders });
   } catch (e) {
     console.warn("[getYouTubeTranscriptDirect] JSON3 fetch failed, will try srv1 fallback:", e.message);
   }
@@ -2211,22 +2244,14 @@ async function getYouTubeTranscriptDirect(videoId, lang) {
   const dlUrl = track.baseUrl + (track.baseUrl.includes('?') ? '&' : '?') + 'fmt=srv1';
   let xml = '';
   try {
-    xml = await new Promise((resolve, reject) => {
-      https.get(dlUrl, { headers: downloadHeaders }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(data));
-      }).on('error', reject);
-    });
+    xml = await fetchWithBackendProxy(dlUrl, { headers: downloadHeaders });
   } catch (e) {
-    console.warn("Direct download of track failed, falling back to general headers:", e.message);
-    xml = await new Promise((resolve, reject) => {
-      https.get(dlUrl, { headers }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(data));
-      }).on('error', reject);
-    });
+    console.warn("Direct download of track failed, falling back to general headers proxy:", e.message);
+    try {
+      xml = await fetchWithBackendProxy(dlUrl, { headers });
+    } catch (e2) {
+      console.warn("All srv1 xml fetch attempts failed:", e2.message);
+    }
   }
 
   if (!xml || !xml.includes('<text')) {

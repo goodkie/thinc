@@ -1922,8 +1922,7 @@
     url => `https://api.cors.lol/?url=${encodeURIComponent(url)}`,
     url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     url => `https://cors.eu.org/${url}`,
-    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    url => `https://corsproxy.org/?${encodeURIComponent(url)}`
+    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
   ];
 
   async function fetchViaCORSProxy(targetUrl) {
@@ -4619,16 +4618,22 @@
         } catch(e) {}
       }
 
+      // Check if YouTube Player API is responding properly
+      const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
+      const isPlayerResponding = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && timeSinceLastUpdate < 5000);
+
       // Check if video is paused/stopped (both YouTube and local video player)
-      // NOTE: playerState -1(unstarted) and 5(cued) are loading states, NOT paused.
-      // Only treat 0(ended) and 2(paused) as explicit stop states.
       const altVideo = document.getElementById('alt-player');
       const isAltPausedOrEnded = isAltPlayerActive && altVideo && (altVideo.paused || altVideo.ended);
       
-      // isYtPausedOrEnded: only fired when YouTube player explicitly paused(2) or ended(0)
-      const isYtPausedOrEnded = (activeVideoId && !isAltPlayerActive)
-        ? (playerState === 2 || playerState === 0)
-        : false;
+      let isYtPausedOrEnded = false;
+      if (activeVideoId && !isAltPlayerActive) {
+        if (isPlayerResponding) {
+          isYtPausedOrEnded = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
+        } else {
+          isYtPausedOrEnded = (playerState === 2 || playerState === 0);
+        }
+      }
 
       const isPausedOrEnded = isYtPausedOrEnded || isAltPausedOrEnded;
 
@@ -4677,8 +4682,8 @@
       }
 
       // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
-      let isPausedOrStopped = false;
-      let isMutedOrSilent = false;
+      isPausedOrStopped = false;
+      isMutedOrSilent = false;
       if (activeVideoId) {
         // Grace period: first 3 seconds of analysis exempt from pause detection
         // (gives YouTube Player API time to initialize and fire state events)
