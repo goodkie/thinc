@@ -2698,6 +2698,11 @@
     altVideo.addEventListener('ended', () => {
       isVideoPlaying = false;
       isPausedOrStopped = true;
+      targetScore = 0;
+      displayedScore = 0;
+      if (typeof updateDetectorUI === 'function') {
+        updateDetectorUI({ isSilent: true, stressScore: 0, aiProbability: 0, isMusic: false, gainStatus: 'IDLE', metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', mti: '0.0000', fi: '0.0000', pdr: '0.0000' } }, 0);
+      }
     });
 
     altVideo.addEventListener('timeupdate', () => {
@@ -4484,7 +4489,16 @@
       const isPausedOrEnded = activeVideoId && (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
 
       if (isPausedOrEnded) {
-        // 동영상이 멈췄을 때는 점수나 플로팅 누적 바그래프를 초기화하지 않고, 분석 루프만 대기 상태로 유지합니다.
+        // ── 동영상 일시정지/종료 → 모든 분석 즉시 중단 + 지표 0 초기화 ──
+        targetScore = 0;
+        displayedScore = 0;
+        if (typeof updateDetectorUI === 'function') {
+          updateDetectorUI({
+            isSilent: true, stressScore: 0, aiProbability: 0, isMusic: false,
+            gainStatus: 'IDLE',
+            metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', mti: '0.0000', fi: '0.0000', pdr: '0.0000' }
+          }, 0);
+        }
         animationId = requestAnimationFrame(loop);
         return;
       }

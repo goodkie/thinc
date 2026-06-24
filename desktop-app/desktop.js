@@ -3424,6 +3424,11 @@
     altVideo.addEventListener('ended', () => {
       isVideoPlaying = false;
       isPausedOrStopped = true;
+      targetScore = 0;
+      displayedScore = 0;
+      if (typeof updateDetectorUI === 'function') {
+        updateDetectorUI({ isSilent: true, stressScore: 0, aiProbability: 0, isMusic: false, gainStatus: 'IDLE', metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', mti: '0.0000', fi: '0.0000', pdr: '0.0000' } }, 0);
+      }
     });
 
     altVideo.addEventListener('timeupdate', () => {
@@ -5571,6 +5576,16 @@
 
       if (isPausedOrEnded) {
         isPausedOrStopped = true;
+        // ── 동영상 일시정지/종료 → 모든 분석 즉시 중단 + 지표 0 초기화 ──
+        targetScore = 0;
+        displayedScore = 0;
+        if (typeof updateDetectorUI === 'function') {
+          updateDetectorUI({
+            isSilent: true, stressScore: 0, aiProbability: 0, isMusic: false,
+            gainStatus: 'IDLE',
+            metrics: { jitter: '0.0000', shimmer: '0.0000', hnr: '0.00', mti: '0.0000', fi: '0.0000', pdr: '0.0000' }
+          }, 0);
+        }
       }
 
       if (isLocalYoutube && activeVideoId) {
