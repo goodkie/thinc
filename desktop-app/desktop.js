@@ -38,6 +38,8 @@
 
   // YouTube player state tracking
   let isVideoPlaying = false;
+  let isPausedOrStopped = false;
+  let isMutedOrSilent = false;
   let lastTimeUpdate = Date.now();
   let lastTimeValue = -1;
   let analysisStartTime = 0;
@@ -5538,8 +5540,7 @@
     function loop() {
       if (!isRunning) return;
 
-      // Reset mute/paused states for this evaluation frame
-      isPausedOrStopped = false;
+      // isPausedOrStopped는 onPlayerStateChange 이벤트가 관리하므로 여기서 리셋하지 않습니다
       isMutedOrSilent = false;
 
       const sensitivity = parseInt(document.getElementById('sens-slider').value);
@@ -5564,12 +5565,11 @@
       const altVideo = document.getElementById('alt-player');
       const isAltPausedOrEnded = isAltPlayerActive && altVideo && (altVideo.paused || altVideo.ended);
       
+      // 이벤트 기반 + API 폴링으로 정지 상태 감지 (시간 기반 오인 감지 제거)
       let isYtPausedOrEnded = false;
       if (isLocalYoutube && activeVideoId) {
-        // playerState가 명시적으로 2(paused), 0(ended), 5(cued), -1(unstarted)이거나
-        // API 상태가 정상 응답하지 않으면서 재생 중이 아닌 경우 일시정지/멈춤으로 신속하게 판정
-        const isYtApiPaused = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
-        isYtPausedOrEnded = isYtApiPaused || (!isVideoPlaying && timeSinceLastUpdate > 3000);
+        const isYtApiPaused = (playerState === 2 || playerState === 0);
+        isYtPausedOrEnded = isYtApiPaused || isPausedOrStopped;
       }
 
       const isPausedOrEnded = isYtPausedOrEnded || isAltPausedOrEnded;
@@ -5606,26 +5606,9 @@
         return;
       }
 
+      // isPausedOrStopped는 onPlayerStateChange 이벤트가 단독 관리 — 루프에서 절대 덮어쓰지 않음
       if (isLocalYoutube && activeVideoId) {
-        // Grace period: first 3 seconds of analysis exempt from pause detection
-        // (gives YouTube Player API time to initialize and fire state events)
-        const analysisElapsedMs = Date.now() - analysisStartTime;
-        const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
-        
-        // Check if YouTube Player API is responding properly
-        const isPlayerResponding = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && timeSinceLastUpdate < 5000);
-        
-        if (analysisElapsedMs > 3000) {
-          if (isPlayerResponding) {
-            // playerState가 명확히 2(paused)인 경우 또는
-            // 5초 이상 시간 업데이트 없고 재생 중이 아닌 경우에만 멈춤으로 판단
-            if (playerState === 2 || (!isVideoPlaying && timeSinceLastUpdate > 5000)) {
-              isPausedOrStopped = true;
-            }
-          }
-        }
-
-        // Mute state detection
+        // Mute state detection only (pause state is event-driven)
         if (ytPlayer) {
           if (typeof ytPlayer.isMuted === 'function' && ytPlayer.isMuted()) isMutedOrSilent = true;
           if (typeof ytPlayer.getVolume === 'function' && ytPlayer.getVolume() === 0) isMutedOrSilent = true;
