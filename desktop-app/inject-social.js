@@ -660,6 +660,24 @@
             triggerCaptionsExtraction(videoId);
           }
         });
+        vid.addEventListener('pause', () => {
+          const videoId = parseVideoId(location.href);
+          if (videoId) {
+            console.log('[THINC-PLAYBACK-PAUSE]' + JSON.stringify({
+              videoId,
+              platform: location.hostname
+            }));
+          }
+        });
+        vid.addEventListener('ended', () => {
+          const videoId = parseVideoId(location.href);
+          if (videoId) {
+            console.log('[THINC-PLAYBACK-PAUSE]' + JSON.stringify({
+              videoId,
+              platform: location.hostname
+            }));
+          }
+        });
       }
 
       // 비디오가 재생 중이면 현재 재생 시간(currentTime)을 주기적으로 부모 렌더러에 중계
