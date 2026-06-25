@@ -50,6 +50,8 @@ webapp/test_*.js
 webapp/yt_icon_active.png
 webapp/yt_page.html
 TheTruthUntold-Windows-x64-v1.5.*/
+TheTruthUntold-Windows-x64-v1.6.*/
+TheTruthUntold-Windows-x64-*/
 desktop-app/dist/
 desktop-app/node_modules/
 chrome-temp-profile/

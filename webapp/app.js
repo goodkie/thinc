@@ -4491,18 +4491,23 @@
       const altVideo = document.getElementById('alt-player');
       const isAltPausedOrEnded = isAltPlayerActive && altVideo && (altVideo.paused || altVideo.ended);
       
+      // Grace period: 분석 시작 후 5초 동안은 일시정지 판정을 건너뜁니다
+      const analysisElapsedMsGrace = Date.now() - analysisStartTime;
+      const inGracePeriod = analysisElapsedMsGrace < 5000;
+      
       let isYtPausedOrEnded = false;
-      if (activeVideoId && !isAltPlayerActive) {
-        // playerState가 명시적으로 2(paused), 0(ended), 5(cued), -1(unstarted)이거나
-        // API 상태가 정상 응답하지 않으면서 재생 중이 아닌 경우 일시정지/멈춤으로 신속하게 판정
-        const isYtApiPaused = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
-        isYtPausedOrEnded = isYtApiPaused || (!isVideoPlaying && timeSinceLastUpdate > 3000);
+      if (!inGracePeriod && activeVideoId && !isAltPlayerActive) {
+        // 명확하게 일시정지(2) 또는 종료(0)인 경우만 판정합니다
+        // -1(unstarted), 5(cued)는 초기화 중 상태이므로 일시정지로 취급하지 않습니다
+        const isYtApiPaused = (playerState === 2 || playerState === 0);
+        const isApiUnresponsive = (!isVideoPlaying && timeSinceLastUpdate > 8000);
+        isYtPausedOrEnded = isYtApiPaused || isApiUnresponsive;
       }
 
       const isPausedOrEnded = isYtPausedOrEnded || isAltPausedOrEnded;
 
       if (isPausedOrEnded) {
-        // 동영상이 일시정지되거나 끝나면 모든 분석 기능도 일시정지되고 0으로 후퇴시킵니다.
+        // 동영상이 일시정지되거나 끝나면 모든 분석 기능도 즉시 0으로 리셋합니다
         displayedScore = 0;
         targetScore = 0;
         currentSubtitle = "";
@@ -4513,14 +4518,15 @@
           isMusic: false,
           aiProbability: 0,
           gainStatus: 'IDLE',
+          internalGain: '1.0',
           metrics: {
             jitter: '0.0000',
             shimmer: '0.0000',
             hnr: '0.00',
             entropy: 0,
-            mti: 0.0000,
-            fi: 0.0000,
-            pdr: 0.0000
+            mti: '0.0000',
+            fi: '0.0000',
+            pdr: '0.0000'
           }
         };
 
