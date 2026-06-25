@@ -2689,9 +2689,28 @@
       isPausedOrStopped = true;
       targetScore = 0;
       displayedScore = 0;
-      if (typeof updateDetectorUI === 'function') {
-        updateDetectorUI({ isSilent: true, stressScore: 0, aiProbability: 0, metrics: { lvp: 0, microT: 0, spectral: 0, jitter: '0.0000', shimmer: '0.0000', hnr: '0.0000', pdr: '0.0000' } }, 0);
-      }
+      currentSubtitle = '';
+      const zeroResult = {
+        stressScore: 0,
+        isSilent: true,
+        isMusic: false,
+        aiProbability: 0,
+        gainStatus: 'IDLE',
+        internalGain: '1.0',
+        metrics: {
+          jitter: '0.0000',
+          shimmer: '0.0000',
+          hnr: '0.00',
+          entropy: 0,
+          mti: '0.0000',
+          fi: '0.0000',
+          pdr: '0.0000'
+        }
+      };
+      if (typeof updateDetectorUI === 'function') updateDetectorUI(zeroResult, 0);
+      if (typeof drawHistoryCharts === 'function') drawHistoryCharts(zeroResult, 0);
+      if (typeof drawLiveReliabilityBar === 'function') drawLiveReliabilityBar();
+      if (typeof updateLiveTruthBar === 'function') updateLiveTruthBar();
     });
 
     altVideo.addEventListener('ended', () => {
@@ -2699,9 +2718,28 @@
       isPausedOrStopped = true;
       targetScore = 0;
       displayedScore = 0;
-      if (typeof updateDetectorUI === 'function') {
-        updateDetectorUI({ isSilent: true, stressScore: 0, aiProbability: 0, metrics: { lvp: 0, microT: 0, spectral: 0, jitter: '0.0000', shimmer: '0.0000', hnr: '0.0000', pdr: '0.0000' } }, 0);
-      }
+      currentSubtitle = '';
+      const zeroResult = {
+        stressScore: 0,
+        isSilent: true,
+        isMusic: false,
+        aiProbability: 0,
+        gainStatus: 'IDLE',
+        internalGain: '1.0',
+        metrics: {
+          jitter: '0.0000',
+          shimmer: '0.0000',
+          hnr: '0.00',
+          entropy: 0,
+          mti: '0.0000',
+          fi: '0.0000',
+          pdr: '0.0000'
+        }
+      };
+      if (typeof updateDetectorUI === 'function') updateDetectorUI(zeroResult, 0);
+      if (typeof drawHistoryCharts === 'function') drawHistoryCharts(zeroResult, 0);
+      if (typeof drawLiveReliabilityBar === 'function') drawLiveReliabilityBar();
+      if (typeof updateLiveTruthBar === 'function') updateLiveTruthBar();
     });
 
     altVideo.addEventListener('timeupdate', () => {
@@ -4187,9 +4225,28 @@
       isPausedOrStopped = true;
       targetScore = 0;
       displayedScore = 0;
-      if (typeof updateDetectorUI === 'function') {
-        updateDetectorUI({ isSilent: true, stressScore: 0, aiProbability: 0, metrics: { lvp: 0, microT: 0, spectral: 0, jitter: '0.0000', shimmer: '0.0000', hnr: '0.0000', pdr: '0.0000' } }, 0);
-      }
+      currentSubtitle = '';
+      const zeroResult = {
+        stressScore: 0,
+        isSilent: true,
+        isMusic: false,
+        aiProbability: 0,
+        gainStatus: 'IDLE',
+        internalGain: '1.0',
+        metrics: {
+          jitter: '0.0000',
+          shimmer: '0.0000',
+          hnr: '0.00',
+          entropy: 0,
+          mti: '0.0000',
+          fi: '0.0000',
+          pdr: '0.0000'
+        }
+      };
+      if (typeof updateDetectorUI === 'function') updateDetectorUI(zeroResult, 0);
+      if (typeof drawHistoryCharts === 'function') drawHistoryCharts(zeroResult, 0);
+      if (typeof drawLiveReliabilityBar === 'function') drawLiveReliabilityBar();
+      if (typeof updateLiveTruthBar === 'function') updateLiveTruthBar();
     } else if (isVideoPlaying) {
       isPausedOrStopped = false;
     }
@@ -4491,17 +4548,12 @@
       const altVideo = document.getElementById('alt-player');
       const isAltPausedOrEnded = isAltPlayerActive && altVideo && (altVideo.paused || altVideo.ended);
       
-      // Grace period: 분석 시작 후 5초 동안은 일시정지 판정을 건너뜁니다
-      const analysisElapsedMsGrace = Date.now() - analysisStartTime;
-      const inGracePeriod = analysisElapsedMsGrace < 5000;
-      
+      // 이벤트 기반(onPlayerStateChange) 및 상태 폴링으로 일시정지를 감지합니다. (딜레이 최소화)
       let isYtPausedOrEnded = false;
-      if (!inGracePeriod && activeVideoId && !isAltPlayerActive) {
-        // 명확하게 일시정지(2) 또는 종료(0)인 경우만 판정합니다
-        // -1(unstarted), 5(cued)는 초기화 중 상태이므로 일시정지로 취급하지 않습니다
+      if (activeVideoId && !isAltPlayerActive) {
         const isYtApiPaused = (playerState === 2 || playerState === 0);
         const isApiUnresponsive = (!isVideoPlaying && timeSinceLastUpdate > 8000);
-        isYtPausedOrEnded = isYtApiPaused || isApiUnresponsive;
+        isYtPausedOrEnded = isYtApiPaused || isApiUnresponsive || isPausedOrStopped;
       }
 
       const isPausedOrEnded = isYtPausedOrEnded || isAltPausedOrEnded;
@@ -4552,26 +4604,23 @@
       }
 
       // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
-      isPausedOrStopped = false;
+      // isMutedOrSilent은 매 프레임 재평가 (뮤트 상태는 순간적)
+      // isPausedOrStopped는 onPlayerStateChange 이벤트가 관리하므로 여기서 리셋하지 않습니다
       isMutedOrSilent = false;
       if (activeVideoId) {
-        // Grace period: first 3 seconds of analysis exempt from pause detection
-        // (gives YouTube Player API time to initialize and fire state events)
-        const analysisElapsedMs = Date.now() - analysisStartTime;
         const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
         
-        // Check if YouTube Player API is responding properly
-        const isPlayerResponding = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && timeSinceLastUpdate < 5000);
-        
-        if (analysisElapsedMs > 3000) {
-          if (isPlayerResponding) {
-            if (!isVideoPlaying || timeSinceLastUpdate > 2500) {
-              isPausedOrStopped = true;
-            }
-          } else {
-            // If player doesn't respond or update is delayed, keep analyzing with Self-Ticking clock fallback
-            isPausedOrStopped = false;
-          }
+        // 이벤트 기반(onPlayerStateChange)으로 isPausedOrStopped가 관리됩니다.
+        // 루프 폴링에서는 추가적인 보조 감지만 수행합니다.
+        let isYtPausedOrEnded = false;
+        if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+          const isYtApiPaused = (playerState === 2 || playerState === 0);
+          const isApiUnresponsive = (!isVideoPlaying && timeSinceLastUpdate > 8000);
+          isYtPausedOrEnded = isYtApiPaused || isApiUnresponsive || isPausedOrStopped;
+        }
+
+        if (isYtPausedOrEnded) {
+          isPausedOrStopped = true;
         }
 
         // Mute state detection
