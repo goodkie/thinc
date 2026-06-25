@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: thinc-lie-server
+    runtime: node
+    rootDirectory: webapp
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 8080

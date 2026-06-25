@@ -1,0 +1,5 @@
+node_modules
+thinc_database.db
+test*.js
+*.log
+.env

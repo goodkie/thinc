@@ -37,8 +37,6 @@
 
   // YouTube player state tracking
   let isVideoPlaying = false;
-  let isPausedOrStopped = false;
-  let isMutedOrSilent = false;
   let lastTimeUpdate = Date.now();
   let lastTimeValue = -1;
   let analysisStartTime = 0;
@@ -4628,11 +4626,12 @@
       const altVideo = document.getElementById('alt-player');
       const isAltPausedOrEnded = isAltPlayerActive && altVideo && (altVideo.paused || altVideo.ended);
       
-      // 이벤트 기반 + API 폴링으로 정지 상태 감지 (시간 기반 오인 감지 제거)
       let isYtPausedOrEnded = false;
       if (activeVideoId && !isAltPlayerActive) {
-        const isYtApiPaused = (playerState === 2 || playerState === 0);
-        isYtPausedOrEnded = isYtApiPaused || isPausedOrStopped;
+        // playerState가 명시적으로 2(paused), 0(ended), 5(cued), -1(unstarted)이거나
+        // API 상태가 정상 응답하지 않으면서 재생 중이 아닌 경우 일시정지/멈춤으로 신속하게 판정
+        const isYtApiPaused = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
+        isYtPausedOrEnded = isYtApiPaused || (!isVideoPlaying && timeSinceLastUpdate > 3000);
       }
 
       const isPausedOrEnded = isYtPausedOrEnded || isAltPausedOrEnded;
@@ -4681,9 +4680,28 @@
         } catch(e) {}
       }
 
-      // isPausedOrStopped는 onPlayerStateChange 이벤트가 단독 관리 — 루프에서 절대 덮어쓰지 않음
+      // Check if YouTube video is paused/stopped/muted (if activeVideoId is set)
+      isPausedOrStopped = false;
       isMutedOrSilent = false;
       if (activeVideoId) {
+        // Grace period: first 3 seconds of analysis exempt from pause detection
+        // (gives YouTube Player API time to initialize and fire state events)
+        const analysisElapsedMs = Date.now() - analysisStartTime;
+        const timeSinceLastUpdate = Date.now() - lastTimeUpdate;
+        
+        // Check if YouTube Player API is responding properly
+        const isPlayerResponding = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function' && timeSinceLastUpdate < 5000);
+        
+        if (analysisElapsedMs > 3000) {
+          if (isPlayerResponding) {
+            if (!isVideoPlaying || timeSinceLastUpdate > 2500) {
+              isPausedOrStopped = true;
+            }
+          } else {
+            // If player doesn't respond or update is delayed, keep analyzing with Self-Ticking clock fallback
+            isPausedOrStopped = false;
+          }
+        }
 
         // Mute state detection
         if (ytPlayer) {

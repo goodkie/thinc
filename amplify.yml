@@ -1,0 +1,12 @@
+version: 1
+frontend:
+  phases:
+    build:
+      commands:
+        - echo "Deploying Th!nc static web application"
+  artifacts:
+    baseDirectory: webapp
+    files:
+      - '**/*'
+  cache:
+    paths: []

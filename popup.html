@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Truth Untold Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">THE TRUTH<span>UNTOLD</span></div>
+      <div class="subtitle">AI Lie Detector</div>
+    </header>
+
+    <main>
+      <div class="tab-container">
+        <button class="tab-btn active" id="tab-upload">Upload File</button>
+        <button class="tab-btn" id="tab-history">History</button>
+        <button class="tab-btn" id="tab-settings">Settings</button>
+      </div>
+
+      <div class="content-section" id="section-upload">
+        <div class="upload-zone" id="drop-zone">
+          <div class="upload-icon">↑</div>
+          <div class="upload-text">Drag & Drop Audio File</div>
+          <div class="upload-hint">MP3, WAV, M4A supported</div>
+          <input type="file" id="file-input" hidden accept="audio/*">
+        </div>
+
+        <div id="analysis-result" class="result-card hidden">
+          <div class="result-header">Analysis Complete</div>
+          <div class="gauge-large">
+            <svg viewBox="0 0 100 100">
+              <circle class="gauge-bg" cx="50" cy="50" r="45"></circle>
+              <circle class="gauge-fill" id="gauge-fill" cx="50" cy="50" r="45"></circle>
+            </svg>
+            <div class="gauge-text">
+              <span id="result-prob">0%</span>
+              <label>Probability of Deception</label>
+            </div>
+          </div>
+          <div class="result-details">
+            <div class="detail-item">
+              <label>Stress Level</label>
+              <span id="res-stress">-</span>
+            </div>
+            <div class="detail-item">
+              <label>Confidence</label>
+              <span id="res-conf">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content-section hidden" id="section-settings">
+        <div class="settings-card">
+          <div class="setting-item">
+            <div class="setting-label">UI Mode</div>
+            <div id="mode-select" class="segmented-control">
+              <button class="segment-btn" data-value="visual">Visual</button>
+              <button class="segment-btn" data-value="expert">Expert</button>
+              <button class="segment-btn" data-value="mini">Mini</button>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-label">Language</div>
+            <div id="lang-select" class="chip-grid">
+              <button class="lang-chip" data-value="en">EN</button>
+              <button class="lang-chip" data-value="ko">KO</button>
+              <button class="lang-chip" data-value="jp">JP</button>
+              <button class="lang-chip" data-value="zh">ZH</button>
+              <button class="lang-chip" data-value="fr">FR</button>
+              <button class="lang-chip" data-value="de">DE</button>
+              <button class="lang-chip" data-value="es">ES</button>
+              <button class="lang-chip" data-value="it">IT</button>
+              <button class="lang-chip" data-value="pt">PT</button>
+              <button class="lang-chip" data-value="ru">RU</button>
+              <button class="lang-chip" data-value="ar">AR</button>
+              <button class="lang-chip" data-value="hi">HI</button>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-label">
+              <span>Detection Sensitivity</span>
+              <span id="sens-value">5</span>
+            </div>
+            <input type="range" id="sens-slider" min="1" max="10" value="5" class="slider">
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-label">
+              <span>Screenshots on Lie</span>
+              <span id="shots-value">3</span>
+            </div>
+            <input type="range" id="shots-slider" min="1" max="5" value="3" class="slider">
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      Powered by Deep Voice Stress Analysis v1.0
+    </footer>
+  </div>
+  <script src="analyzer.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
