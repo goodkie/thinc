@@ -5579,7 +5579,7 @@
       if ((isLocalYoutube || isYoutube) && activeVideoId) {
         // playerState가 명시적으로 2(paused), 0(ended), 5(cued), -1(unstarted)이거나
         // API 상태가 정상 응답하지 않으면서 재생 중이 아닌 경우 일시정지/멈춤으로 신속하게 판정
-        const isYtApiPaused = (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1);
+        const isYtApiPaused = (isLocalYoutube && ytPlayer) ? (playerState === 2 || playerState === 0 || playerState === 5 || playerState === -1) : false;
         isYtPausedOrEnded = isYtApiPaused || (!isVideoPlaying && timeSinceLastUpdate > 3000);
       }
 
