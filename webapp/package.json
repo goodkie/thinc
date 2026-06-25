@@ -4,7 +4,8 @@
   "description": "Th!nc Voice Stress Biometric & Caption Scraping Server",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "npm rebuild sqlite3"
   },
   "dependencies": {
     "@danielxceron/youtube-transcript": "^1.2.6",
