@@ -1,6 +1,6 @@
 {
   "name": "thinc-biometric-server",
-  "version": "1.8.5",
+  "version": "1.8.6",
   "description": "Th!nc Voice Stress Biometric & Caption Scraping Server",
   "main": "server.js",
   "scripts": {
